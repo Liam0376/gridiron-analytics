@@ -8,9 +8,26 @@ Personal, single-user analytics tool for one Sleeper league ("Fantasy Bahamas",
 - **$0 cost, forever.** No paid tiers, no cards-on-file trials, no paid hosting/DB.
   Flag free-tier limits (rate limits, quotas, cold starts) explicitly instead of
   assuming they're fine.
+- **Fully local. No cloud, no public exposure, ever.** FastAPI binds
+  `127.0.0.1` only — never pass `--host 0.0.0.0` or open a port/tunnel to the
+  internet without the user explicitly asking. Data ingestion still makes
+  outbound calls to free public APIs (Sleeper, nflreadpy, Open-Meteo) — that's
+  unavoidable (real recommendations need real data) and carries zero charge
+  risk (no auth/card anywhere), but it's the only "web" involved. No inbound
+  exposure, no hosting, no deploy step, ever.
 - No monetization, no public site, no other users.
 - NFL/fantasy football only — no other sports.
 - No real-money betting/staking logic.
+
+## Primary interface: ask Claude directly
+
+The user does not want to build/run a separate CLI or dashboard to query
+this. **Claude Code, working in this project directory, is the interface.**
+When the user asks "who should I start this week" or similar, query the
+local SQLite DB (`data/fantasy.db`) and/or call the local API directly via
+Bash — don't tell the user to go run a curl command themselves. Treat every
+recommendation question as "read the project's current data and answer,"
+the same as reading any other file in this repo.
 
 ## Engineering discipline (reused from `~/projects/sports-analytics` tennis-ml)
 
