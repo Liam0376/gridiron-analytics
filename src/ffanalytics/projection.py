@@ -27,7 +27,7 @@ def calculate_snap_pct_feature(stats: Dict) -> float:
 
 
 def calculate_opponent_positional_rating_feature(
-    team_ratings: Dict[str, Rating],
+    team_ratings: Dict[str, Dict[str, Rating]],
     opponent_team: str,
     position_group: str
 ) -> float:
@@ -49,7 +49,9 @@ def calculate_projection(
     player_stats: Dict,
     team_ratings: Dict[str, Dict[str, Rating]],
     historical_residuals: List[float] = None,
-    feature_weights: Dict[str, float] = None
+    feature_weights: Dict[str, float] = None,
+    weather: Dict = None,
+    scoring_settings: Dict = None,
 ) -> Dict[str, float]:
     """
     Calculate point projection for a player.
@@ -80,18 +82,12 @@ def calculate_projection(
     target_share = calculate_target_share_feature(player_stats)
     snap_pct = calculate_snap_pct_feature(player_stats)
 
-    # Get opponent rating (would need to know the player's team and upcoming opponent)
     opponent_team = player_stats.get("opponent_team")
-    position_group = player_stats.get("position_group", "rb")  # Default
+    position_group = player_stats.get("position_group", "rb")
 
-    # For simplicity, using a placeholder - in reality would look up from schedule
-    opponent_rating = 1500.0  # Neutral
-    if opponent_team and opponent_team in team_ratings:
-        opponent_rating = calculate_opponent_positional_rating_feature(
-            team_ratings.get(opponent_team, {}),
-            opponent_team,
-            position_group
-        )
+    opponent_rating = calculate_opponent_positional_rating_feature(
+        team_ratings, opponent_team or "", position_group
+    )
 
     # Apply feature adjustments (simplified linear model)
     # In reality, these would be learned weights from backtesting
@@ -102,6 +98,12 @@ def calculate_projection(
     )
 
     point_estimate = base_points + feature_adjustment
+
+    # Weather adjustment: high wind penalizes passing/kicking positions
+    if weather and position_group.upper() in ("QB", "WR", "K"):
+        wind_mph = weather.get("wind_mph", 0)
+        if wind_mph > 15:
+            point_estimate -= (wind_mph - 15) * config.WEATHER_WIND_PENALTY_PER_MPH
 
     # Apply conformal calibration if we have historical residuals
     if historical_residuals and len(historical_residuals) > 0:
