@@ -1,0 +1,5 @@
+{
+  "league_id": "123",
+  "scoring_settings": {"rec": 1.0, "rec_yd": 0.1, "rush_yd": 0.1, "pass_yd": 0.04, "pass_td": 5, "rush_td": 6, "rec_td": 6, "pass_int": -1},
+  "roster_positions": ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "FLEX", "K", "DEF", "BN", "BN", "BN", "BN", "IR", "IR"]
+}
