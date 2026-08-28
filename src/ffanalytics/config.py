@@ -32,6 +32,16 @@ FEATURES = {
     },
 }
 
+# Flex-league scarcity adjustment: leagues with 2+ flex slots increase
+# demand for RB/WR/TE, making receiving volume more valuable.
+# tested and REJECTED: higher multipliers (1.10+) — overcorrected in
+# backtesting against standard PPR rankings; 1.05 is conservative start.
+FLEX_SCARCITY_MULTIPLIER = 1.05
+
+# Weather effect on projections (points deducted per mph of wind)
+# Affects QB, WR, K positions. Conservative start — revisit with shadow data.
+WEATHER_WIND_PENALTY_PER_MPH = 0.02
+
 # Minimum logged+resolved shadow samples before a new heuristic can be
 # promoted to a live recommendation. Starting value only — revisit once
 # real recommendation volume/variance is known (mirrors reference repo's
