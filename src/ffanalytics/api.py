@@ -54,6 +54,8 @@ _CACHE: dict = {
     "rosters": None,          # list of roster dicts from Sleeper
     "player_stats": None,     # list of player stat dicts from nflverse
     "injury_status": None,    # dict mapping player_id to injury status
+    "trending": None,         # list of trending adds from Sleeper
+    "detailed_injuries": None,  # list of injury dicts with practice status
     "last_updated": None,     # timestamp of last cache update
     "season": None,           # NFL season year
     "week": None,             # approximate NFL week (1-18)
@@ -66,13 +68,19 @@ def update_cache(
     player_stats: list[dict],
     injury_status: dict[str, str | None],
     season: int | None = None,
-    week: int | None = None
+    week: int | None = None,
+    trending: list[dict] | None = None,
+    detailed_injuries: list[dict] | None = None
 ) -> None:
     """Update the in-memory cache with fresh data from refresh job."""
     _CACHE["league_settings"] = league_settings
     _CACHE["rosters"] = rosters
     _CACHE["player_stats"] = player_stats
     _CACHE["injury_status"] = injury_status
+    if trending is not None:
+        _CACHE["trending"] = trending
+    if detailed_injuries is not None:
+        _CACHE["detailed_injuries"] = detailed_injuries
     _CACHE["last_updated"] = datetime.datetime.now().isoformat()
     if season is not None:
         _CACHE["season"] = season
@@ -241,7 +249,9 @@ def refresh() -> dict:
             player_stats=data["player_stats"],
             injury_status=data["injury_status"],
             season=season,
-            week=week
+            week=week,
+            trending=data.get("trending"),
+            detailed_injuries=data.get("detailed_injuries")
         )
 
         conn.close()
@@ -418,3 +428,20 @@ def get_trade_evaluation(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error evaluating trade: {str(e)}")
+
+
+@app.get("/news")
+def news_summary(limit: int = 10) -> dict:
+    """Return trending adds and recent injury updates with practice status."""
+    trending = _CACHE.get("trending", [])[:limit] if _CACHE.get("trending") else []
+    injuries = _CACHE.get("detailed_injuries", []) if _CACHE.get("detailed_injuries") else []
+    # Filter to only players with notable status (Limited practice or DNP)
+    notable = [
+        i for i in injuries
+        if i.get("practice_status") in ("Limited", "DNP") or i.get("injury_status")
+    ][:limit]
+    return {
+        "trending_adds": trending,
+        "injury_updates": notable,
+        "timestamp": _CACHE["last_updated"]
+    }

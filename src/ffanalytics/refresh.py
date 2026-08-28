@@ -7,7 +7,7 @@ import json
 from datetime import datetime
 
 from ffanalytics import config
-from ffanalytics.adapters import nflverse, sleeper, weather
+from ffanalytics.adapters import nflverse, sleeper, weather, news
 
 
 def _compute_nfl_week(now: datetime | None = None) -> int:
@@ -129,6 +129,21 @@ def run_refresh_with_data(
         status["nflverse"] = False
         # Set empty default on failure
         data["player_stats"] = []
+
+    # Fetch news and trending
+    try:
+        trending = news.get_trending_adds(session=sleeper_session)
+        detailed_injuries = news.get_injury_with_practice(season, nfl_module=nfl_module)
+        data["trending"] = trending
+        data["detailed_injuries"] = detailed_injuries
+        _log(conn, "news", True, None, ran_at_iso)
+        status["news"] = True
+    except Exception as exc:
+        _log(conn, "news", False, str(exc), ran_at_iso)
+        status["news"] = False
+        # Set empty defaults on failure
+        data["trending"] = []
+        data["detailed_injuries"] = []
 
     # Store fetched data in the database
     try:
