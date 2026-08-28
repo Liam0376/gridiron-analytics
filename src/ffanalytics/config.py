@@ -32,5 +32,11 @@ FEATURES = {
     },
 }
 
+# Minimum logged+resolved shadow samples before a new heuristic can be
+# promoted to a live recommendation. Starting value only — revisit once
+# real recommendation volume/variance is known (mirrors reference repo's
+# MIN_MUESTRA_SHADOW, which was tuned empirically, not guessed).
+MIN_SHADOW_SAMPLES = 20
+
 def get_feature_status(name: str) -> str:
     return FEATURES[name]["status"]
