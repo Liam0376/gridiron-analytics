@@ -30,3 +30,10 @@ def get_injury_statuses(session=None) -> dict[str, str | None]:
     resp.raise_for_status()
     players = resp.json()
     return {pid: p.get("injury_status") for pid, p in players.items()}
+
+def get_league_matchups(league_id: str, week: int, session=None) -> list[dict]:
+    """Fetch matchups for a specific week. Returns roster-level matchup data."""
+    http = _session_or_default(session)
+    resp = http.get(f"{BASE_URL}/league/{league_id}/matchups/{week}", timeout=10)
+    resp.raise_for_status()
+    return resp.json()

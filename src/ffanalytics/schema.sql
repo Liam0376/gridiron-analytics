@@ -52,6 +52,16 @@ CREATE TABLE IF NOT EXISTS injury_status (
     data JSON NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS sleeper_matchups (
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    roster_id INTEGER NOT NULL,
+    matchup_id INTEGER NOT NULL,
+    points REAL,
+    starters TEXT,
+    PRIMARY KEY (season, week, roster_id)
+);
+
 CREATE TABLE IF NOT EXISTS weather (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     lat REAL NOT NULL,

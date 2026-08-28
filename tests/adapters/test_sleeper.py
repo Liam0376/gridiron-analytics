@@ -39,3 +39,14 @@ def test_get_injury_statuses_filters_to_nonnull():
     session = _mock_session(payload)
     result = sleeper.get_injury_statuses(session=session)
     assert result == {"4046": "Questionable", "5849": None}
+
+def test_get_league_matchups_returns_list():
+    from ffanalytics.adapters import sleeper
+    payload = [
+        {"roster_id": 1, "matchup_id": 1, "points": 105.3, "starters": ["4046"], "players": ["4046", "5849"]},
+        {"roster_id": 2, "matchup_id": 1, "points": 98.7, "starters": ["6001"], "players": ["6001"]},
+    ]
+    session = _mock_session(payload)
+    result = sleeper.get_league_matchups("123", week=1, session=session)
+    assert len(result) == 2
+    assert result[0]["matchup_id"] == 1
