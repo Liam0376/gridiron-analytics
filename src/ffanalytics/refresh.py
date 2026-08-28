@@ -4,7 +4,7 @@ the others — matches design spec's stale-cache-fallback error handling."""
 
 import sqlite3
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from ffanalytics import config
 from ffanalytics.adapters import nflverse, sleeper, weather
@@ -21,9 +21,9 @@ def _compute_nfl_week(now: datetime | None = None) -> int:
     # Find first Monday in September
     # weekday() where Monday is 0, Sunday is 6
     offset_to_monday = (0 - september_first.weekday()) % 7
-    labor_day = september_first + datetime.timedelta(days=offset_to_monday)
+    labor_day = september_first + timedelta(days=offset_to_monday)
     # Season starts on the Monday after Labor Day (the start of the first week).
-    season_start = labor_day + datetime.timedelta(days=7)  # Monday of first week
+    season_start = labor_day + timedelta(days=7)  # Monday of first week
     # If now is before season start, return 0 (preseason)
     if now < season_start:
         return 0
@@ -73,6 +73,17 @@ def run_refresh(
         _log(conn, "nflverse", False, str(exc), ran_at_iso)
         result["nflverse"] = False
 
+    try:
+        from ffanalytics.rating_updates import update_team_ratings_from_results
+        current_week = _compute_nfl_week()
+        for wk in range(1, current_week + 1):
+            update_team_ratings_from_results(conn, season, wk, nfl_module=nfl_module)
+        _log(conn, "ratings", True, None, ran_at_iso)
+        result["ratings"] = True
+    except Exception as exc:
+        _log(conn, "ratings", False, str(exc), ran_at_iso)
+        result["ratings"] = False
+
     return result
 
 
@@ -105,9 +116,12 @@ def run_refresh_with_data(
         league_settings = sleeper.get_league_settings(config.LEAGUE_ID, session=sleeper_session)
         rosters = sleeper.get_rosters(config.LEAGUE_ID, session=sleeper_session)
         injury_status = sleeper.get_injury_statuses(session=sleeper_session)
+        current_week = _compute_nfl_week()
+        matchups = sleeper.get_league_matchups(config.LEAGUE_ID, current_week, session=sleeper_session)
         data["league_settings"] = league_settings
         data["rosters"] = rosters
         data["injury_status"] = injury_status
+        data["matchups"] = matchups
         _log(conn, "sleeper", True, None, ran_at_iso)
         status["sleeper"] = True
     except Exception as exc:
@@ -117,6 +131,7 @@ def run_refresh_with_data(
         data["league_settings"] = {"scoring_settings": {}, "roster_positions": []}
         data["rosters"] = []
         data["injury_status"] = {}
+        data["matchups"] = []
 
     # Get NFLverse data
     try:
@@ -129,6 +144,33 @@ def run_refresh_with_data(
         status["nflverse"] = False
         # Set empty default on failure
         data["player_stats"] = []
+
+    # Fetch news and trending
+    try:
+        from ffanalytics.adapters import news
+        trending = news.get_trending_adds(session=sleeper_session)
+        detailed_injuries = news.get_injury_with_practice(season, nfl_module=nfl_module)
+        data["trending"] = trending
+        data["detailed_injuries"] = detailed_injuries
+        _log(conn, "news", True, None, ran_at_iso)
+        status["news"] = True
+    except Exception as exc:
+        _log(conn, "news", False, str(exc), ran_at_iso)
+        status["news"] = False
+        data["trending"] = []
+        data["detailed_injuries"] = []
+
+    # Update team ratings from completed games
+    try:
+        from ffanalytics.rating_updates import update_team_ratings_from_results
+        current_week = _compute_nfl_week()
+        for wk in range(1, current_week + 1):
+            update_team_ratings_from_results(conn, season, wk, nfl_module=nfl_module)
+        _log(conn, "ratings", True, None, ran_at_iso)
+        status["ratings"] = True
+    except Exception as exc:
+        _log(conn, "ratings", False, str(exc), ran_at_iso)
+        status["ratings"] = False
 
     # Store fetched data in the database
     try:

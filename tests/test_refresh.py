@@ -33,13 +33,15 @@ def test_run_refresh_all_sources_succeed():
         def to_dicts(self):
             return [{"player_id": "4046", "target_share": 0.3}]
     fake_nfl.load_player_stats.return_value = _Frame()
+    fake_nfl.load_schedules.return_value = _Frame()
 
     result = refresh.run_refresh(
         conn, season=2026, sleeper_session=sleeper_session, nfl_module=fake_nfl,
         ran_at_iso="2026-09-10T09:00:00",
     )
-    assert result == {"sleeper": True, "nflverse": True}
-    rows = conn.execute("SELECT source, success FROM refresh_log").fetchall()
+    assert result["sleeper"] is True
+    assert result["nflverse"] is True
+    rows = conn.execute("SELECT source, success FROM refresh_log WHERE source IN ('sleeper', 'nflverse')").fetchall()
     assert {(r["source"], r["success"]) for r in rows} == {
         ("sleeper", 1), ("nflverse", 1)
     }
@@ -62,12 +64,17 @@ def test_run_refresh_nflverse_failure_logs_and_continues():
 
     fake_nfl = Mock()
     fake_nfl.load_player_stats.side_effect = ConnectionError("boom")
+    class _EmptyFrame:
+        def to_dicts(self):
+            return []
+    fake_nfl.load_schedules.return_value = _EmptyFrame()
 
     result = refresh.run_refresh(
         conn, season=2026, sleeper_session=sleeper_session, nfl_module=fake_nfl,
         ran_at_iso="2026-09-10T09:00:00",
     )
-    assert result == {"sleeper": True, "nflverse": False}
+    assert result["sleeper"] is True
+    assert result["nflverse"] is False
     row = conn.execute(
         "SELECT success, error_message FROM refresh_log WHERE source = 'nflverse'"
     ).fetchone()
