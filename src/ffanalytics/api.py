@@ -295,16 +295,27 @@ def get_projections() -> dict:
     else:
         conn = db.get_connection()
         row = conn.execute(
-            "SELECT data FROM player_stats WHERE data IS NOT NULL ORDER BY season DESC, week DESC LIMIT 1"
+            "SELECT data FROM player_stats WHERE data IS NOT NULL AND length(data) > 1000 ORDER BY rowid DESC LIMIT 1"
+        ).fetchone()
+        players = json.loads(row["data"]) if row else []
+        # Load scoring settings from DB
+        srow = conn.execute(
+            "SELECT data FROM league_settings ORDER BY season DESC LIMIT 1"
         ).fetchone()
         conn.close()
-        players = json.loads(row["data"]) if row else []
+        scoring = json.loads(srow["data"]).get("scoring_settings", {}) if srow else {}
 
     out = []
     for p in players[:800]:
         pid = str(p.get("player_id") or p.get("id") or "")
         pos = (p.get("position") or p.get("position_group") or "UNK").upper()
         pts = float(p.get("fantasy_points") or p.get("projected_points") or 0)
+        if pts == 0 and scoring:
+            from ffanalytics.scoring import calculate_player_points
+            try:
+                pts = calculate_player_points(p, scoring)
+            except Exception:
+                pass
         injury = (_CACHE.get("injury_status") or {}).get(pid)
         out.append({
             "player_id": pid,
