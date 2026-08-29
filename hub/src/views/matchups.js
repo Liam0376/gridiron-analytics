@@ -1,5 +1,6 @@
 import { fetchMatchups } from '../api.js';
 import { windBadge } from '../components/badges.js';
+import { teamLogo } from '../components/teamLogo.js';
 
 export async function renderMatchups(root) {
   const params = new URLSearchParams(location.hash.split('?')[1] || '');
@@ -59,7 +60,7 @@ export async function renderMatchups(root) {
               <tbody>
                 ${slate.map(g=>`
                   <tr>
-                    <td><span class="mono">${g.away_team || g.away || '—'}</span> <span class="faint">@</span> <span class="mono">${g.home_team || g.home || '—'}</span></td>
+                    <td><div class="matchup-game">${teamLogo(g.away_team || g.away, 20)} <span class="mono">${g.away_team || g.away || '—'}</span> <span class="faint">@</span> ${teamLogo(g.home_team || g.home, 20)} <span class="mono">${g.home_team || g.home || '—'}</span></div></td>
                     <td class="faint">${g.stadium || '—'}</td>
                     <td class="micro" style="color:var(--text-muted)">${g.gameday || ''} ${g.gametime || ''}</td>
                     <td>${windBadge(g.wind_mph)}</td>

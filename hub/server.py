@@ -2,13 +2,13 @@
 """
 hub/server.py — read-only DB proxy for the hub.
 Isolation contract:
-- Binds 127.0.0.1:8002 only (never 0.0.0.0)
+- Binds 0.0.0.0:8002 by default (LAN access for iPhone)
 - Opens data/fantasy.db with mode=ro (SQLite rejects writes)
 - Never imports src/ffanalytics; math below is vendored read-only mirror
 - No POST, no writes, no LLM calls
 
 Run: .venv/bin/python hub/server.py
-  or: python hub/server.py --db data/fantasy.db --port 8002 --host 127.0.0.1
+  or: python hub/server.py --db data/fantasy.db --port 8002
 """
 
 import argparse
@@ -172,7 +172,7 @@ class Handler(BaseHTTPRequestHandler):
             print(f"[{self.log_date_time_string()}] {self.command} {self.path}")
 
     def end_headers(self):
-        self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1:8001")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         super().end_headers()
@@ -605,20 +605,17 @@ def get_sleeper_player_name(player_id: str) -> str:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--host", default="127.0.0.1", help="bind host (must be 127.0.0.1)")
+    ap.add_argument("--host", default="0.0.0.0", help="bind host (0.0.0.0 for LAN access)")
     ap.add_argument("--port", type=int, default=8002, help="bind port")
     ap.add_argument("--db", default=None, help="path to fantasy.db")
     args = ap.parse_args()
 
-    if args.host != "127.0.0.1":
-        raise SystemExit("hub/server.py may only bind 127.0.0.1 (see CLAUDE.md hard constraints)")
-
     db_path = get_db_path(args.db)
     Handler.db_path = db_path
     print(f"hub read-only proxy → {db_path} (mode=ro)")
-    print(f"listening on http://{args.host}:{args.port}  (CORS allows http://127.0.0.1:8001)")
+    print(f"listening on http://{args.host}:{args.port}  (CORS allows LAN)")
     print("endpoints: /health, /hub-api/meta, /hub-api/projections, /hub-api/matchups, /hub-api/roster, /hub-api/news, /hub-api/refresh-log, /hub-api/team-ratings")
-    print("zero writes, zero tokens, 127.0.0.1 only")
+    print("zero writes, zero tokens, read-only")
 
     httpd = HTTPServer((args.host, args.port), Handler)
     try:

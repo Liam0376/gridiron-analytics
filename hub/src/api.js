@@ -2,7 +2,7 @@
 // Tries 127.0.0.1:8000 GET endpoints first, falls back to hub read-only proxy (8002) which reads fantasy.db with mode=ro.
 // No import from src/ffanalytics — API boundary is HTTP / JSON only.
 
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE = `http://${location.hostname}:8000`;
 const HUB_API = '/hub-api'; // proxied to 8002 when hub/server.py is running, otherwise 404 → we degrade gracefully
 
 async function getJSON(url, opts = {}) {

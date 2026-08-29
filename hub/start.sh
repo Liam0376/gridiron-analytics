@@ -1,7 +1,7 @@
 #!/bin/bash
 # hub/start.sh — one-click warm-boot launcher. Starts model+proxy+hub, ensures DATA is warm before opening browser.
-# Isolation: 127.0.0.1 only, hub reads DB mode=ro, only triggers model POST /refresh (never writes DB directly), no tokens.
-# Flags: --auto (auto-refresh if stale, no prompt), --no-refresh (never POST, open even if cold), --force (refresh even if fresh)
+# LAN-enabled: binds 0.0.0.0 so iPhone/other devices on same Wi-Fi can access.
+# Flags: --auto (auto-refresh if stale, no prompt), --no-refresh (never POST, open even if cold), --force (refresh even if fresh), --no-browser (skip opening browser)
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -10,19 +10,25 @@ cd "$REPO_ROOT"
 AUTO=0
 NO_REFRESH=0
 FORCE=0
+NO_BROWSER=0
 for arg in "$@"; do
   case "$arg" in
     --auto) AUTO=1 ;;
     --no-refresh) NO_REFRESH=1 ;;
     --force) FORCE=1 ;;
-    -h|--help) echo "Usage: bash hub/start.sh [--auto] [--no-refresh] [--force]"; exit 0 ;;
+    --no-browser) NO_BROWSER=1 ;;
+    -h|--help) echo "Usage: bash hub/start.sh [--auto] [--no-refresh] [--force] [--no-browser]"; exit 0 ;;
   esac
 done
 
 export SLEEPER_LEAGUE_ID="${SLEEPER_LEAGUE_ID:-test}"
 
+# detect LAN IP for phone access
+LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || echo "127.0.0.1")
+
 echo "→ Fantasy Hub — warm-boot start (Ctrl+C to stop, 0 resources after)"
-echo "  Model: http://127.0.0.1:8000   Hub: http://127.0.0.1:8001   Proxy: http://127.0.0.1:8002  Flags: auto=$AUTO no-refresh=$NO_REFRESH force=$FORCE"
+echo "  Model: http://127.0.0.1:8000   Hub: http://${LAN_IP}:8001   Proxy: http://127.0.0.1:8002"
+echo "  Flags: auto=$AUTO no-refresh=$NO_REFRESH force=$FORCE no-browser=$NO_BROWSER"
 echo ""
 
 cleanup() {
@@ -52,7 +58,7 @@ if curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; then
   echo "  ✓ model already running on :8000 — reusing"
   API_PID=""
 else
-  .venv/bin/uvicorn ffanalytics.api:app --host 127.0.0.1 --port 8000 --reload > /tmp/fantasy-hub-api.log 2>&1 &
+  .venv/bin/uvicorn ffanalytics.api:app --host 0.0.0.0 --port 8000 --reload > /tmp/fantasy-hub-api.log 2>&1 &
   API_PID=$!
   for i in {1..30}; do
     if curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; then break; fi
@@ -69,7 +75,7 @@ fi
 # ensure DB + schema exists (warm-boot step 1)
 .venv/bin/python -c "from ffanalytics import db; c=db.get_connection(); db.init_schema(c); c.close(); print('  ✓ DB warm (fantasy.db + schema)')" 2>&1 | head -5
 
-# 2) Hub proxy
+# 2) Hub proxy (binds 0.0.0.0 for LAN)
 echo "→ starting hub proxy :8002 (mode=ro)…"
 if curl -sf http://127.0.0.1:8002/health >/dev/null 2>&1; then
   echo "  ✓ proxy already running on :8002 — reusing"
@@ -196,18 +202,39 @@ fi
 # 4) Hub UI
 echo "→ starting hub UI :8001…"
 if curl -sf http://127.0.0.1:8001/ >/dev/null 2>&1; then
-  echo "  ✓ hub already running on :8001 — reusing (port was in use, now reclaimed above if needed)"
-  echo "  → opening browser to existing hub…"
-  open http://127.0.0.1:8001 2>/dev/null || xdg-open http://127.0.0.1:8001 2>/dev/null || true
-  echo "  → hub ready at http://127.0.0.1:8001 — close this Terminal or Ctrl+C to stop all"
-  # keep alive so trap still works, but don't start second vite
+  echo "  ✓ hub already running on :8001 — reusing"
+  if [ "$NO_BROWSER" = "0" ]; then
+    echo "  → opening browser…"
+    open http://127.0.0.1:8001 2>/dev/null || xdg-open http://127.0.0.1:8001 2>/dev/null || true
+  fi
+  echo ""
+  echo "  ┌─────────────────────────────────────────────────────┐"
+  echo "  │  🏈 Gridiron Hub ready                              │"
+  echo "  │  Mac:    http://127.0.0.1:8001                      │"
+  echo "  │  iPhone: http://${LAN_IP}:8001                │"
+  echo "  │                                                     │"
+  echo "  │  iPhone setup: open URL in Safari → Share → Add to  │"
+  echo "  │  Home Screen. Launches as standalone app.            │"
+  echo "  └─────────────────────────────────────────────────────┘"
+  echo ""
   wait
 else
   if [ ! -d "hub/node_modules" ]; then
     echo "  installing hub deps (once)…"
     npm install --prefix hub --silent
   fi
-  ( sleep 1.2 && open http://127.0.0.1:8001 2>/dev/null || xdg-open http://127.0.0.1:8001 2>/dev/null || true ) &
-  echo "  → hub ready — browser should have opened. Press Ctrl+C to stop (0 resources after)."
+  if [ "$NO_BROWSER" = "0" ]; then
+    ( sleep 1.2 && open http://127.0.0.1:8001 2>/dev/null || xdg-open http://127.0.0.1:8001 2>/dev/null || true ) &
+  fi
+  echo ""
+  echo "  ┌─────────────────────────────────────────────────────┐"
+  echo "  │  🏈 Gridiron Hub ready                              │"
+  echo "  │  Mac:    http://127.0.0.1:8001                      │"
+  echo "  │  iPhone: http://${LAN_IP}:8001                │"
+  echo "  │                                                     │"
+  echo "  │  iPhone setup: open URL in Safari → Share → Add to  │"
+  echo "  │  Home Screen. Launches as standalone app.            │"
+  echo "  └─────────────────────────────────────────────────────┘"
+  echo ""
   npm --prefix hub run dev
 fi

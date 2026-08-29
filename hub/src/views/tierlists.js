@@ -1,6 +1,8 @@
 import { fetchProjections } from '../api.js';
 import { buildTiers } from '../tierlist.js';
 import { posBadge } from '../components/badges.js';
+import { playerAvatar } from '../components/playerAvatar.js';
+import { teamLogo } from '../components/teamLogo.js';
 
 const POSITIONS = ['QB','RB','WR','TE','FLEX'];
 
@@ -63,8 +65,7 @@ export async function renderTierlists(root) {
             <div class="tier-body">
               ${tier.map(p=>`
                 <div class="player-card">
-                  <div class="row" style="gap:8px">${posBadge(p.position || p.position_group)} <span class="name">${escapeHtml(p.player_name || p.player_id)}</span></div>
-                  <div class="meta">${escapeHtml(p.team||'—')} vs ${escapeHtml(p.opponent_team||'—')} · ${p.wind_mph ? `${Number(p.wind_mph).toFixed(0)} mph` : '—'}</div>
+                  <div class="row" style="gap:8px">${playerAvatar(p, 28)} <div style="flex:1; min-width:0"><div class="row" style="gap:6px">${posBadge(p.position || p.position_group)} <span class="name">${escapeHtml(p.player_name || p.player_id)}</span></div><div class="meta">${teamLogo(p.team, 14)} ${escapeHtml(p.team||'—')} vs ${escapeHtml(p.opponent_team||'—')} · ${p.wind_mph ? `${Number(p.wind_mph).toFixed(0)} mph` : '—'}</div></div></div>
                   <div class="pts">${Number(p.projected_points ?? p.point_estimate ?? 0).toFixed(1)} <span style="font:500 11px 'Fragment Mono', monospace; color:var(--text-muted)">±${Number(p.width ?? 5).toFixed(1)}</span></div>
                 </div>
               `).join('')}

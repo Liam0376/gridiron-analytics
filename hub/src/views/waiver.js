@@ -1,5 +1,7 @@
 import { fetchWaiver, fetchNews } from '../api.js';
 import { posBadge } from '../components/badges.js';
+import { playerAvatar } from '../components/playerAvatar.js';
+import { teamLogo } from '../components/teamLogo.js';
 
 export async function renderWaiver(root) {
   const [waiver, news] = await Promise.all([fetchWaiver(), fetchNews()]);
@@ -16,7 +18,7 @@ export async function renderWaiver(root) {
       <div class="card reveal in" style="margin-top:12px">
         <div class="card-header"><h3>Trending adds</h3><span class="kicker">from Sleeper</span></div>
         <div class="card-body row" style="gap:8px; flex-wrap:wrap">
-          ${trending.slice(0,12).map(t=>`<span class="badge" style="background:var(--sky-dim); color:var(--sky); border:1px solid rgba(56,189,248,0.2)">${escapeHtml(t.player_id || t.player_name || JSON.stringify(t).slice(0,24))}</span>`).join('')}
+          ${trending.slice(0,12).map(t=>`<span class="badge trending-badge" style="background:var(--sky-dim); color:var(--sky); border:1px solid rgba(56,189,248,0.2); display:inline-flex; align-items:center; gap:6px">${t.player_id ? playerAvatar({player_id: t.player_id, player_name: t.player_name || '', position: t.position || '', team: t.team || ''}, 20) : ''}${escapeHtml(t.player_name || t.player_id || JSON.stringify(t).slice(0,24))}</span>`).join('')}
         </div>
       </div>
     ` : ``}
@@ -31,7 +33,7 @@ export async function renderWaiver(root) {
               ${recs.map(r=>`
                 <tr>
                   <td class="mono">${r.waiver_priority ?? '—'}</td>
-                  <td><strong>${escapeHtml(r.player_name || r.player_id)}</strong></td>
+                  <td><div class="player-cell">${playerAvatar(r, 28)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(r.player_name || r.player_id)}</div><div class="player-cell-sub">${teamLogo(r.team, 14)} ${escapeHtml(r.team || '')}</div></div></div></td>
                   <td>${posBadge(r.position)}</td>
                   <td class="mono">${Number(r.projected_points ?? 0).toFixed(1)}</td>
                   <td class="mono" style="color:var(--emerald)">+${Number(r.improvement_over_roster ?? 0).toFixed(1)}</td>

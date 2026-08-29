@@ -1,6 +1,8 @@
 import { fetchRoster } from '../api.js';
 import { posBadge, injuryBadge } from '../components/badges.js';
 import { intervalBar } from '../components/intervalBar.js';
+import { playerAvatar } from '../components/playerAvatar.js';
+import { teamLogo } from '../components/teamLogo.js';
 
 export async function renderRoster(root) {
   const data = await fetchRoster();
@@ -26,7 +28,7 @@ export async function renderRoster(root) {
               ${myRoster.map((p,i)=>`
                 <tr>
                   <td class="micro faint">${p.slot || `SLOT ${i+1}`}</td>
-                  <td><strong>${escapeHtml(p.player_name || p.player_id)}</strong><div class="micro faint">${escapeHtml(p.team||'')} vs ${escapeHtml(p.opponent_team||'')}</div></td>
+                  <td><div class="player-cell">${playerAvatar(p, 32)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(p.player_name || p.player_id)}</div><div class="player-cell-sub">${teamLogo(p.team, 14)} ${escapeHtml(p.team||'')} vs ${escapeHtml(p.opponent_team||'')}</div></div></div></td>
                   <td>${posBadge(p.position || p.position_group)}</td>
                   <td class="mono">${Number(p.projected_points ?? 0).toFixed(1)}</td>
                   <td>${intervalBar({ point: Number(p.projected_points ?? 0), low: Number(p.projection_lower ?? p.projected_points - 2.5), high: Number(p.projection_upper ?? p.projected_points + 2.5), width: Number(p.width ?? 5), min: 0, max: 35 })}</td>
@@ -48,7 +50,7 @@ export async function renderRoster(root) {
             <tbody>
               ${bench.map(p=>`
                 <tr>
-                  <td><strong>${escapeHtml(p.player_name || p.player_id)}</strong></td>
+                  <td><div class="player-cell">${playerAvatar(p, 32)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(p.player_name || p.player_id)}</div><div class="player-cell-sub">${teamLogo(p.team, 14)} ${escapeHtml(p.team||'')}</div></div></div></td>
                   <td>${posBadge(p.position || p.position_group)}</td>
                   <td class="mono">${Number(p.projected_points ?? 0).toFixed(1)}</td>
                   <td>${intervalBar({ point: Number(p.projected_points ?? 0), low: Number(p.projection_lower ?? 0), high: Number(p.projection_upper ?? 0), width: Number(p.width ?? 5), min: 0, max: 35 })}</td>

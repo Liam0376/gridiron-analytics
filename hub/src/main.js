@@ -1,6 +1,7 @@
 import './styles/app.css';
 import { allRoutes, getRoute } from './router.js';
 import { fetchHealth, fetchMeta, computeStaleness } from './api.js';
+import { renderMobileNav, bindMobileNav } from './components/mobileNav.js';
 import { renderDashboard } from './views/dashboard.js';
 import { renderMatchups } from './views/matchups.js';
 import { renderProjections } from './views/projections.js';
@@ -30,6 +31,14 @@ function renderNav() {
   tabs.querySelectorAll('[data-route]').forEach(btn=>{
     btn.addEventListener('click', ()=>{ location.hash = btn.getAttribute('data-route'); });
   });
+  renderMobileNavBar(cur);
+}
+
+function renderMobileNavBar(currentRouteId) {
+  const container = document.getElementById('mobileNav');
+  if (!container) return;
+  container.innerHTML = renderMobileNav(currentRouteId);
+  bindMobileNav();
 }
 
 async function refreshStaleness() {

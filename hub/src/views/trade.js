@@ -1,4 +1,5 @@
 import { fetchTrade } from '../api.js';
+import { teamLogo } from '../components/teamLogo.js';
 
 export async function renderTrade(root) {
   const params = new URLSearchParams(location.hash.split('?')[1] || '');

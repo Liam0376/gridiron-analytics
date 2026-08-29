@@ -67,4 +67,11 @@
   --kpi-good: #10B981;
   --kpi-ok: #F59E0B;
   --kpi-bad: #EF4444;
+
+  /* Mobile */
+  --mobile-nav-height: 64px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* Team accent (set dynamically via JS) */
+  --team-accent: var(--amber);
 }

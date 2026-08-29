@@ -1,5 +1,9 @@
 import { fetchProjections } from '../api.js';
 import { posBadge } from '../components/badges.js';
+import { playerAvatar } from '../components/playerAvatar.js';
+import { teamLogo } from '../components/teamLogo.js';
+import { playerCard } from '../components/playerCard.js';
+import { getTeamColor } from '../components/teamColors.js';
 
 const BUDGET = 250;
 const TEAMS = 12;
@@ -218,8 +222,10 @@ export async function renderAuction(root) {
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           ${nominationTargets.map(p => `
             <div style="padding:6px 10px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; display:flex; align-items:center; gap:6px">
+              ${playerAvatar(p, 24)}
               ${posBadge(p.position)}
               <strong style="font:600 12px 'Fira Sans',sans-serif">${escapeHtml(p.player_name)}</strong>
+              ${teamLogo(p.team, 14)}
               <span class="badge" style="background:var(--amber-dim); color:var(--amber)">$${p.auction}</span>
             </div>
           `).join('')}
@@ -255,8 +261,8 @@ export async function renderAuction(root) {
             ${myRosterPlayers.map(p => {
               const paid = state.drafted[p.player_id]?.price || 0;
               const diff = p.auction - paid;
-              return `<tr>
-                <td><strong style="font:600 12px 'Fira Sans',sans-serif">${escapeHtml(p.player_name)}</strong></td>
+              return `<tr style="--team-accent:${getTeamColor((p.team||'').toUpperCase())}">
+                <td><div class="player-cell">${playerAvatar(p, 28)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(p.player_name)}</div><div class="player-cell-sub">${teamLogo(p.team, 14)} ${escapeHtml(p.team || '')}</div></div></div></td>
                 <td>${posBadge(p.position)}</td>
                 <td class="mono">$${paid}</td>
                 <td class="mono">$${p.auction}</td>
@@ -269,6 +275,7 @@ export async function renderAuction(root) {
     </div>` : ''}
 
     <!-- Position Filter -->
+    <div class="responsive-view">
     <div class="card reveal in" style="margin-top:16px">
       <div class="card-header">
         <h3>Auction Board — ${activePos === 'ALL' ? 'All Positions' : activePos}</h3>
@@ -288,11 +295,10 @@ export async function renderAuction(root) {
           <thead><tr><th>#</th><th>Player</th><th>Pos</th><th>Wk Avg</th><th>ROS (${SEASON_GAMES}g)</th><th>VOR</th><th>Auction $</th><th>Interval</th><th>T</th><th>Draft</th></tr></thead>
           <tbody>
             ${filteredPlayers.slice(0, 120).map((p, i) => `
-              <tr style="${p.isDrafted ? 'opacity:0.35; text-decoration:line-through' : ''}" data-pid="${p.player_id}">
+              <tr style="${p.isDrafted ? 'opacity:0.35; text-decoration:line-through' : ''};--team-accent:${getTeamColor((p.team||'').toUpperCase())}" data-pid="${p.player_id}" data-team="${p.team || ''}">
                 <td class="mono-muted" style="font-size:11px">${i + 1}</td>
                 <td>
-                  <strong style="font:600 12px 'Fira Sans',sans-serif">${escapeHtml(p.player_name)}</strong>
-                  <div class="micro faint">${escapeHtml(p.team)}${p.opponent_team ? ' vs ' + escapeHtml(p.opponent_team) : ''}</div>
+                  <div class="player-cell">${playerAvatar(p, 28)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(p.player_name)}</div><div class="player-cell-sub">${teamLogo(p.team, 14)} ${escapeHtml(p.team || '')}${p.opponent_team ? ' vs ' + escapeHtml(p.opponent_team) : ''}</div></div></div>
                 </td>
                 <td>${posBadge(p.position)}</td>
                 <td class="mono">${p.weekly.toFixed(1)}</td>
@@ -312,6 +318,10 @@ export async function renderAuction(root) {
           </tbody>
         </table>
       </div>
+    </div>
+    <div class="player-cards-grid">
+      ${filteredPlayers.filter(p => !p.isDrafted).slice(0, 50).map(p => playerCard(p, { showDraftBtn: true, showTeamLogo: true })).join('')}
+    </div>
     </div>
   `;
 

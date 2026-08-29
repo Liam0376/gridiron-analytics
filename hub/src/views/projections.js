@@ -2,6 +2,10 @@ import { fetchProjections } from '../api.js';
 import { filterPlayers } from '../search.js';
 import { posBadge, injuryBadge, windBadge, confBadge } from '../components/badges.js';
 import { intervalBar } from '../components/intervalBar.js';
+import { playerAvatar } from '../components/playerAvatar.js';
+import { teamLogo } from '../components/teamLogo.js';
+import { playerCard } from '../components/playerCard.js';
+import { getTeamColor } from '../components/teamColors.js';
 
 let allPlayers = [];
 let currentQuery = '';
@@ -53,6 +57,7 @@ export async function renderProjections(root) {
       </div>
     </div>
 
+    <div class="responsive-view">
     <div class="table-wrap sticky-player reveal in" style="margin-top:16px">
       <table id="projTable">
         <thead>
@@ -70,6 +75,8 @@ export async function renderProjections(root) {
         </thead>
         <tbody id="projBody"></tbody>
       </table>
+    </div>
+    <div class="player-cards-grid" id="projCards"></div>
     </div>
   `;
 
@@ -122,8 +129,8 @@ export async function renderProjections(root) {
       const high = Number(p.projection_upper ?? p.upper_bound ?? proj + (p.width ?? 5)/2);
       const width = Number(p.width ?? p.projection_width ?? (high - low));
       return `
-        <tr>
-          <td><strong>${escapeHtml(p.player_name || p.player_id)}</strong><div class="micro faint">${escapeHtml(p.player_id || '')}</div></td>
+        <tr data-team="${p.team || ''}" style="--team-accent:${getTeamColor(p.team)}">
+          <td><div class="player-cell">${playerAvatar(p, 32)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(p.player_name || p.player_id)}</div><div class="player-cell-sub">${teamLogo(p.team, 14)} ${escapeHtml(p.team || '—')}</div></div></div></td>
           <td>${posBadge(pos)}</td>
           <td class="mono" style="font-size:12px">${escapeHtml(p.team || '—')}</td>
           <td class="mono" style="font-size:12px">${escapeHtml(p.opponent_team || '—')}</td>
@@ -135,6 +142,10 @@ export async function renderProjections(root) {
         </tr>
       `;
     }).join('');
+    const cardsGrid = root.querySelector('#projCards');
+    if (cardsGrid) {
+      cardsGrid.innerHTML = rows.slice(0,50).map(p => playerCard(p, { showInterval: true, showTeamLogo: true })).join('');
+    }
   }
 
   function syncHash(){

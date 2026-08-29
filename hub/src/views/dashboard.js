@@ -1,4 +1,5 @@
 import { fetchMeta, fetchRefreshLog, computeStaleness } from '../api.js';
+import { shimmer } from '../components/shimmer.js';
 
 export async function renderDashboard(root) {
   const meta = await fetchMeta();
