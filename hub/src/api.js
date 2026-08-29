@@ -20,7 +20,13 @@ async function tryHub(path) {
 }
 
 export async function fetchHealth() {
-  try { return await getJSON(`${API_BASE}/health`); } catch (e) { return { status: 'down', error: String(e) }; }
+  try { return await getJSON(`${API_BASE}/health`); } catch (e) {
+    try {
+      const res = await fetch('/health');
+      if (res.ok) return { status: 'ok', source: 'proxy' };
+    } catch (_) {}
+    return { status: 'down', error: String(e) };
+  }
 }
 
 export async function fetchMeta() {

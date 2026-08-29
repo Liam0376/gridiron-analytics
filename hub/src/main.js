@@ -46,9 +46,9 @@ async function refreshStaleness() {
       el.textContent = 'API down — showing DB snapshot';
       return;
     }
-    if (s.level === 'fresh') { dot.className = 'dot fresh'; el.textContent = s.label; }
+    if (s.level === 'fresh') { dot.className = 'dot fresh'; el.textContent = health.source === 'proxy' ? 'Local DB Active' : s.label; }
     else if (s.level === 'stale') { dot.className = 'dot stale'; el.textContent = s.label; }
-    else { dot.className = 'dot cold'; el.textContent = s.label; }
+    else { dot.className = 'dot cold'; el.textContent = health.source === 'proxy' ? 'Local DB Active' : s.label; }
     el.title = ts ? `lastUpdated: ${ts}` : 'no timestamp';
   } catch {
     dot.className = 'dot cold';
