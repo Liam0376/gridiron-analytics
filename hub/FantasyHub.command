@@ -189,7 +189,7 @@ fi
 # 3b) Preseason auto-seed — so single click always shows a working interface (no manual curl needed)
 if curl -sf http://127.0.0.1:8002/hub-api/projections 2>/dev/null | grep -q '"count": 0'; then
   echo "  → still empty (preseason week 0) — seeding demo 2024 week 10 so Projections isn't empty…"
-  SLEEPER_LEAGUE_ID="$SLEEPER_LEAGUE_ID" .venv/bin/python hub/seed_demo.py 2>&1 | sed 's/^/    /' || echo "  ⚠ demo seed failed — hub will show empty state until in-season (not fatal)"
+  SLEEPER_LEAGUE_ID="$SLEEPER_LEAGUE_ID" .venv/bin/python scripts/seed_demo.py 2>&1 | sed 's/^/    /' || echo "  ⚠ demo seed failed — hub will show empty state until in-season (not fatal)"
   echo "  ✓ demo check done"
 fi
 
