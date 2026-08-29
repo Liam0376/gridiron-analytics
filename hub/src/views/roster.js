@@ -22,23 +22,44 @@ export async function renderRoster(root) {
       <div class="card reveal in" style="margin-top:12px">
         <div class="card-header"><h3>Starters</h3><span class="kicker">${starters.length} slots · ${leagueNote.scoring || 'PPR'}</span></div>
         <div class="card-body" style="padding:0">
-          <div class="table-wrap" style="border:0; border-radius:0"><table>
-            <thead><tr><th>Slot</th><th>Player</th><th>Pos</th><th>Proj</th><th>Interval</th><th>Conf</th><th>Status</th><th>Action</th></tr></thead>
-            <tbody>
-              ${myRoster.map((p,i)=>`
-                <tr>
-                  <td class="micro faint">${p.slot || `SLOT ${i+1}`}</td>
-                  <td><div class="player-cell">${playerAvatar(p, 32)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(p.player_name || p.player_id)}</div><div class="player-cell-sub">${teamLogo(p.team, 14)} ${escapeHtml(p.team||'')} vs ${escapeHtml(p.opponent_team||'')}</div></div></div></td>
-                  <td>${posBadge(p.position || p.position_group)}</td>
-                  <td class="mono">${Number(p.projected_points ?? 0).toFixed(1)}</td>
-                  <td>${intervalBar({ point: Number(p.projected_points ?? 0), low: Number(p.projection_lower ?? p.projected_points - 2.5), high: Number(p.projection_upper ?? p.projected_points + 2.5), width: Number(p.width ?? 5), min: 0, max: 35 })}</td>
-                  <td>${p.width < 3 ? '<span class="badge" style="background:var(--emerald-dim); color:var(--emerald)">HIGH</span>' : p.width < 6 ? '<span class="badge" style="background:var(--amber-dim); color:var(--amber)">MED</span>' : '<span class="badge" style="background:rgba(255,255,255,0.06); color:var(--text-muted)">WIDE</span>'}</td>
-                  <td>${injuryBadge(p.injury_status)}</td>
-                  <td><span class="faint" style="font:500 11px 'Fragment Mono', monospace">${p.recommendation || '—'}</span></td>
-                </tr>
+          <div class="responsive-view">
+            <div class="table-wrap" style="border:0; border-radius:0"><table>
+              <thead><tr><th>Slot</th><th>Player</th><th>Pos</th><th>Proj</th><th>Interval</th><th>Conf</th><th>Status</th><th>Action</th></tr></thead>
+              <tbody>
+                ${myRoster.map((p,i)=>`
+                  <tr>
+                    <td class="micro faint">${p.slot || `SLOT ${i+1}`}</td>
+                    <td><div class="player-cell">${playerAvatar(p, 32)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(p.player_name || p.player_id)}</div><div class="player-cell-sub">${teamLogo(p.team, 14)} ${escapeHtml(p.team||'')} vs ${escapeHtml(p.opponent_team||'')}</div></div></div></td>
+                    <td>${posBadge(p.position || p.position_group)}</td>
+                    <td class="mono">${Number(p.projected_points ?? 0).toFixed(1)}</td>
+                    <td>${intervalBar({ point: Number(p.projected_points ?? 0), low: Number(p.projection_lower ?? p.projected_points - 2.5), high: Number(p.projection_upper ?? p.projected_points + 2.5), width: Number(p.width ?? 5), min: 0, max: 35 })}</td>
+                    <td>${p.width < 3 ? '<span class="badge" style="background:var(--emerald-dim); color:var(--emerald)">HIGH</span>' : p.width < 6 ? '<span class="badge" style="background:var(--amber-dim); color:var(--amber)">MED</span>' : '<span class="badge" style="background:rgba(255,255,255,0.06); color:var(--text-muted)">WIDE</span>'}</td>
+                    <td>${injuryBadge(p.injury_status)}</td>
+                    <td><span class="faint" style="font:500 11px 'Fragment Mono', monospace">${p.recommendation || '—'}</span></td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table></div>
+            <div class="player-cards-grid" style="padding:12px">
+              ${myRoster.map(p=>`
+                <div class="player-card">
+                  <div style="display:flex; justify-content:space-between; align-items:center">
+                    <div style="display:flex; align-items:center; gap:8px">
+                      ${playerAvatar(p, 32)}
+                      <div>
+                        <div style="font-weight:600">${escapeHtml(p.player_name || p.player_id)}</div>
+                        <div style="font-size:11px; color:var(--text-muted)">${posBadge(p.position || p.position_group)} · ${p.slot || 'STARTER'}</div>
+                      </div>
+                    </div>
+                    <div style="text-align:right">
+                      <div class="mono" style="font-weight:700">${Number(p.projected_points ?? 0).toFixed(1)}</div>
+                      <div style="font-size:11px; color:var(--text-muted)">${injuryBadge(p.injury_status)}</div>
+                    </div>
+                  </div>
+                </div>
               `).join('')}
-            </tbody>
-          </table></div>
+            </div>
+          </div>
         </div>
       </div>
 

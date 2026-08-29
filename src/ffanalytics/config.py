@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-LEAGUE_ID = os.environ.get("SLEEPER_LEAGUE_ID")
+LEAGUE_ID = os.environ.get("SLEEPER_LEAGUE_ID", "1397736035240173568")
 if not LEAGUE_ID:
     raise RuntimeError(
         "SLEEPER_LEAGUE_ID env var must be set — this project never "

@@ -154,6 +154,24 @@ td.mono-muted { font-family: 'Fira Code', 'JetBrains Mono', monospace; color: va
 .btn-sm { padding: 6px 10px; font-size: 12px; }
 
 /* Chips / filters */
+/* Accessibility: Skip Link */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 16px;
+  background: var(--amber);
+  color: var(--text-inverse);
+  padding: 8px 16px;
+  font: 600 13px 'Instrument Sans', sans-serif;
+  border-radius: 6px;
+  z-index: 10000;
+  transition: top 150ms ease;
+}
+.skip-link:focus {
+  top: 16px;
+  outline: 2px solid var(--text-inverse);
+}
+
 .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 999px; background: var(--surface-raised); border: 1px solid var(--border); color: var(--text-muted); font: 600 12px 'Instrument Sans', sans-serif; cursor: pointer; }
 .chip:hover { border-color: var(--border-strong); color: var(--text); }
@@ -449,6 +467,6 @@ tbody tr[data-team] { border-left: 3px solid var(--team-accent, transparent); }
    ═══════════════════════════════════════════════════════ */
 @media (max-width: 640px) {
   .btn { min-height: 44px; }
-  .chip { min-height: 36px; }
+  .chip { min-height: 44px; padding: 8px 12px; }
   .nav-tab { min-height: 44px; }
 }

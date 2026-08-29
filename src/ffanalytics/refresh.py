@@ -159,6 +159,38 @@ def run_refresh_with_data(
     try:
         player_stats = nflverse.get_weekly_player_stats(stats_season, nfl_module=nfl_module)
         data["player_stats"] = player_stats
+        
+        # Build stat-level projections for target week using production stat_projector
+        try:
+            from ffanalytics.stat_projector import build_weekly_projections
+            from ffanalytics.scoring import calculate_fantasy_points
+            from ffanalytics.adapters import schedule as sched_adapter
+            current_wk = _compute_nfl_week()
+            target_wk = current_wk if current_wk > 0 else 10
+            sched = sched_adapter.get_schedule(season, week=target_wk, nfl_module=nfl_module)
+            projs = build_weekly_projections(
+                player_stats,
+                sched,
+                target_week=target_wk,
+                scoring_settings=data.get("league_settings", {}).get("scoring_settings", {})
+            )
+            scoring = data.get("league_settings", {}).get("scoring_settings", {})
+            proj_map = {}
+            for pr in projs:
+                pid = str(pr.get("player_id", ""))
+                if pid:
+                    fpts = calculate_fantasy_points(pr, scoring)
+                    pr["projected_points"] = round(fpts, 2)
+                    proj_map[pid] = pr
+            
+            # Enrich player_stats entries with projected_points from model
+            for s in player_stats:
+                pid = str(s.get("player_id") or s.get("id") or "")
+                if pid in proj_map:
+                    s["projected_points"] = proj_map[pid]["projected_points"]
+        except Exception as p_exc:
+            logger.warning(f"Projection model execution warning: {p_exc}")
+
         _log(conn, "nflverse", True, None, ran_at_iso)
         status["nflverse"] = True
     except Exception as exc:
@@ -255,6 +287,19 @@ def run_refresh_with_data(
                    VALUES (?, ?, 'injuries', ?, ?)""",
                 (season, week, json.dumps(data["detailed_injuries"]), now.isoformat()),
             )
+
+        # Resolve outcomes for shadow recommendations using actual player stats
+        try:
+            from ffanalytics.shadow import evaluate_unresolved_shadow_recommendations
+            resolved_count = evaluate_unresolved_shadow_recommendations(
+                conn,
+                data.get("player_stats", []),
+                data.get("league_settings", {}).get("scoring_settings"),
+            )
+            if resolved_count > 0:
+                logger.info(f"Resolved {resolved_count} pending shadow recommendation outcomes.")
+        except Exception as shadow_exc:
+            logger.warning(f"Shadow outcome resolution failed: {shadow_exc}")
 
         # Store weather data for games (if we have player stats with team info)
         if data["player_stats"]:

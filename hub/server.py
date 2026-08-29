@@ -2,7 +2,7 @@
 """
 hub/server.py — read-only DB proxy for the hub.
 Isolation contract:
-- Binds 0.0.0.0:8002 by default (LAN access for iPhone)
+- Binds 127.0.0.1:8002 by default — never 0.0.0.0 (see docs/RUNBOOK.md, CLAUDE.md hard constraints)
 - Opens data/fantasy.db with mode=ro (SQLite rejects writes)
 - Never imports src/ffanalytics; math below is vendored read-only mirror
 - No POST, no writes, no LLM calls
@@ -172,7 +172,7 @@ class Handler(BaseHTTPRequestHandler):
             print(f"[{self.log_date_time_string()}] {self.command} {self.path}")
 
     def end_headers(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1:8001")
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         super().end_headers()
@@ -605,7 +605,7 @@ def get_sleeper_player_name(player_id: str) -> str:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--host", default="0.0.0.0", help="bind host (0.0.0.0 for LAN access)")
+    ap.add_argument("--host", default="127.0.0.1", help="bind host (127.0.0.1 only)")
     ap.add_argument("--port", type=int, default=8002, help="bind port")
     ap.add_argument("--db", default=None, help="path to fantasy.db")
     args = ap.parse_args()
@@ -613,7 +613,7 @@ def main():
     db_path = get_db_path(args.db)
     Handler.db_path = db_path
     print(f"hub read-only proxy → {db_path} (mode=ro)")
-    print(f"listening on http://{args.host}:{args.port}  (CORS allows LAN)")
+    print(f"listening on http://{args.host}:{args.port}  (127.0.0.1 only)")
     print("endpoints: /health, /hub-api/meta, /hub-api/projections, /hub-api/matchups, /hub-api/roster, /hub-api/news, /hub-api/refresh-log, /hub-api/team-ratings")
     print("zero writes, zero tokens, read-only")
 

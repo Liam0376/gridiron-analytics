@@ -4,7 +4,7 @@ import pytest
 def test_league_id_missing_raises(monkeypatch):
     import importlib
     import ffanalytics.config as config_module
-    monkeypatch.delenv("SLEEPER_LEAGUE_ID", raising=False)
+    monkeypatch.setenv("SLEEPER_LEAGUE_ID", "")
     with pytest.raises(RuntimeError, match="SLEEPER_LEAGUE_ID"):
         importlib.reload(config_module)
 

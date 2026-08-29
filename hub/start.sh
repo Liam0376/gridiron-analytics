@@ -1,6 +1,6 @@
 #!/bin/bash
 # hub/start.sh — one-click warm-boot launcher. Starts model+proxy+hub, ensures DATA is warm before opening browser.
-# LAN-enabled: binds 0.0.0.0 so iPhone/other devices on same Wi-Fi can access.
+# 127.0.0.1 only — never bind 0.0.0.0 (see docs/RUNBOOK.md and CLAUDE.md hard constraints).
 # Flags: --auto (auto-refresh if stale, no prompt), --no-refresh (never POST, open even if cold), --force (refresh even if fresh), --no-browser (skip opening browser)
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -58,7 +58,7 @@ if curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; then
   echo "  ✓ model already running on :8000 — reusing"
   API_PID=""
 else
-  .venv/bin/uvicorn ffanalytics.api:app --host 0.0.0.0 --port 8000 --reload > /tmp/fantasy-hub-api.log 2>&1 &
+  .venv/bin/uvicorn ffanalytics.api:app --host 127.0.0.1 --port 8000 --reload > /tmp/fantasy-hub-api.log 2>&1 &
   API_PID=$!
   for i in {1..30}; do
     if curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; then break; fi
@@ -75,7 +75,7 @@ fi
 # ensure DB + schema exists (warm-boot step 1)
 .venv/bin/python -c "from ffanalytics import db; c=db.get_connection(); db.init_schema(c); c.close(); print('  ✓ DB warm (fantasy.db + schema)')" 2>&1 | head -5
 
-# 2) Hub proxy (binds 0.0.0.0 for LAN)
+# 2) Hub proxy (127.0.0.1 only)
 echo "→ starting hub proxy :8002 (mode=ro)…"
 if curl -sf http://127.0.0.1:8002/health >/dev/null 2>&1; then
   echo "  ✓ proxy already running on :8002 — reusing"

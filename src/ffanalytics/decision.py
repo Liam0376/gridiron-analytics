@@ -315,8 +315,22 @@ def calculate_rest_of_season_value(
     team_ratings: Dict[str, Dict[str, float]],
     replacement_levels: Optional[Dict[str, float]] = None,
 ) -> float:
-    """Rest-of-season VBD value with injury discount."""
+    """Rest-of-season VBD value with injury discount and defensive rating adjustment."""
     weekly_pts = float(player.get("projected_points", 0) or 0)
+
+    # Opponent defense rating adjustment if available
+    opp = player.get("opponent_team") or ""
+    pos = (player.get("position") or player.get("position_group") or "UNK").upper()
+    if opp and team_ratings and opp in team_ratings:
+        pos_key = f"vs_{pos}"
+        rating_entry = team_ratings[opp].get(pos_key) or team_ratings[opp].get("overall")
+        if rating_entry is not None:
+            r_val = getattr(rating_entry, "value", rating_entry)
+            if isinstance(r_val, (int, float)):
+                # Baseline Elo is 1500. Rating >1500 is a tough defense (lower points), <1500 is easy (higher points).
+                mult = max(0.85, min(1.15, 1.0 + (1500.0 - r_val) / 2000.0))
+                weekly_pts *= mult
+
     weeks_remaining = max(0, total_weeks - current_week)
 
     # Injury discount: questionable ~15%, doubtful/out ~40%

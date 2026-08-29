@@ -309,7 +309,7 @@ def get_projections() -> dict:
     for p in players[:800]:
         pid = str(p.get("player_id") or p.get("id") or "")
         pos = (p.get("position") or p.get("position_group") or "UNK").upper()
-        pts = float(p.get("fantasy_points") or p.get("projected_points") or 0)
+        pts = float(p.get("projected_points") or p.get("fantasy_points") or 0)
         if pts == 0 and scoring:
             from ffanalytics.scoring import calculate_player_points
             try:
@@ -461,20 +461,20 @@ def get_trade_evaluation(
                 if not base_stats:
                     continue
 
-                player = {
-                    "player_id": player_id_str,
-                    "player_name": base_stats.get("short_name", f"Player {player_id_str}"),
-                    "position_group": base_stats.get("position", "UNK"),
-                    "projected_points": float(base_stats.get("fantasy_points", 0) or 0),
-                    "injury_status": injury_status.get(player_id_str),
-                    "team": base_stats.get("recent_team", ""),
-                    "opponent_team": base_stats.get("opponent_team", ""),
-                }
+            player = {
+                "player_id": player_id_str,
+                "player_name": base_stats.get("short_name", f"Player {player_id_str}"),
+                "position_group": base_stats.get("position", "UNK"),
+                "projected_points": float(base_stats.get("projected_points") or base_stats.get("fantasy_points", 0) or 0),
+                "injury_status": injury_status.get(player_id_str),
+                "team": base_stats.get("recent_team", ""),
+                "opponent_team": base_stats.get("opponent_team", ""),
+            }
 
-                if owner_id == team_a_id:
-                    team_a_players.append(player)
-                elif owner_id == team_b_id:
-                    team_b_players.append(player)
+            if owner_id == team_a_id:
+                team_a_players.append(player)
+            elif owner_id == team_b_id:
+                team_b_players.append(player)
 
         if not team_a_players:
             raise HTTPException(status_code=404, detail=f"Team A (owner_id={team_a_id}) not found or has no players")
