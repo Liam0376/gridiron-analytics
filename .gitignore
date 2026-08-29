@@ -5,3 +5,7 @@ data/*.db
 data/*.db-wal
 data/*.db-shm
 .pytest_cache/
+.DS_Store
+.claude/
+graphify-out/
+*.egg-info/

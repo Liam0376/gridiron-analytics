@@ -1,0 +1,16 @@
+{
+  "name": "fantasy-hub",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local fantasy football hub — read-only consumer of fantasy.db + localhost:8000. Zero tokens, $0, 127.0.0.1 only.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 8001 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 8001",
+    "verify": "bash ./verify-isolation.sh"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}

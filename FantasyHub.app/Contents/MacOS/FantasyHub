@@ -1,0 +1,12 @@
+#!/bin/bash
+# FantasyHub.app — single-click whole project (model warm + hub)
+# No terminal needed: double-click this app in Finder
+REPO="/Users/liam/projects/football-sports-analytics"
+cd "$REPO"
+# use osascript to show dialog and run in background
+osascript << APPLE
+tell application "Terminal"
+    activate
+    do script "cd " & quoted form of "$REPO" & " && bash hub/start.sh --auto"
+end tell
+APPLE

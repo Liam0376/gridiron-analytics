@@ -1,0 +1,70 @@
+:root {
+  --bg: #0A0E14;
+  --bg-rgb: 10, 14, 20;
+  --surface: #111720;
+  --surface-rgb: 17, 23, 32;
+  --surface-raised: #1A2332;
+  --surface-hover: #1E2B3E;
+  --border: rgba(255,255,255,0.07);
+  --border-strong: rgba(255,255,255,0.12);
+  --border-active: rgba(245,158,11,0.35);
+
+  --text: #E6EDF3;
+  --text-rgb: 230, 237, 243;
+  --text-muted: #8B9BB4;
+  --text-faint: #5C6B84;
+  --text-inverse: #0A0E14;
+
+  --amber: #F59E0B;
+  --amber-rgb: 245, 158, 11;
+  --amber-dim: rgba(245,158,11,0.12);
+  --amber-glow: rgba(245,158,11,0.25);
+  --amber-strong: #D97706;
+
+  --emerald: #10B981;
+  --emerald-rgb: 16, 185, 129;
+  --emerald-dim: rgba(16,185,129,0.12);
+  --crimson: #EF4444;
+  --crimson-rgb: 239, 68, 68;
+  --crimson-dim: rgba(239,68,68,0.12);
+  --sky: #38BDF8;
+  --sky-rgb: 56, 189, 248;
+  --sky-dim: rgba(56,189,248,0.10);
+  --violet: #8B5CF6;
+  --violet-dim: rgba(139,92,246,0.12);
+
+  --pos-qb: #38BDF8;
+  --pos-rb: #10B981;
+  --pos-wr: #F59E0B;
+  --pos-te: #8B5CF6;
+  --pos-k: #EC4899;
+  --pos-def: #6B7280;
+
+  --conf-high: #10B981;
+  --conf-medium: #F59E0B;
+  --conf-low: #6B7280;
+
+  --weather-ok: #10B981;
+  --weather-warn: #F59E0B;
+  --weather-bad: #EF4444;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.5);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,0.6);
+  --shadow-glow: 0 0 20px rgba(245,158,11,0.15);
+
+  /* ui-ux-pro-max: Data-Dense Dashboard (192 reasoning rules, Fira Sans/Code) */
+  --color-primary: #1E40AF;
+  --color-on-primary: #FFFFFF;
+  --color-secondary: #3B82F6;
+  --color-accent: #D97706;
+  --grid-gap: 8px;
+  --card-padding: 12px;
+  --font-size-small: 12px;
+  --table-row-height: 36px;
+  --sidebar-width: 240px;
+  --header-height: 56px;
+  --kpi-good: #10B981;
+  --kpi-ok: #F59E0B;
+  --kpi-bad: #EF4444;
+}

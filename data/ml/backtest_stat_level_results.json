@@ -1,0 +1,192 @@
+{
+  "status": "REJECTED",
+  "reason": "REJECTED \u2014 MAE 4.3071 >= 4.163; pairwise 75.9632% <= 77.7% \u2014 stat-level does not beat all three gates vs baseline; vs point-level 4.45 diff -0.1429",
+  "baseline": {
+    "mae": 4.163,
+    "corr": 0.6918,
+    "pairwise": 0.777
+  },
+  "point_level_ensemble_mae": 4.45,
+  "absolute_gate_pass": false,
+  "local_gate_pass": true,
+  "beats_point_level": true,
+  "combined_2024_2025": {
+    "stat": {
+      "mae": 4.535770120743528,
+      "corr": 0.6477074615965581,
+      "pairwise": 0.7400162892741033,
+      "bias": -0.05241901939613829,
+      "n": 10706,
+      "pos_mae": {
+        "QB": 7.329126057538075,
+        "K": 4.133542625632694,
+        "TE": 3.580965858246089,
+        "WR": 4.431822255144516,
+        "RB": 4.425340592572666
+      }
+    },
+    "stat_level": {
+      "mae": 4.307140479515885,
+      "corr": 0.707536944393358,
+      "pairwise": 0.75963212079042,
+      "bias": -0.08460373727376914,
+      "n": 10706,
+      "pos_mae": {
+        "QB": 6.345748000888449,
+        "K": 3.776837897009312,
+        "TE": 3.520854668766699,
+        "WR": 4.315088113199097,
+        "RB": 4.2484462646368195
+      }
+    }
+  },
+  "per_year": {
+    "2024": {
+      "stat": {
+        "mae": 4.598259525802307,
+        "corr": 0.6520452540190671,
+        "pairwise": 0.7414709226247935,
+        "bias": -0.16458341951348943,
+        "n": 5281,
+        "pos_mae": {
+          "QB": 7.279368701205436,
+          "K": 4.150240201436775,
+          "TE": 3.608903966384513,
+          "WR": 4.567186472250414,
+          "RB": 4.439373098264833
+        }
+      },
+      "stat_level": {
+        "mae": 4.146813439538595,
+        "corr": 0.7565289757095432,
+        "pairwise": 0.7755356811534827,
+        "bias": -0.23610798471340616,
+        "n": 5281,
+        "pos_mae": {
+          "QB": 5.682333863918762,
+          "K": 3.642506435624734,
+          "TE": 3.4601824191592,
+          "WR": 4.27978133531736,
+          "RB": 3.9993060553921063
+        }
+      }
+    },
+    "2025": {
+      "stat": {
+        "mae": 4.47493942063009,
+        "corr": 0.6431089577076378,
+        "pairwise": 0.7386349400032389,
+        "bias": 0.0567681136950565,
+        "n": 5425,
+        "pos_mae": {
+          "QB": 7.378792449782356,
+          "K": 4.116845049828615,
+          "WR": 4.299866725345884,
+          "TE": 3.5545682626124933,
+          "RB": 4.411654568502528
+        }
+      },
+      "stat_level": {
+        "mae": 4.4632118340080655,
+        "corr": 0.6578886208078296,
+        "pairwise": 0.7445303198959582,
+        "bias": 0.06287901493429043,
+        "n": 5425,
+        "pos_mae": {
+          "QB": 7.007949314938631,
+          "K": 3.9111693583938902,
+          "WR": 4.349505809991316,
+          "TE": 3.5781814391902325,
+          "RB": 4.491434863776725
+        }
+      }
+    }
+  },
+  "overfit_gap": 0.3163983944694708,
+  "feature_cols": [
+    "games_played",
+    "implied_total",
+    "spread",
+    "wind",
+    "temp",
+    "is_dome",
+    "target_share_wavg",
+    "rush_share_wavg",
+    "air_yards_wavg",
+    "air_yards_share_wavg",
+    "redzone_targets_wavg",
+    "redzone_carries_wavg",
+    "snap_share_wavg",
+    "route_share_wavg",
+    "recent_trend",
+    "trend_slope",
+    "recent_trend_slope",
+    "passing_yards_proj",
+    "passing_tds_proj",
+    "passing_interceptions_proj",
+    "rushing_yards_proj",
+    "rushing_tds_proj",
+    "receiving_yards_proj",
+    "receiving_tds_proj",
+    "receptions_proj",
+    "fumbles_lost_total_proj",
+    "fg_made_0_19_proj",
+    "fg_made_20_29_proj",
+    "fg_made_30_39_proj",
+    "fg_made_40_49_proj",
+    "fg_made_50_59_proj",
+    "fg_missed_proj",
+    "pat_made_proj",
+    "position_QB",
+    "position_RB",
+    "position_WR",
+    "position_TE",
+    "position_K"
+  ],
+  "stat_list": [
+    "passing_yards",
+    "passing_tds",
+    "rushing_yards",
+    "rushing_tds",
+    "receiving_yards",
+    "receiving_tds",
+    "receptions",
+    "passing_interceptions",
+    "fumbles_lost_total",
+    "fg_made_0_19",
+    "fg_made_20_29",
+    "fg_made_30_39",
+    "fg_made_40_49",
+    "fg_made_50_59",
+    "fg_missed",
+    "pat_made"
+  ],
+  "model_loaded": {
+    "passing_yards": true,
+    "passing_tds": true,
+    "rushing_yards": true,
+    "rushing_tds": true,
+    "receiving_yards": true,
+    "receiving_tds": true,
+    "receptions": true,
+    "passing_interceptions": true,
+    "fumbles_lost_total": true,
+    "fg_made_0_19": true,
+    "fg_made_20_29": true,
+    "fg_made_30_39": true,
+    "fg_made_40_49": true,
+    "fg_made_50_59": true,
+    "fg_missed": true,
+    "pat_made": true
+  },
+  "n_rows": {
+    "val": 5425,
+    "combined": 10706,
+    "2024": 5281
+  },
+  "gates": {
+    "mae_gate": false,
+    "corr_gate": true,
+    "pairwise_gate": false
+  }
+}
