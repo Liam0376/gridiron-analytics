@@ -416,18 +416,35 @@ class Handler(BaseHTTPRequestHandler):
             except: starters = []
             league.append({"season": r["season"], "week": r["week"], "roster_id": r["roster_id"], "matchup_id": r["matchup_id"], "points": r["points"], "starters": starters})
 
-        # NFL slate not in DB — we expose empty but frontend handles "no slate" gracefully
-        # To populate, runner would need to have stored schedule (not yet part of schema)
+        # Load real NFL slate for the target week
         nfl_slate = []
-        # if we have weather rows, expose a few as slate placeholders to prove wind badge works
-        weather_rows = []
-        try:
-            weather_rows = conn.execute("SELECT lat, lon, game_time_iso, wind_mph, precip_prob FROM weather ORDER BY fetched_at DESC LIMIT 6").fetchall()
-        except: pass
-        for w in weather_rows:
-            nfl_slate.append({"home_team": "—", "away_team": "—", "stadium": f"{w['lat']:.1f},{w['lon']:.1f}", "gameday": (w["game_time_iso"] or "")[:10], "gametime": (w["game_time_iso"] or "")[11:16], "wind_mph": w["wind_mph"], "precip_prob": w["precip_prob"], "placeholder": w["lat"]==40.0 and w["lon"]==-74.0})
+        target_wk = week if (week and week > 0) else 10
+        repo_root = Path(__file__).resolve().parent.parent
+        sched_file = repo_root / "data" / "nfl_cache" / "schedule_2026.json"
+        if not sched_file.exists():
+            sched_file = repo_root / "data" / "nfl_cache" / "schedule_2025.json"
+        if sched_file.exists():
+            try:
+                with open(sched_file) as f:
+                    sched_data = json.load(f)
+                games = [g for g in sched_data if g.get("week") == target_wk]
+                for g in games:
+                    nfl_slate.append({
+                        "home_team": g.get("home_team", "—"),
+                        "away_team": g.get("away_team", "—"),
+                        "stadium": g.get("stadium") or "Stadium",
+                        "gameday": g.get("gameday") or "",
+                        "gametime": g.get("gametime") or "",
+                        "wind_mph": float(g.get("wind") or 0),
+                        "precip_prob": 0,
+                        "spread_line": g.get("spread_line"),
+                        "total_line": g.get("total_line"),
+                        "placeholder": False,
+                    })
+            except Exception as e:
+                print(f"Failed to load nfl_slate: {e}")
 
-        self.json({"leagueMatchups": league, "nflSlate": nfl_slate, "week": week})
+        self.json({"leagueMatchups": league, "nflSlate": nfl_slate, "week": target_wk})
 
     def handle_roster(self, conn, qs):
         # Build starters/bench from rosters + player_stats
