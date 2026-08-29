@@ -50,3 +50,20 @@ WEATHER_WIND_PENALTY_PER_MPH = 0.02
 
 def get_feature_status(name: str) -> str:
     return FEATURES[name]["status"]
+
+
+def get_current_nfl_season() -> int:
+    """The NFL season we're preparing for or playing in (2026 in Aug 2026).
+    Always the current calendar year — Sleeper leagues, schedules, and
+    the DB are indexed by this."""
+    from datetime import datetime
+    return datetime.now().year
+
+
+def get_stats_season() -> int:
+    """The most recent season with completed player stats in nflreadpy.
+    Before September = prior year (season hasn't started).
+    During/after September = current year (games being played)."""
+    from datetime import datetime
+    now = datetime.now()
+    return now.year if now.month >= 9 else now.year - 1

@@ -6,8 +6,31 @@ import sqlite3
 import json
 from datetime import datetime, timedelta
 
+import logging
+
 from ffanalytics import config
 from ffanalytics.adapters import nflverse, sleeper, weather
+
+logger = logging.getLogger(__name__)
+
+STADIUM_COORDS: dict[str, tuple[float, float]] = {
+    "ARI": (33.5276, -112.2626), "ATL": (33.7554, -84.4010),
+    "BAL": (39.2780, -76.6227),  "BUF": (42.7738, -78.7870),
+    "CAR": (35.2258, -80.8528),  "CHI": (41.8623, -87.6167),
+    "CIN": (39.0955, -84.5160),  "CLE": (41.5061, -81.6995),
+    "DAL": (32.7473, -97.0945),  "DEN": (39.7439, -105.0201),
+    "DET": (42.3400, -83.0456),  "GB":  (44.5013, -88.0622),
+    "HOU": (29.6847, -95.4107),  "IND": (39.7601, -86.1639),
+    "JAX": (30.3239, -81.6373),  "KC":  (39.0489, -94.4839),
+    "LAC": (33.9535, -118.3392), "LAR": (33.9535, -118.3392),
+    "LV":  (36.0909, -115.1833), "MIA": (25.9580, -80.2389),
+    "MIN": (44.9736, -93.2575),  "NE":  (42.0909, -71.2643),
+    "NO":  (29.9511, -90.0812),  "NYG": (40.8128, -74.0742),
+    "NYJ": (40.8128, -74.0742), "PHI": (39.9008, -75.1675),
+    "PIT": (40.4468, -80.0158),  "SEA": (47.5952, -122.3316),
+    "SF":  (37.4033, -121.9694), "TB":  (27.9759, -82.5033),
+    "TEN": (36.1665, -86.7713),  "WAS": (38.9076, -76.8645),
+}
 
 
 def _compute_nfl_week(now: datetime | None = None) -> int:
@@ -52,7 +75,10 @@ def run_refresh(
     sleeper_session=None,
     nfl_module=None,
     ran_at_iso: str = "",
+    stats_season: int | None = None,
 ) -> dict:
+    if stats_season is None:
+        stats_season = season
     result = {}
 
     try:
@@ -66,7 +92,7 @@ def run_refresh(
         result["sleeper"] = False
 
     try:
-        nflverse.get_weekly_player_stats(season, nfl_module=nfl_module)
+        nflverse.get_weekly_player_stats(stats_season, nfl_module=nfl_module)
         _log(conn, "nflverse", True, None, ran_at_iso)
         result["nflverse"] = True
     except Exception as exc:
@@ -76,8 +102,10 @@ def run_refresh(
     try:
         from ffanalytics.rating_updates import update_team_ratings_from_results
         current_week = _compute_nfl_week()
-        for wk in range(1, current_week + 1):
-            update_team_ratings_from_results(conn, season, wk, nfl_module=nfl_module)
+        # Preseason (week=0): backfill full prior season for baseline ratings
+        rating_weeks = range(1, current_week + 1) if current_week > 0 else range(1, 19)
+        for wk in rating_weeks:
+            update_team_ratings_from_results(conn, stats_season, wk, nfl_module=nfl_module)
         _log(conn, "ratings", True, None, ran_at_iso)
         result["ratings"] = True
     except Exception as exc:
@@ -93,21 +121,15 @@ def run_refresh_with_data(
     sleeper_session=None,
     nfl_module=None,
     ran_at_iso: str = "",
+    stats_season: int | None = None,
 ) -> tuple[dict, dict]:
-    """
-    Run refresh and return both status results and the actual data fetched.
+    """Run refresh and return both status results and the actual data fetched.
 
-    Returns:
-        tuple of (status_dict, data_dict) where:
-        - status_dict: same as run_refresh() return (sleeper: bool, nflverse: bool)
-        - data_dict: dict containing the actual data:
-          {
-            "league_settings": {"scoring_settings": ..., "roster_positions": ...},
-            "rosters": [...],
-            "injury_status": {...},
-            "player_stats": [...]
-          }
-    """
+    season: the league season (2026) — used for Sleeper, schedule, DB storage.
+    stats_season: the season with completed nflreadpy data (2025 in preseason).
+                  Falls back to season if not provided."""
+    if stats_season is None:
+        stats_season = season
     data = {}
     status = {}
 
@@ -135,7 +157,7 @@ def run_refresh_with_data(
 
     # Get NFLverse data
     try:
-        player_stats = nflverse.get_weekly_player_stats(season, nfl_module=nfl_module)
+        player_stats = nflverse.get_weekly_player_stats(stats_season, nfl_module=nfl_module)
         data["player_stats"] = player_stats
         _log(conn, "nflverse", True, None, ran_at_iso)
         status["nflverse"] = True
@@ -149,7 +171,7 @@ def run_refresh_with_data(
     try:
         from ffanalytics.adapters import news
         trending = news.get_trending_adds(session=sleeper_session)
-        detailed_injuries = news.get_injury_with_practice(season, nfl_module=nfl_module)
+        detailed_injuries = news.get_injury_with_practice(stats_season, nfl_module=nfl_module)
         data["trending"] = trending
         data["detailed_injuries"] = detailed_injuries
         _log(conn, "news", True, None, ran_at_iso)
@@ -164,8 +186,9 @@ def run_refresh_with_data(
     try:
         from ffanalytics.rating_updates import update_team_ratings_from_results
         current_week = _compute_nfl_week()
-        for wk in range(1, current_week + 1):
-            update_team_ratings_from_results(conn, season, wk, nfl_module=nfl_module)
+        rating_weeks = range(1, current_week + 1) if current_week > 0 else range(1, 19)
+        for wk in rating_weeks:
+            update_team_ratings_from_results(conn, stats_season, wk, nfl_module=nfl_module)
         _log(conn, "ratings", True, None, ran_at_iso)
         status["ratings"] = True
     except Exception as exc:
@@ -203,6 +226,36 @@ def run_refresh_with_data(
             (season, 0, json.dumps(data["player_stats"])),
         )
 
+        # Store matchups
+        if data.get("matchups"):
+            for m in data["matchups"]:
+                conn.execute(
+                    """INSERT OR REPLACE INTO sleeper_matchups
+                       (season, week, roster_id, matchup_id, points, starters)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        season, week,
+                        m.get("roster_id"),
+                        m.get("matchup_id"),
+                        m.get("points"),
+                        json.dumps(m.get("starters", [])),
+                    ),
+                )
+
+        # Store news/trending data
+        if data.get("trending"):
+            conn.execute(
+                """INSERT INTO news_data (season, week, kind, data, fetched_at)
+                   VALUES (?, ?, 'trending', ?, ?)""",
+                (season, week, json.dumps(data["trending"]), now.isoformat()),
+            )
+        if data.get("detailed_injuries"):
+            conn.execute(
+                """INSERT INTO news_data (season, week, kind, data, fetched_at)
+                   VALUES (?, ?, 'injuries', ?, ?)""",
+                (season, week, json.dumps(data["detailed_injuries"]), now.isoformat()),
+            )
+
         # Store weather data for games (if we have player stats with team info)
         if data["player_stats"]:
             try:
@@ -214,17 +267,12 @@ def run_refresh_with_data(
                     if player.get("opponent_team"):
                         teams.add(player["opponent_team"])
 
-                # For each team, store weather data (using placeholder coordinates and game time)
-                # In a real implementation, we would:
-                # 1. Map team to stadium coordinates (lat, lon)
-                # 2. Get the actual game time for this week
-                # 3. Fetch weather forecast for that location and time
-                # For now, we'll use placeholder values to demonstrate the mechanism
                 for team in teams:
-                    # Placeholder: In reality, we'd have a team_to_coordinates mapping
-                    # and actual game times from schedule data
-                    lat, lon = 40.0, -74.0  # Example coordinates (New York area)
-                    game_time_iso = now.isoformat()  # Example game time
+                    coords = STADIUM_COORDS.get(team)
+                    if not coords:
+                        continue
+                    lat, lon = coords
+                    game_time_iso = now.isoformat()
 
                     forecast = weather.get_forecast(lat, lon, game_time_iso)
                     if forecast is not None:
@@ -242,12 +290,10 @@ def run_refresh_with_data(
                             ),
                         )
             except Exception:
-                # If weather processing fails, we continue but don't break the storage of other data
-                pass
+                logger.exception("Weather fetch/store failed, continuing with other data")
 
         conn.commit()
     except Exception:
-        # If storage fails, we continue but log? We'll just pass for now.
-        pass
+        logger.exception("Failed to store refresh data in DB")
 
     return status, data

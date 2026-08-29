@@ -62,6 +62,15 @@ CREATE TABLE IF NOT EXISTS sleeper_matchups (
     PRIMARY KEY (season, week, roster_id)
 );
 
+CREATE TABLE IF NOT EXISTS news_data (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    kind TEXT NOT NULL,  -- 'trending' or 'injuries'
+    data JSON NOT NULL,
+    fetched_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS weather (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     lat REAL NOT NULL,

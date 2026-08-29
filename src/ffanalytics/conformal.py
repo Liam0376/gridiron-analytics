@@ -1,7 +1,7 @@
-"""Split conformal prediction for calibrated confidence intervals —
-adapted from ~/projects/sports-analytics' core/math.py `conformal_qhat`
-pattern. Turns a bare point projection into a calibrated interval, per
-design spec's start/sit "confident vs. it's close" distinction."""
+"""Split conformal prediction — base width computation only. The raw qhat
+gives a formally calibrated interval (Vovk et al. 2005), but projection.py
+scales it by position and point-magnitude factors, which breaks the coverage
+guarantee. The displayed intervals are heuristic, not calibrated."""
 
 import math
 

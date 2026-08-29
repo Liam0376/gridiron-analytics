@@ -51,13 +51,13 @@ Reference implementation: `~/projects/sports-analytics/.claude/worktrees/tennis-
 Match the reference repo's comment discipline: a rejected feature/heuristic gets
 `# tested and REJECTED — evidence: ...` inline, not silent deletion.
 
-## League specifics (verify programmatically via Sleeper API, don't hardcode)
+## League specifics (verify programmatically via Sleeper API, don't hardcode — official Reglamento 2026 at ~/Downloads/Reglas\ Fantasy\ Bahamas.md)
 
-Sleeper, 12 teams, auction draft, full PPR. Roster: 1 QB / 2 RB / 2 WR / 1 TE /
-2 FLEX(WR-RB-TE) / 1 K / 1 DEF, 4 bench, 2 IR. Two extra flex slots vs. standard
+Sleeper ID `1397736035240173568`, 12 teams, auction draft ($250 budget), full PPR (`rec=1.0`). Roster: 1 QB / 2 RB / 2 WR / 1 TE /
+2 FLEX(WR-RB-TE) / 1 K / 1 DEF, 4 bench + 2 IR via `settings.reserve_slots=2` (IR not in `roster_positions`; Sleeper returns `['QB','RB','RB','WR','WR','TE','FLEX','FLEX','K','DEF','BN','BN','BN','BN']` + `reserve_slots=2`). Two extra flex slots vs. standard
 league → receiving volume at RB/WR/TE worth more here than generic PPR rankings
 assume. Pull exact scoring settings from Sleeper API and verify against league
-notes each season (scoring can be edited).
+notes each season (scoring can be edited — includes 40+ bonuses `pass_cmp_40p/rush_40p/rec_40p=1.0`, `pass_td_40p/rec_td_40p/rush_td_40p=1.0`, `fgm_*/fgmiss`, `fum_lost=-2.0`, etc.). Trades: deadline week 11, 2-day review, majority vote (6 needed, involved managers excluded per Reglamento); waivers: FAAB $100, 2-day clear. Entry $750 MXN, prizes $5,500/$2,500/$1,000.
 
 User is experienced at fantasy sports generally, new to NFL specifics — any
 NL output should explain football context concisely, not fantasy fundamentals.

@@ -54,6 +54,9 @@ _CACHE: dict = {
     "rosters": None,          # list of roster dicts from Sleeper
     "player_stats": None,     # list of player stat dicts from nflverse
     "injury_status": None,    # dict mapping player_id to injury status
+    "matchups": None,         # list of matchup dicts from Sleeper
+    "trending": None,         # trending waiver adds
+    "detailed_injuries": None, # practice participation status
     "last_updated": None,     # timestamp of last cache update
     "season": None,           # NFL season year
     "week": None,             # approximate NFL week (1-18)
@@ -66,13 +69,19 @@ def update_cache(
     player_stats: list[dict],
     injury_status: dict[str, str | None],
     season: int | None = None,
-    week: int | None = None
+    week: int | None = None,
+    matchups: list[dict] | None = None,
+    trending: list[dict] | None = None,
+    detailed_injuries: list[dict] | None = None,
 ) -> None:
     """Update the in-memory cache with fresh data from refresh job."""
     _CACHE["league_settings"] = league_settings
     _CACHE["rosters"] = rosters
     _CACHE["player_stats"] = player_stats
     _CACHE["injury_status"] = injury_status
+    _CACHE["matchups"] = matchups or []
+    _CACHE["trending"] = trending or []
+    _CACHE["detailed_injuries"] = detailed_injuries or []
     _CACHE["last_updated"] = datetime.datetime.now().isoformat()
     if season is not None:
         _CACHE["season"] = season
@@ -225,12 +234,15 @@ def refresh() -> dict:
     conn = db.get_connection()
     try:
         # Run refresh and get both status and data
+        from ffanalytics.config import get_current_nfl_season, get_stats_season
         now = datetime.datetime.now()
-        season = now.year
+        season = get_current_nfl_season()
+        stats_season = get_stats_season()
         week = _compute_nfl_week(now)
         status, data = run_refresh_with_data(
             conn,
             season=season,
+            stats_season=stats_season,
             ran_at_iso=now.isoformat()
         )
 
@@ -241,7 +253,10 @@ def refresh() -> dict:
             player_stats=data["player_stats"],
             injury_status=data["injury_status"],
             season=season,
-            week=week
+            week=week,
+            matchups=data.get("matchups"),
+            trending=data.get("trending"),
+            detailed_injuries=data.get("detailed_injuries"),
         )
 
         conn.close()
@@ -249,6 +264,60 @@ def refresh() -> dict:
     except Exception as e:
         conn.close()
         raise HTTPException(status_code=500, detail=f"Refresh failed: {str(e)}")
+
+
+@app.get("/news")
+def get_news() -> dict:
+    """Return trending adds and detailed injury/practice status from last refresh."""
+    conn = db.get_connection()
+    try:
+        trending_row = conn.execute(
+            "SELECT data FROM news_data WHERE kind='trending' ORDER BY fetched_at DESC LIMIT 1"
+        ).fetchone()
+        injuries_row = conn.execute(
+            "SELECT data FROM news_data WHERE kind='injuries' ORDER BY fetched_at DESC LIMIT 1"
+        ).fetchone()
+        conn.close()
+        return {
+            "trending_adds": json.loads(trending_row["data"]) if trending_row else [],
+            "detailed_injuries": json.loads(injuries_row["data"]) if injuries_row else [],
+        }
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/projections")
+def get_projections() -> dict:
+    """Return current projections from cache or DB."""
+    if _CACHE["player_stats"]:
+        players = _CACHE["player_stats"]
+    else:
+        conn = db.get_connection()
+        row = conn.execute(
+            "SELECT data FROM player_stats WHERE data IS NOT NULL ORDER BY season DESC, week DESC LIMIT 1"
+        ).fetchone()
+        conn.close()
+        players = json.loads(row["data"]) if row else []
+
+    out = []
+    for p in players[:800]:
+        pid = str(p.get("player_id") or p.get("id") or "")
+        pos = (p.get("position") or p.get("position_group") or "UNK").upper()
+        pts = float(p.get("fantasy_points") or p.get("projected_points") or 0)
+        injury = (_CACHE.get("injury_status") or {}).get(pid)
+        out.append({
+            "player_id": pid,
+            "player_name": p.get("player_display_name") or p.get("short_name") or p.get("player_name") or pid,
+            "position": pos,
+            "position_group": pos,
+            "team": p.get("recent_team") or p.get("team") or "",
+            "opponent_team": p.get("opponent_team") or "",
+            "projected_points": round(pts, 2),
+            "injury_status": injury,
+        })
+    out.sort(key=lambda x: x["projected_points"], reverse=True)
+    return {"players": out, "count": len(out), "meta": {"cached": bool(_CACHE["player_stats"])}}
 
 
 @app.get("/recommendations/start-sit")
