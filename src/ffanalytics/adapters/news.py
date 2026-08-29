@@ -9,11 +9,25 @@ SLEEPER_TRENDING_URL = "https://api.sleeper.app/v1/players/nfl/trending/add"
 
 def get_trending_adds(limit: int = 25, session=None) -> list[dict]:
     """Fetch trending player adds from Sleeper. Free, no auth needed.
-    Returns [{"player_id": str, "count": int}, ...]"""
+    Returns [{"player_id": str, "player_name": str, "count": int}, ...]"""
     http = session or requests
     resp = http.get(SLEEPER_TRENDING_URL, params={"limit": limit}, timeout=10)
     resp.raise_for_status()
-    return resp.json()
+    raw = resp.json()
+    try:
+        players_resp = http.get("https://api.sleeper.app/v1/players/nfl", timeout=15)
+        if players_resp.ok:
+            players_db = players_resp.json()
+            for r in raw:
+                pid = str(r.get("player_id") or "")
+                p = players_db.get(pid, {})
+                nm = p.get("full_name") or f"{p.get('first_name', '')} {p.get('last_name', '')}".strip()
+                pos = (p.get("position") or ("DEF" if pid.isalpha() else "")).upper()
+                if nm:
+                    r["player_name"] = f"{nm} ({pos})" if pos else nm
+    except Exception:
+        pass
+    return raw
 
 
 def get_injury_with_practice(season: int, nfl_module=None) -> list[dict]:

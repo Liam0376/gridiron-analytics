@@ -495,6 +495,24 @@ class Handler(BaseHTTPRequestHandler):
                     })
         self.json({"starters": starters[:10], "bench": bench, "myRoster": starters, "meta": {"rosters": len(rosters), "players": len(players)}})
 
+SLEEPER_PLAYERS_CACHE = {}
+
+def get_sleeper_player_name(player_id: str) -> str:
+    global SLEEPER_PLAYERS_CACHE
+    if not SLEEPER_PLAYERS_CACHE:
+        try:
+            import urllib.request
+            req = urllib.request.urlopen("https://api.sleeper.app/v1/players/nfl", timeout=5)
+            SLEEPER_PLAYERS_CACHE = json.loads(req.read().decode())
+        except Exception:
+            SLEEPER_PLAYERS_CACHE = {}
+    p = SLEEPER_PLAYERS_CACHE.get(player_id, {})
+    nm = p.get("full_name") or f"{p.get('first_name', '')} {p.get('last_name', '')}".strip()
+    pos = (p.get("position") or ("DEF" if player_id.isalpha() else "")).upper()
+    if nm:
+        return f"{nm} ({pos})" if pos else nm
+    return player_id
+
     def handle_news(self, conn):
         trending = []
         injuries = []
@@ -502,7 +520,33 @@ class Handler(BaseHTTPRequestHandler):
         trending = load_json_blob(row) or []
         row = try_fetch_one(conn, "SELECT data FROM news_data WHERE kind='injuries' ORDER BY fetched_at DESC LIMIT 1")
         injuries = load_json_blob(row) or []
-        self.json({"trending_adds": trending if isinstance(trending, list) else [], "detailed_injuries": injuries if isinstance(injuries, list) else []})
+
+        # Map player_id -> player_name using player_stats in DB
+        pmap = {}
+        try:
+            r = try_fetch_one(conn, "SELECT data FROM player_stats ORDER BY season DESC, week DESC LIMIT 1")
+            p_data = load_json_blob(r) or []
+            for p in p_data if isinstance(p_data, list) else []:
+                pid = str(p.get("player_id") or p.get("id") or "")
+                nm = p.get("player_display_name") or p.get("short_name")
+                pos = (p.get("position") or "").upper()
+                if pid and nm:
+                    pmap[pid] = f"{nm} ({pos})" if pos else nm
+        except Exception:
+            pass
+
+        enriched_trending = []
+        for t in trending if isinstance(trending, list) else []:
+            if isinstance(t, dict):
+                pid = str(t.get("player_id") or "")
+                t_name = t.get("player_name") or pmap.get(pid)
+                if not t_name or t_name == pid or t_name.isdigit():
+                    t_name = get_sleeper_player_name(pid)
+                enriched_trending.append({**t, "player_name": t_name})
+            else:
+                enriched_trending.append(t)
+
+        self.json({"trending_adds": enriched_trending, "detailed_injuries": injuries if isinstance(injuries, list) else []})
 
     def handle_refresh_log(self, conn):
         rows = []
