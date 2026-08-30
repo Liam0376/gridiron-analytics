@@ -41,19 +41,13 @@ def get_forecast(lat: float, lon: float, game_time_iso: str, session=None) -> di
 
     # Cache miss or expired, fetch fresh data
     try:
-        resp = http.get(
-            BASE_URL,
-            params={
-                "latitude": lat,
-                "longitude": lon,
-                "hourly": "temperature_2m,wind_speed_10m,precipitation_probability",
-                "temperature_unit": "fahrenheit",
-                "wind_speed_unit": "mph",
-                "forecast_days": 16,
-            },
-            timeout=10,
+        from ffanalytics.adapters.sleeper import _get_with_retry
+        url = (
+            f"{BASE_URL}?latitude={lat}&longitude={lon}"
+            "&hourly=temperature_2m,wind_speed_10m,precipitation_probability"
+            "&temperature_unit=fahrenheit&wind_speed_unit=mph&forecast_days=16"
         )
-        resp.raise_for_status()
+        resp = _get_with_retry(http, url, timeout=10, max_retries=3)
         data = resp.json()
         times = data["hourly"]["time"]
         target = datetime.fromisoformat(game_time_iso)

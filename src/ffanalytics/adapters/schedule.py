@@ -2,12 +2,23 @@
 plain-dict boundary as nflverse.py — no Polars objects escape this module."""
 
 
+import time
+
+def _call_with_retry(fn, max_retries=3, backoff_base=1.5):
+    for attempt in range(max_retries):
+        try:
+            return fn()
+        except Exception:
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(backoff_base * (attempt + 1))
+
 def get_schedule(season: int, week: int | None = None, nfl_module=None) -> list[dict]:
     """Returns list of games for a season (optionally filtered to one week).
     Each dict has: game_id, season, week, home_team, away_team, home_score, away_score,
     game_type, gameday, gametime, stadium."""
     nfl = nfl_module if nfl_module is not None else __import__("nflreadpy")
-    frame = nfl.load_schedules(seasons=[season])
+    frame = _call_with_retry(lambda: nfl.load_schedules(seasons=[season]))
     rows = frame.to_dicts()
     if week is not None:
         rows = [r for r in rows if r.get("week") == week]

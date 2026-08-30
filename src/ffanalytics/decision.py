@@ -357,9 +357,10 @@ def evaluate_trade(
     roster_positions: List[str],
     current_week: int = 4,
     total_weeks: int = 18,
+    all_league_players: List[Dict] | None = None,
 ) -> Dict:
     """Trade evaluation using positional VBD, not raw point sums."""
-    all_players = team_a_players + team_b_players
+    all_players = all_league_players if (all_league_players and len(all_league_players) >= 20) else (team_a_players + team_b_players)
     replacement = _replacement_levels(all_players, roster_positions)
 
     def side_value(players: List[Dict]) -> Tuple[float, float]:

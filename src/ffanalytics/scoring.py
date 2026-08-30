@@ -7,6 +7,7 @@ settings (fetched by refresh job) instead of hardcoded PPR assumptions."""
 DEFAULT_SCORING = {
     "rec": 1.0, "rec_yd": 0.1, "rush_yd": 0.1, "pass_yd": 0.04,
     "pass_td": 5.0, "rush_td": 6.0, "rec_td": 6.0, "pass_int": -1.0,
+    "pass_2pt": 2.0, "rush_2pt": 2.0, "rec_2pt": 2.0,
     # 40+ yard play bonuses (Sleeper = 1.0 each; early backtests used 2.0)
     "pass_cmp_40p": 1.0, "rush_40p": 1.0, "rec_40p": 1.0,
     "pass_td_40p": 1.0, "rush_td_40p": 1.0, "rec_td_40p": 1.0,

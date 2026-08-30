@@ -265,9 +265,9 @@ class Handler(BaseHTTPRequestHandler):
     def handle_meta(self, conn, qs):
         week = compute_nfl_week()
         season = datetime.now().year
-        # lastUpdated from refresh_log or news
+        # lastUpdated from successful refresh_log or news
         last = None
-        row = try_fetch_one(conn, "SELECT ran_at FROM refresh_log ORDER BY ran_at DESC LIMIT 1")
+        row = try_fetch_one(conn, "SELECT ran_at FROM refresh_log WHERE success = 1 ORDER BY ran_at DESC LIMIT 1")
         if row: last = row["ran_at"]
         if not last:
             row = try_fetch_one(conn, "SELECT fetched_at FROM news_data ORDER BY fetched_at DESC LIMIT 1")

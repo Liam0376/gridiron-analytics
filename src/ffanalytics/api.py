@@ -311,9 +311,9 @@ def get_projections() -> dict:
         pos = (p.get("position") or p.get("position_group") or "UNK").upper()
         pts = float(p.get("projected_points") or p.get("fantasy_points") or 0)
         if pts == 0 and scoring:
-            from ffanalytics.scoring import calculate_player_points
+            from ffanalytics.scoring import calculate_fantasy_points
             try:
-                pts = calculate_player_points(p, scoring)
+                pts = calculate_fantasy_points(p, scoring)
             except Exception:
                 pass
         injury = (_CACHE.get("injury_status") or {}).get(pid)

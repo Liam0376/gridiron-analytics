@@ -90,7 +90,19 @@ else
   if ! curl -sf http://127.0.0.1:8002/health >/dev/null 2>&1; then
     echo "⚠ proxy not responding — hub will work API-only (see /tmp/fantasy-hub-proxy.log)"
   else
-    echo "  ✓ proxy up (pid $PROXY_PID)"
+    # verify all 9 hub API endpoints respond
+    ALL_OK=1
+    for ep in health hub-api/meta hub-api/projections hub-api/matchups hub-api/roster hub-api/news hub-api/refresh-log hub-api/team-ratings hub-api/waiver; do
+      if ! curl -sf http://127.0.0.1:8002/$ep >/dev/null 2>&1; then
+        ALL_OK=0
+        echo "  ⚠ endpoint /$ep failed health check"
+      fi
+    done
+    if [ "$ALL_OK" = "1" ]; then
+      echo "  ✓ proxy up & all 9 endpoints healthy (pid $PROXY_PID)"
+    else
+      echo "  ⚠ proxy up but some endpoints failed — see /tmp/fantasy-hub-proxy.log"
+    fi
   fi
 fi
 
@@ -161,7 +173,7 @@ if [ "$SHOULD_REFRESH" = "1" ]; then
 import datetime, json, requests
 try:
     r=requests.get("http://127.0.0.1:8002/hub-api/refresh-log", timeout=3).json()
-    entries=r.get("entries",[])
+    entries=[e for e in r.get("entries",[]) if e.get("success") == 1]
     if entries:
         last=entries[0].get("ran_at")
         age=(datetime.datetime.now() - datetime.datetime.fromisoformat(last)).total_seconds()/60 if last else 999
