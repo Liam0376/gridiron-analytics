@@ -520,6 +520,8 @@ class Handler(BaseHTTPRequestHandler):
         trending = load_json_blob(row) or []
         row = try_fetch_one(conn, "SELECT data FROM news_data WHERE kind='injuries' ORDER BY fetched_at DESC LIMIT 1")
         injuries = load_json_blob(row) or []
+        row = try_fetch_one(conn, "SELECT data FROM news_data WHERE kind='fantasypros_news' ORDER BY fetched_at DESC LIMIT 1")
+        fp_news = load_json_blob(row) or []
 
         # Map player_id -> player_name using player_stats in DB
         pmap = {}
@@ -546,7 +548,11 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 enriched_trending.append(t)
 
-        self.json({"trending_adds": enriched_trending, "detailed_injuries": injuries if isinstance(injuries, list) else []})
+        self.json({
+            "trending_adds": enriched_trending,
+            "detailed_injuries": injuries if isinstance(injuries, list) else [],
+            "fantasypros_news": fp_news if isinstance(fp_news, list) else [],
+        })
 
     def handle_refresh_log(self, conn):
         rows = []

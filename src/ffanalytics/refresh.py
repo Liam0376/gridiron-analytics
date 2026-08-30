@@ -201,11 +201,13 @@ def run_refresh_with_data(
 
     # Fetch news and trending
     try:
-        from ffanalytics.adapters import news
+        from ffanalytics.adapters import news, fantasypros
         trending = news.get_trending_adds(session=sleeper_session)
         detailed_injuries = news.get_injury_with_practice(stats_season, nfl_module=nfl_module)
+        fp_news = fantasypros.get_fantasypros_news(limit=25)
         data["trending"] = trending
         data["detailed_injuries"] = detailed_injuries
+        data["fantasypros_news"] = fp_news
         _log(conn, "news", True, None, ran_at_iso)
         status["news"] = True
     except Exception as exc:
@@ -213,6 +215,7 @@ def run_refresh_with_data(
         status["news"] = False
         data["trending"] = []
         data["detailed_injuries"] = []
+        data["fantasypros_news"] = []
 
     # Update team ratings from completed games
     try:
@@ -286,6 +289,12 @@ def run_refresh_with_data(
                 """INSERT INTO news_data (season, week, kind, data, fetched_at)
                    VALUES (?, ?, 'injuries', ?, ?)""",
                 (season, week, json.dumps(data["detailed_injuries"]), now.isoformat()),
+            )
+        if data.get("fantasypros_news"):
+            conn.execute(
+                """INSERT INTO news_data (season, week, kind, data, fetched_at)
+                   VALUES (?, ?, 'fantasypros_news', ?, ?)""",
+                (season, week, json.dumps(data["fantasypros_news"]), now.isoformat()),
             )
 
         # Resolve outcomes for shadow recommendations using actual player stats

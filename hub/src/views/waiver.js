@@ -7,12 +7,30 @@ export async function renderWaiver(root) {
   const [waiver, news] = await Promise.all([fetchWaiver(), fetchNews()]);
   const recs = waiver.recommendations || [];
   const trending = news.trending_adds || [];
+  const fpNews = news.fantasypros_news || [];
 
   root.innerHTML = `
     <div class="hero reveal in">
       <h1>Waiver Wire</h1>
       <p>Ranked by <code class="inline">improvement_over_roster</code> (<code class="inline">decision.py:get_waiver_priority</code>), not raw points. A 12-pt WR who replaces your 4-pt WR is worth more than a 13-pt QB you don't need.</p>
     </div>
+
+    ${fpNews.length ? `
+      <div class="card reveal in" style="margin-top:12px">
+        <div class="card-header"><h3>Breaking News &amp; Fantasy Impact</h3><span class="kicker">from FantasyPros API</span></div>
+        <div class="card-body" style="display:flex; flex-direction:column; gap:10px">
+          ${fpNews.slice(0, 6).map(n => `
+            <div style="padding:10px 12px; background:var(--surface-raised); border-radius:8px; border:1px solid var(--border)">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px">
+                <strong style="font-size:14px; color:var(--text)">${escapeHtml(n.title || '')}</strong>
+                <span class="mono" style="font-size:11px; color:var(--text-muted)">${escapeHtml(n.created_formated || '')}</span>
+              </div>
+              ${n.link ? `<a href="${n.link}" target="_blank" rel="noopener" style="font-size:12px; color:var(--sky); text-decoration:none">Read on FantasyPros →</a>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : ``}
 
     ${trending.length ? `
       <div class="card reveal in" style="margin-top:12px">

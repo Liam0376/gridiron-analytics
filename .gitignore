@@ -5,6 +5,7 @@ data/*.db
 data/*.db-wal
 data/*.db-shm
 .pytest_cache/
+.env
 .DS_Store
 .claude/
 graphify-out/
