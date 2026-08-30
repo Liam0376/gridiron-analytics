@@ -5,7 +5,7 @@ import { teamLogo } from '../components/teamLogo.js';
 import { playerCard } from '../components/playerCard.js';
 import { getTeamColor } from '../components/teamColors.js';
 
-const BUDGET = 250;
+const BUDGET = 200;
 const TEAMS = 12;
 const ROSTER_SIZE = 14; // 10 starters + 4 bench
 const SEASON_GAMES = 17;
@@ -236,7 +236,7 @@ export async function renderAuction(root) {
 
     <!-- Draft Strategy -->
     <div class="card reveal in" style="margin-top:16px">
-      <div class="card-header"><h3>Draft Strategy</h3><span class="kicker">Fantasy Bahamas $250 auction</span></div>
+      <div class="card-header"><h3>Draft Strategy</h3><span class="kicker">Fantasy Bahamas $200 auction</span></div>
       <div class="card-body" style="font:400 13px 'Fira Sans',sans-serif; color:var(--text-muted); line-height:1.6">
         <ol style="margin:0; padding-left:18px">
           <li><strong>Stars & Scrubs:</strong> Spend 60-70% ($150-175) on 4-5 elite starters. Your 2-FLEX league means 7 RB/WR/TE start — premium on volume backs and target hogs.</li>
@@ -389,7 +389,7 @@ function showDraftModal(root, pid, name, suggestedVal, state, allRanked) {
       <h3 style="margin:0 0 16px 0">${name}</h3>
       <div style="margin-bottom:12px">
         <label style="font:500 13px 'Fira Sans',sans-serif; color:var(--text-muted)">Price paid</label>
-        <input type="number" id="draftPrice" value="${suggestedVal}" min="1" max="250" style="width:100%; background:var(--surface-raised); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px; font-size:16px; margin-top:4px">
+        <input type="number" id="draftPrice" value="${suggestedVal}" min="1" max="200" style="width:100%; background:var(--surface-raised); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px; font-size:16px; margin-top:4px">
       </div>
       <div style="margin-bottom:16px">
         <label style="font:500 13px 'Fira Sans',sans-serif; color:var(--text-muted)">Who got them?</label>

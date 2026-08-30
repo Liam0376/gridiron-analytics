@@ -53,7 +53,7 @@ Match the reference repo's comment discipline: a rejected feature/heuristic gets
 
 ## League specifics (verify programmatically via Sleeper API, don't hardcode — official Reglamento 2026 at ~/Downloads/Reglas\ Fantasy\ Bahamas.md)
 
-Sleeper ID `1397736035240173568`, 12 teams, auction draft ($250 budget), full PPR (`rec=1.0`). Roster: 1 QB / 2 RB / 2 WR / 1 TE /
+Sleeper ID `1397736035240173568`, 12 teams, auction draft ($200 budget), full PPR (`rec=1.0`). Roster: 1 QB / 2 RB / 2 WR / 1 TE /
 2 FLEX(WR-RB-TE) / 1 K / 1 DEF, 4 bench + 2 IR via `settings.reserve_slots=2` (IR not in `roster_positions`; Sleeper returns `['QB','RB','RB','WR','WR','TE','FLEX','FLEX','K','DEF','BN','BN','BN','BN']` + `reserve_slots=2`). Two extra flex slots vs. standard
 league → receiving volume at RB/WR/TE worth more here than generic PPR rankings
 assume. Pull exact scoring settings from Sleeper API and verify against league

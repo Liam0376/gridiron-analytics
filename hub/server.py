@@ -163,6 +163,24 @@ def load_json_blob(row, key="data"):
     except Exception:
         return None
 
+SLEEPER_PLAYERS_CACHE = {}
+
+def get_sleeper_player_name(player_id: str) -> str:
+    global SLEEPER_PLAYERS_CACHE
+    if not SLEEPER_PLAYERS_CACHE:
+        try:
+            import urllib.request
+            req = urllib.request.urlopen("https://api.sleeper.app/v1/players/nfl", timeout=5)
+            SLEEPER_PLAYERS_CACHE = json.loads(req.read().decode())
+        except Exception:
+            SLEEPER_PLAYERS_CACHE = {}
+    p = SLEEPER_PLAYERS_CACHE.get(player_id, {})
+    nm = p.get("full_name") or f"{p.get('first_name', '')} {p.get('last_name', '')}".strip()
+    pos = (p.get("position") or ("DEF" if player_id.isalpha() else "")).upper()
+    if nm:
+        return f"{nm} ({pos})" if pos else nm
+    return player_id
+
 class Handler(BaseHTTPRequestHandler):
     db_path: Path = get_db_path(None)  # overridden in main
 
@@ -494,24 +512,6 @@ class Handler(BaseHTTPRequestHandler):
                         "opponent_team": p.get("opponent_team") or "",
                     })
         self.json({"starters": starters[:10], "bench": bench, "myRoster": starters, "meta": {"rosters": len(rosters), "players": len(players)}})
-
-SLEEPER_PLAYERS_CACHE = {}
-
-def get_sleeper_player_name(player_id: str) -> str:
-    global SLEEPER_PLAYERS_CACHE
-    if not SLEEPER_PLAYERS_CACHE:
-        try:
-            import urllib.request
-            req = urllib.request.urlopen("https://api.sleeper.app/v1/players/nfl", timeout=5)
-            SLEEPER_PLAYERS_CACHE = json.loads(req.read().decode())
-        except Exception:
-            SLEEPER_PLAYERS_CACHE = {}
-    p = SLEEPER_PLAYERS_CACHE.get(player_id, {})
-    nm = p.get("full_name") or f"{p.get('first_name', '')} {p.get('last_name', '')}".strip()
-    pos = (p.get("position") or ("DEF" if player_id.isalpha() else "")).upper()
-    if nm:
-        return f"{nm} ({pos})" if pos else nm
-    return player_id
 
     def handle_news(self, conn):
         trending = []

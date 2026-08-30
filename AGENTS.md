@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Project
-- Personal, single-user tool for one Sleeper league — **Fantasy Bahamas `1397736035240173568`**, 12-team full-PPR auction ($250 budget), 2 FLEX (roster `['QB','RB','RB','WR','WR','TE','FLEX','FLEX','K','DEF','BN','BN','BN','BN']` + `reserve_slots=2` IR, not in `roster_positions`). Reglamento 2026 at `~/Downloads/Reglas Fantasy Bahamas.md`. **Never hardcode scoring/roster settings** — `sleeper.get_league_settings()` is the source of truth; league scoring can be edited mid-season.
+- Personal, single-user tool for one Sleeper league — **Fantasy Bahamas `1397736035240173568`**, 12-team full-PPR auction ($200 budget), 2 FLEX (roster `['QB','RB','RB','WR','WR','TE','FLEX','FLEX','K','DEF','BN','BN','BN','BN']` + `reserve_slots=2` IR, not in `roster_positions`). Reglamento 2026 at `~/Downloads/Reglas Fantasy Bahamas.md`. **Never hardcode scoring/roster settings** — `sleeper.get_league_settings()` is the source of truth; league scoring can be edited mid-season.
 - `$0 cost forever`, fully local. FastAPI and Vite bind `127.0.0.1` only — never `--host 0.0.0.0`, no tunnels, no deploy. Outbound calls only to free APIs (Sleeper, nflreadpy/nflverse, Open-Meteo).
 - Two independent products in one repo: **model** (`src/ffanalytics`, root `pyproject.toml`) and **hub** (`hub/`, its own `package.json`). See Hub isolation below — this is enforced by a script, not just convention.
 - Primary interface is direct DB/API queries, not a CLI — for "who should I start" style questions, query `data/fantasy.db` or `http://127.0.0.1:8000` directly via Bash rather than telling the user to run curl themselves (`CLAUDE.md`).
