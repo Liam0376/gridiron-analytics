@@ -215,13 +215,5 @@ export async function renderProjections(root) {
   updateTable();
 }
 
-  function syncHash(){
-    const base = 'projections';
-    location.hash = currentQuery ? `${base}?q=${encodeURIComponent(currentQuery)}` : base;
-  }
-
-  updateTable();
-}
-
 function debounce(fn, ms=150){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
 function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'); }
