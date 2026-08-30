@@ -9,36 +9,36 @@
   --border-strong: rgba(255,255,255,0.12);
   --border-active: rgba(245,158,11,0.35);
 
-  --text: #E6EDF3;
-  --text-rgb: 230, 237, 243;
-  --text-muted: #8B9BB4;
-  --text-faint: #5C6B84;
+  --text: #F8FAFC;
+  --text-rgb: 248, 250, 252;
+  --text-muted: #94A3B8;
+  --text-faint: #64748B;
   --text-inverse: #0A0E14;
 
   --amber: #F59E0B;
   --amber-rgb: 245, 158, 11;
-  --amber-dim: rgba(245,158,11,0.12);
+  --amber-dim: rgba(245,158,11,0.14);
   --amber-glow: rgba(245,158,11,0.25);
   --amber-strong: #D97706;
 
   --emerald: #10B981;
   --emerald-rgb: 16, 185, 129;
-  --emerald-dim: rgba(16,185,129,0.12);
+  --emerald-dim: rgba(16,185,129,0.14);
   --crimson: #EF4444;
   --crimson-rgb: 239, 68, 68;
-  --crimson-dim: rgba(239,68,68,0.12);
+  --crimson-dim: rgba(239,68,68,0.14);
   --sky: #38BDF8;
   --sky-rgb: 56, 189, 248;
-  --sky-dim: rgba(56,189,248,0.10);
-  --violet: #8B5CF6;
-  --violet-dim: rgba(139,92,246,0.12);
+  --sky-dim: rgba(56,189,248,0.14);
+  --violet: #A855F7;
+  --violet-dim: rgba(168,85,247,0.14);
 
   --pos-qb: #38BDF8;
   --pos-rb: #10B981;
   --pos-wr: #F59E0B;
-  --pos-te: #8B5CF6;
+  --pos-te: #A855F7;
   --pos-k: #EC4899;
-  --pos-def: #6B7280;
+  --pos-def: #94A3B8;
 
   --conf-high: #10B981;
   --conf-medium: #F59E0B;

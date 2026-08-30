@@ -1,6 +1,7 @@
 import './styles/app.css';
 import { allRoutes, getRoute } from './router.js';
 import { fetchHealth, fetchMeta, computeStaleness } from './api.js';
+import { shimmer } from './components/shimmer.js';
 import { renderMobileNav, bindMobileNav } from './components/mobileNav.js';
 import { renderDashboard } from './views/dashboard.js';
 import { renderMatchups } from './views/matchups.js';
@@ -70,6 +71,7 @@ async function render() {
   refreshStaleness();
   const route = getRoute();
   const app = document.getElementById('app');
+  app.innerHTML = `<div class="page"><div class="card" style="padding:20px">${shimmer(route.id === 'projections' ? 'table' : 'kpi')}</div></div>`;
   const fn = views[route.id] || views.dashboard;
   try {
     await fn(app);
@@ -96,6 +98,16 @@ document.addEventListener('keydown', (e)=>{
     const input = document.getElementById('globalSearch');
     if (input) { input.focus(); input.select(); }
     else location.hash = 'projections';
+  }
+});
+
+// Linear-style mouse spotlight tracking for data cards and rows
+document.addEventListener('mousemove', (e) => {
+  const target = e.target.closest('.card, tr, .player-card-v2, .kpi-card');
+  if (target) {
+    const rect = target.getBoundingClientRect();
+    target.style.setProperty('--mx', `${e.clientX - rect.left}px`);
+    target.style.setProperty('--my', `${e.clientY - rect.top}px`);
   }
 });
 
