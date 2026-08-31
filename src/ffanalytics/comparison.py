@@ -117,15 +117,19 @@ def build_comparison(
     market_by_gsis: dict[str, dict],
     fpros_players: list[dict] | None = None,
     sleeper_players: dict | None = None,
+    fp_projections: dict[tuple, dict] | None = None,
 ) -> list[dict]:
     """Build enriched comparison rows.
 
     model_projections: list from build_weekly_projections (each has player_id=gsis_id,
         player_display_name, position, team, projected_points + stat keys).
-    market_by_gsis: gsis_id -> {pts_ppr, pass_yd, rush_yd, rec, rec_yd, ...}
-    fpros_players: full fantasypros players list with rank_ecr etc.
+    market_by_gsis: gsis_id -> {pts_ppr, pass_yd, rush_yd, rec, rec_yd, ...} (Sleeper weekly)
+    fpros_players: full fantasypros players list with rank_ecr etc. (CSV full 790)
+    fp_projections: FantasyPros season projections keyed by (norm_name, team, pos) -> {fpts, passing_yards...}
+                  (596 players, season totals, e.g., Josh Allen 372.5 / 3816 YDS)
 
     Returns sorted list (by model_points desc) with delta/rank fields.
+    Weekly market (Sleeper) for Projections weekly, season market (FP CSV) for Auction season.
     """
     fpros_lut = build_fpros_lookup(fpros_players or [])
 
@@ -222,6 +226,39 @@ def build_comparison(
             except Exception:
                 pass
 
+        # FantasyPros season projections (CSV, season totals 596 players, full stat season)
+        # Provides Market Season (PFS) points + season stat totals for every draftable,
+        # filling the sparse Sleeper weekly starter gap (98/502). Used for Auction season.
+        market_season_points = None
+        market_season_stats: dict[str, float] = {}
+        _fp_season_entry = None
+        if fp_projections:
+            norm = _normalize_name(p.get("player_display_name") or p.get("player_name") or "")
+            _fp_season_entry = fp_projections.get((norm, (team or "").upper(), pos))
+            if not _fp_season_entry:
+                for (n, t, pp), row in fp_projections.items():
+                    if n == norm and pp == pos:
+                        _fp_season_entry = row
+                        break
+            if not _fp_season_entry:
+                for (n, t, pp), row in fp_projections.items():
+                    if pp == pos and (norm in n or n in norm) and len(norm) > 3:
+                        _fp_season_entry = row
+                        break
+            if _fp_season_entry:
+                try:
+                    if _fp_season_entry.get("fpts") is not None:
+                        market_season_points = float(_fp_season_entry["fpts"])
+                except Exception:
+                    market_season_points = None
+                for mk in ["passing_yards", "passing_tds", "passing_interceptions", "rushing_yards", "rushing_tds", "receiving_yards", "receiving_tds", "receptions", "fumbles_lost_total"]:
+                    v = _fp_season_entry.get(mk)
+                    if v is not None:
+                        try:
+                            market_season_stats[mk] = float(v)
+                        except Exception:
+                            pass
+
         # deltas
         delta_pts = None
         if market_pts is not None:
@@ -262,7 +299,7 @@ def build_comparison(
                 edge = "SELL"
                 edge_score = min(edge_score, delta_pts * 4)
 
-        # Stat deltas for panel
+        # Stat deltas for panel — weekly (Sleeper weekly starter)
         stat_deltas: list[dict] = []
         for mdl_k, slp_k, label in COMPARE_STATS:
             model_v = p.get(mdl_k)
@@ -279,6 +316,39 @@ def build_comparison(
                         "market": round(kv, 2) if market_v is not None else None,
                         "delta": d,
                     })
+                except Exception:
+                    pass
+
+        # Season deltas — Model season = weekly×17 vs FP season totals (596, full stat season)
+        model_season_points = round(model_pts * 17, 1)
+        delta_season = round(model_season_points - market_season_points, 1) if market_season_points is not None else None
+        # also consider season delta for edge when weekly is missing but season present
+        if delta_season is not None:
+            if delta_season >= 51 and edge != "SELL":
+                edge = "BUY"
+                edge_score = max(edge_score, delta_season / 4)
+            elif delta_season <= -51 and edge != "BUY":
+                edge = "SELL"
+                edge_score = min(edge_score, delta_season / 4)
+        season_stat_deltas: list[dict] = []
+        # Model season stats = weekly stat ×17
+        for mdl_k, _slp_k, label in COMPARE_STATS:
+            market_s = market_season_stats.get(mdl_k)
+            model_w = p.get(mdl_k)
+            if model_w is not None or market_s is not None:
+                try:
+                    mv_s = float(model_w) * 17 if model_w is not None else 0.0
+                    kv_s = float(market_s) if market_s is not None else 0.0
+                    d_s = round(mv_s - kv_s, 1) if market_s is not None else None
+                    # only keep if meaningful (model or market non-zero)
+                    if mv_s != 0 or market_s is not None:
+                        season_stat_deltas.append({
+                            "key": mdl_k,
+                            "label": label,
+                            "model": round(mv_s, 1),
+                            "market": round(kv_s, 1) if market_s is not None else None,
+                            "delta": d_s,
+                        })
                 except Exception:
                     pass
 
@@ -303,6 +373,12 @@ def build_comparison(
             "edge": edge,
             "edge_score": edge_score,
             "stat_deltas": stat_deltas,
+            # Season market (FantasyPros CSV season totals) — full stat season for every draftable
+            "market_season_points": round(market_season_points, 1) if market_season_points is not None else None,
+            "market_season_stats": market_season_stats,
+            "model_season_points": model_season_points,
+            "delta_season": delta_season,
+            "season_stat_deltas": season_stat_deltas,
             # carry model interval for display reuse
             "point_estimate": round(model_pts, 2),
             "projection_lower": p.get("projection_lower"),

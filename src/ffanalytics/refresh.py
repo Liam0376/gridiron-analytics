@@ -245,12 +245,26 @@ def run_refresh_with_data(
                 fpros_players_list = fp_adapter.get_fantasypros_players()
         except Exception:
             fpros_players_list = []
+        # FantasyPros season projections CSVs — 596 players season totals (YDS/TDS etc) + FPTS
+        # Provides full stat season market for Auction vs Sleeper weekly-only (98 starters).
+        fp_projections_map = {}
+        try:
+            from ffanalytics.adapters.fantasypros_projections import get_fantasypros_projections_map
+            fp_projections_map = get_fantasypros_projections_map() or {}
+            if fp_projections_map:
+                logger.info(f"FantasyPros projections CSV loaded: {len(fp_projections_map)} season entries")
+        except Exception as _proj_e:
+            logger.info(f"FantasyPros projections CSV not loaded: {_proj_e}")
+            fp_projections_map = {}
         data["sleeper_players_map"] = sleeper_players_map  # not stored, used for comparison only
         data["market_by_gsis"] = market_by_gsis
         data["fpros_players"] = fpros_players_list if isinstance(fpros_players_list, list) else []
+        data["fp_projections_map"] = fp_projections_map
         # Build enriched comparison rows (model vs market + ranks)
+        # Pass FP season projections map (596 season totals) for Auction season stats (full stat season vs weekly-only Sleeper)
         try:
-            data["comparison"] = build_comparison(_model_projs, market_by_gsis, fpros_players_list)
+            from ffanalytics.comparison import build_comparison as _build_comp
+            data["comparison"] = _build_comp(_model_projs, market_by_gsis, fpros_players_list, None, fp_projections_map)
         except Exception as cmp_exc:
             logger.warning(f"Comparison build failed: {cmp_exc}")
             data["comparison"] = []

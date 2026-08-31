@@ -69,11 +69,15 @@ export async function renderAuction(root) {
     const weeklyModel = c && c.model_points != null ? Number(c.model_points) : Number(p.projected_points ?? p.point_estimate ?? 0);
     const weeklyMarket = c && c.market_points != null ? Number(c.market_points) : null;
     const ros = weeklyModel * remaining;
-    const marketRos = weeklyMarket != null ? weeklyMarket * remaining : null;
+    // Prefer FantasyPros season total (596 full stat season) over Sleeper weekly×17 (98 starters only)
+    const seasonMarketFromFP = c && c.market_season_points != null ? Number(c.market_season_points) : null;
+    const marketRos = seasonMarketFromFP != null ? seasonMarketFromFP : (weeklyMarket != null ? weeklyMarket * remaining : null);
     const deltaRos = marketRos != null ? +(ros - marketRos).toFixed(1) : null;
-    // Stat deltas season-scaled for tooltip
+    // Season stat deltas — prefer FP season totals (full) over weekly×17 proxy
     let seasonStatDeltas = null;
-    if (c && Array.isArray(c.stat_deltas) && c.stat_deltas.length) {
+    if (c && Array.isArray(c.season_stat_deltas) && c.season_stat_deltas.length) {
+      seasonStatDeltas = c.season_stat_deltas;
+    } else if (c && Array.isArray(c.stat_deltas) && c.stat_deltas.length) {
       seasonStatDeltas = c.stat_deltas.map(s => ({
         ...s,
         modelSeason: s.model != null ? +(s.model * remaining).toFixed(1) : null,
@@ -206,10 +210,10 @@ export async function renderAuction(root) {
   const slotsLeft = ROSTER_SIZE - myRosterCount;
   const maxBid = slotsLeft > 1 ? myRemaining - (slotsLeft - 1) : myRemaining;
 
-  // Comparison counts for header
+  // Comparison counts for header — season market is primary (FP CSV 596) with Sleeper weekly fallback
   const buyCount = [...compById.values()].filter(c => c.edge === 'BUY').length;
   const sellCount = [...compById.values()].filter(c => c.edge === 'SELL').length;
-  const marketCovered = [...compById.values()].filter(c => c.market_points != null).length;
+  const marketCovered = [...compById.values()].filter(c => c.market_season_points != null || c.market_points != null).length;
 
   // Position filter
   const activePos = params.get('pos') || 'ALL';
@@ -223,7 +227,7 @@ export async function renderAuction(root) {
   root.innerHTML = `
     <div class="hero reveal in">
       <h1>Auction Draft <span class="badge" style="background:var(--color-accent,#16A34A); color:white; margin-left:8px; vertical-align:middle">$${budget}</span></h1>
-      <p>Full-season VOR (${SEASON_GAMES}g) → auction $. 2-FLEX league inflates RB/WR/TE. Season totals = <span class="mono" style="color:var(--amber)">Model wk×17</span> vs <span class="mono" style="color:var(--sky)">Market wk×17 (Sleeper)</span> + <span class="mono" style="color:var(--text-muted)">FP ECR/ADP</span>. Use Market Δ &amp; Edge to find <strong>$ value leaks</strong> — BUY where Gridiron &gt; Market.</p>
+      <p>Full-season VOR (${SEASON_GAMES}g) → auction $. 2-FLEX league inflates RB/WR/TE. Season totals = <span class="mono" style="color:var(--amber)">Gridiron wk×17</span> vs <span class="mono" style="color:var(--sky)">Market Season — FantasyPros projections (596 players, full stat season)</span> + <span class="mono" style="color:var(--violet)">FP ECR/ADP Tiers</span>. Use Market Δ &amp; Edge to find <strong>$ value leaks</strong> — BUY where Gridiron &gt; Market.</p>
     </div>
 
     ${hasComparison ? `
@@ -232,19 +236,19 @@ export async function renderAuction(root) {
         <div class="kpi-label">BUY edges — season</div>
         <div class="kpi-value" style="color:var(--emerald)">${buyCount}</div>
         <div class="kpi-bar"><div class="kpi-bar-fill good" style="width:${Math.min(100, Math.round((buyCount/Math.max(1, Math.min(40, compById.size/6)))*100))}%"></div></div>
-        <div class="micro faint" style="font-size:11px; margin-top:6px">Model season ≥ +51 pts (+3/wk) vs Sleeper, or rank ≥12 better than ECR</div>
+        <div class="micro faint" style="font-size:11px; margin-top:6px">Model season ≥ +51 pts vs FantasyPros season (or rank ≥12 better than ECR)</div>
       </div>
       <div class="kpi-card" style="border-left:3px solid var(--crimson)">
         <div class="kpi-label">SELL flags — overpriced</div>
         <div class="kpi-value" style="color:var(--crimson)">${sellCount}</div>
         <div class="kpi-bar"><div class="kpi-bar-fill bad" style="width:${Math.min(100, Math.round((sellCount/Math.max(1, Math.min(40, compById.size/6)))*100))}%"></div></div>
-        <div class="micro faint" style="font-size:11px; margin-top:6px">Market ≥ +51 pts vs Model · avoid paying sticker</div>
+        <div class="micro faint" style="font-size:11px; margin-top:6px">FantasyPros season ≥ +51 pts vs Model · avoid paying sticker</div>
       </div>
       <div class="kpi-card" style="border-left:3px solid var(--sky)">
         <div class="kpi-label">Market coverage (season)</div>
         <div class="kpi-value" style="color:var(--sky)">${marketCovered} / ${compById.size}</div>
         <div class="kpi-bar"><div class="kpi-bar-fill" style="background:var(--sky); width:${Math.round((marketCovered/Math.max(1, compById.size))*100)}%"></div></div>
-        <div class="micro faint" style="font-size:11px; margin-top:6px">Sleeper wk×17 for ROS · ECR sparse on free FP tier (10 DST limit) — Market $ is primary</div>
+        <div class="micro faint" style="font-size:11px; margin-top:6px">FantasyPros season projections (596, YDS/TDS) + ECR 519/ADP 695 CSVs · Sleeper weekly fallback 98 starters</div>
       </div>
       <div class="kpi-card" style="border-left:3px solid var(--amber)">
         <div class="kpi-label">Auction vs Market</div>
@@ -388,10 +392,10 @@ export async function renderAuction(root) {
       ${compareAuctionEnabled && hasComparison ? `
       <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; padding:8px 12px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; margin-bottom:10px; font:500 11px 'Fira Sans',sans-serif; line-height:1.4">
         <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--amber); border-radius:2px; display:inline-block"></span> <strong style="color:var(--amber)">Gridiron</strong> Model · Wk ×17 = season</span>
-        <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--sky); border-radius:2px; display:inline-block"></span> <strong style="color:var(--sky)">Sleeper</strong> Market · free Sleeper projections wk×17</span>
+        <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--sky); border-radius:2px; display:inline-block"></span> <strong style="color:var(--sky)">Market</strong> · FantasyPros season projections (596, full YDS/TDS) + Sleeper weekly fallback</span>
         <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--emerald); border-radius:2px; display:inline-block"></span> BUY = Model ≥ +51 pts vs Market (3/wk)</span>
         <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--crimson); border-radius:2px; display:inline-block"></span> SELL = Market ≥ +51 pts vs Model</span>
-        <span class="mono" style="color:var(--text-faint); margin-left:auto">FantasyPros ECR/ADP sparse on free tier (10 DST) — Market pts is primary</span>
+        <span class="mono" style="color:var(--text-faint); margin-left:auto">ECR 519 / ADP 695 via CSVs — full, not sparse</span>
       </div>
       ` : ''}
       <div class="table-wrap" style="border:0; border-radius:0; overflow-x:auto">
@@ -402,10 +406,10 @@ export async function renderAuction(root) {
               ${compareAuctionEnabled && hasComparison ? `
               <th style="color:var(--amber); border-bottom:2px solid var(--amber)" title="Gridiron weekly projection (stat_projector)">Gridiron Wk</th>
               <th style="color:var(--amber); border-bottom:2px solid var(--amber)" title="Gridiron season = weekly ×17">Gridiron<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--amber); opacity:0.7">Season 17g</span></th>
-              <th style="color:var(--sky); border-bottom:2px solid var(--sky)" title="Sleeper market weekly ×17 (free Sleeper /projections)">Market<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--sky); opacity:0.7">Season 17g</span></th>
+              <th style="color:var(--sky); border-bottom:2px solid var(--sky)" title="Market season — FantasyPros season projections (596, full YDS/TDS) — fallback Sleeper weekly ×17">Market<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--sky); opacity:0.7">Season 17g</span></th>
               <th style="border-bottom:2px solid var(--border)" title="Season Δ = Gridiron Season − Market Season">Season Δ<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--text-faint)">Grid−Mkt</span></th>
-              <th title="FantasyPros ECR (free tier limited)">ECR</th>
-              <th title="FantasyPros ADP (free tier limited)">ADP</th>
+              <th title="FantasyPros ECR 519 + Tiers via CSV">ECR</th>
+              <th title="FantasyPros ADP 695 via CSV">ADP</th>
               ` : `<th>Model Wk</th><th>Season (17g)</th>`}
               <th>VOR</th><th>Auction $</th>${compareAuctionEnabled && hasComparison ? '<th>Edge</th>' : ''}<th>Interval</th><th>T</th><th>Draft</th>
             </tr>
