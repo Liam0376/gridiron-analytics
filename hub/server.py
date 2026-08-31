@@ -381,22 +381,21 @@ def build_league_analytics(conn):
                 {}
             )
 
-            # 1. Fix 0.0 Projections Fallback & Truncated Sample Damping
+            # Universal League-Wide Projection Engine for ALL 12 Teams:
             raw_pts = float(st.get("projected_points") or st.get("fantasy_points") or 0)
             pts = raw_pts
             
-            # Check market season FPTS for premier consensus starters (e.g., Burrow ECR QB4) depressed by 2025 injury games
+            # Market consensus per-game baseline (FantasyPros 17-game FPTS / 17)
             mk_s = comp.get("market_season_points")
             mk_per_game = round(float(mk_s) / 17.0, 2) if (mk_s is not None and float(mk_s) > 0) else None
-            ecr_pos = comp.get("fp_ecr_pos")
+            m_pts = comp.get("model_points")
             
-            if pts == 0.0 or (ecr_pos and int(ecr_pos) <= 12 and mk_per_game and pts < 14.0):
+            # Universal Rule: If raw model points are 0.0, or suppressed by >25% vs consensus market per-game (e.g. injury exits / small sample), use market consensus
+            if pts == 0.0 or (mk_per_game and mk_per_game > 0 and pts < (mk_per_game * 0.75)):
                 if mk_per_game and mk_per_game > 0:
                     pts = mk_per_game
-                else:
-                    m_pts = comp.get("model_points")
-                    if m_pts is not None and float(m_pts) > 0:
-                        pts = float(m_pts)
+                elif m_pts is not None and float(m_pts) > 0:
+                    pts = float(m_pts)
 
             # Conformal interval logic
             width = float(comp.get("interval_width") or comp.get("width") or 5.0)
