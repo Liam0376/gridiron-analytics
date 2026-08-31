@@ -381,17 +381,22 @@ def build_league_analytics(conn):
                 {}
             )
 
-            # 1. Fix 0.0 Projections Fallback
+            # 1. Fix 0.0 Projections Fallback & Truncated Sample Damping
             raw_pts = float(st.get("projected_points") or st.get("fantasy_points") or 0)
             pts = raw_pts
-            if pts == 0.0:
-                m_pts = comp.get("model_points")
-                if m_pts is not None and float(m_pts) > 0:
-                    pts = float(m_pts)
+            
+            # Check market season FPTS for premier consensus starters (e.g., Burrow ECR QB4) depressed by 2025 injury games
+            mk_s = comp.get("market_season_points")
+            mk_per_game = round(float(mk_s) / 17.0, 2) if (mk_s is not None and float(mk_s) > 0) else None
+            ecr_pos = comp.get("fp_ecr_pos")
+            
+            if pts == 0.0 or (ecr_pos and int(ecr_pos) <= 12 and mk_per_game and pts < 14.0):
+                if mk_per_game and mk_per_game > 0:
+                    pts = mk_per_game
                 else:
-                    mk_s = comp.get("market_season_points")
-                    if mk_s is not None and float(mk_s) > 0:
-                        pts = round(float(mk_s) / 17.0, 2)
+                    m_pts = comp.get("model_points")
+                    if m_pts is not None and float(m_pts) > 0:
+                        pts = float(m_pts)
 
             # Conformal interval logic
             width = float(comp.get("interval_width") or comp.get("width") or 5.0)
