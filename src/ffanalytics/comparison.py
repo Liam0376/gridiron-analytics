@@ -118,6 +118,7 @@ def build_comparison(
     fpros_players: list[dict] | None = None,
     sleeper_players: dict | None = None,
     fp_projections: dict[tuple, dict] | None = None,
+    statsguy_rows: list[dict] | None = None,
 ) -> list[dict]:
     """Build enriched comparison rows.
 
@@ -127,11 +128,24 @@ def build_comparison(
     fpros_players: full fantasypros players list with rank_ecr etc. (CSV full 790)
     fp_projections: FantasyPros season projections keyed by (norm_name, team, pos) -> {fpts, passing_yards...}
                   (596 players, season totals, e.g., Josh Allen 372.5 / 3816 YDS)
+    statsguy_by_gsis: Sleeper ID -> gsis mapped StatsGuy values (non_sf_redraft, 500, value 0-10000)
 
     Returns sorted list (by model_points desc) with delta/rank fields.
-    Weekly market (Sleeper) for Projections weekly, season market (FP CSV) for Auction season.
+    Weekly market (Sleeper) for Projections weekly, season market (FP CSV + StatsGuy) for Auction season.
     """
     fpros_lut = build_fpros_lookup(fpros_players or [])
+    # StatsGuy lookup via name+team+pos (Sleeper ID mapping often missing gsis)
+    statsguy_lut: dict[tuple, dict] = {}
+    if statsguy_rows:
+        for r in statsguy_rows:
+            name = r.get("name") or r.get("player_name") or ""
+            team = (r.get("team") or "").upper()
+            pos = (r.get("position") or r.get("position_id") or "").upper()
+            if pos == "DST":
+                pos = "DEF"
+            key = (_normalize_name(name), team, pos)
+            if _normalize_name(name):
+                statsguy_lut[key] = r
 
     # Pre-rank model projections by projected_points
     sorted_model = sorted(model_projections, key=lambda p: float(p.get("projected_points") or p.get("point_estimate") or 0), reverse=True)
@@ -259,6 +273,23 @@ def build_comparison(
                         except Exception:
                             pass
 
+        # StatsGuy real-trade market (free 500, non_sf_redraft value 0-10000) — name+team+pos join (gsis often missing)
+        statsguy_value = None
+        statsguy_rank = None
+        statsguy_pos_rank = None
+        if statsguy_lut:
+            sg = _best_fpros_match(p.get("player_display_name") or p.get("player_name") or "", team, pos, statsguy_lut)
+            if sg:
+                try:
+                    if sg.get("value") is not None:
+                        statsguy_value = float(sg.get("value"))
+                    if sg.get("rank") is not None:
+                        statsguy_rank = int(sg.get("rank"))
+                    if sg.get("positionRank") is not None:
+                        statsguy_pos_rank = int(sg.get("positionRank"))
+                except Exception:
+                    pass
+
         # deltas
         delta_pts = None
         if market_pts is not None:
@@ -368,6 +399,9 @@ def build_comparison(
             "fp_adp": int(fp_adp) if fp_adp is not None else None,
             "fp_adp_pos": int(fp_adp_pos) if fp_adp_pos is not None else None,
             "fp_tier": int(fp_tier) if fp_tier is not None else None,
+            "statsguy_value": round(statsguy_value, 1) if statsguy_value is not None else None,
+            "statsguy_rank": statsguy_rank,
+            "statsguy_pos_rank": statsguy_pos_rank,
             "delta_rank": delta_rank,
             "delta_pos_rank": delta_pos_rank,
             "edge": edge,

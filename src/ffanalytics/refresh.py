@@ -260,11 +260,22 @@ def run_refresh_with_data(
         data["market_by_gsis"] = market_by_gsis
         data["fpros_players"] = fpros_players_list if isinstance(fpros_players_list, list) else []
         data["fp_projections_map"] = fp_projections_map
+        # StatsGuy real-trade market (free 500, non_sf_redraft) — true market value 0-10000 via name+team join
+        statsguy_rows: list[dict] = []
+        try:
+            from ffanalytics.adapters.statsguy import get_statsguy_all
+            statsguy_rows = get_statsguy_all(format="non_sf_redraft", limit=500) or []
+            if statsguy_rows:
+                logger.info(f"StatsGuy loaded: {len(statsguy_rows)} rows (non_sf_redraft 12-team PPR) — name+team join for full coverage")
+        except Exception as _sg_e:
+            logger.info(f"StatsGuy not loaded: {_sg_e}")
+            statsguy_rows = []
+        data["statsguy_rows"] = statsguy_rows
         # Build enriched comparison rows (model vs market + ranks)
-        # Pass FP season projections map (596 season totals) for Auction season stats (full stat season vs weekly-only Sleeper)
+        # Pass FP season projections map (596 season totals) for Auction season stats + StatsGuy real-trade values
         try:
             from ffanalytics.comparison import build_comparison as _build_comp
-            data["comparison"] = _build_comp(_model_projs, market_by_gsis, fpros_players_list, None, fp_projections_map)
+            data["comparison"] = _build_comp(_model_projs, market_by_gsis, fpros_players_list, None, fp_projections_map, statsguy_rows)
         except Exception as cmp_exc:
             logger.warning(f"Comparison build failed: {cmp_exc}")
             data["comparison"] = []
