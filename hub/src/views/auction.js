@@ -36,10 +36,52 @@ function deltaSeasonBadge(d) {
   const sign = v > 0 ? '+' : '';
   return `<span class="mono" style="color:${color}; font-weight:700; font-size:11px">${arrow} ${sign}${v.toFixed(0)}</span>`;
 }
+function liveAdviceFor(p, state, myRemaining, maxBid, myNeeds, slotsLeft){
+  const pos = (p.position||'').toUpperCase();
+  const need = myNeeds[pos] ?? 0;
+  const tier = p.fp_tier ?? p.tier ?? 5;
+  const edge = p.edge || 'NEUTRAL';
+  const width = Number(p.widthRos ?? p.width*4 ?? 20);
+  const auctionVal = p.auction ?? 1;
+  const delta = p.deltaRos;
+  let cap = Math.min(auctionVal + (edge==='BUY'?6: edge==='SELL'? -2 : 2), maxBid);
+  if (tier <=2 && edge==='BUY') cap = Math.min(cap+4, maxBid);
+  if (width > 40) cap = Math.max(1, cap - 2);
+  cap = Math.max(1, Math.min(cap, myRemaining - Math.max(0, slotsLeft-1)));
+  let title, color, text;
+  if (myRemaining < 5) {
+    title = 'BUDGET TIGHT — $1 only';
+    color = 'var(--crimson)';
+    text = `You have $${myRemaining} left. Only bid $1 unless ${p.player_name} is your last starter.`;
+  } else if (p.isDrafted) {
+    title = 'Already drafted';
+    color = 'var(--text-faint)';
+    text = `${p.player_name} is gone for $${p.draftedPrice ?? '?'} (${p.draftedBy}).`;
+    cap = 0;
+  } else if (edge==='BUY' && need>0) {
+    title = 'STRONG BUY — bid aggressively';
+    color = 'var(--emerald)';
+    text = `Gridiron sees +${delta!=null?Number(delta).toFixed(0):'?'} season vs Market (T${tier}, ${pos} need: ${need} left). Value $${auctionVal} → cap $${cap} (max $${maxBid}). Narrow interval ±${width.toFixed(0)} = floor play.`;
+  } else if (edge==='BUY') {
+    title = 'BUY — value but you\'re set at ' + pos;
+    color = 'var(--emerald)';
+    text = `Value says $${auctionVal} (+${delta!=null?Number(delta).toFixed(0):'?'} vs Market, T${tier}) but you have no ${pos} need (${need} left). Nominate to drain opponents, or cap $${cap} if you want depth.`;
+  } else if (edge==='SELL') {
+    title = 'CAUTION — Market overpay';
+    color = 'var(--crimson)';
+    text = `Market pays ${delta!=null?Math.abs(Number(delta)).toFixed(0):'?'} season more than Gridiron (T${tier}). Let others burn cash — cap $${cap} ($${auctionVal} sticker). Wide interval ±${width.toFixed(0)} = risky.`;
+  } else {
+    title = need>0 ? 'Fair value — fill need' : 'Fair value — depth';
+    color = need>0 ? 'var(--amber)' : 'var(--text-muted)';
+    text = `Neutral edge T${tier} — fair at $${auctionVal} (Δ ${delta!=null?(Number(delta)>0?'+':'')+Number(delta).toFixed(0):'—'}). ${need>0?`You need ${need} more ${pos} — cap $${cap}.`:`No ${pos} need — cap $${cap} for depth.`} Max $${maxBid}, $${myRemaining} left.`;
+  }
+  return { title, color, text, cap: Math.max(0, Math.round(cap)) };
+}
 
 export async function renderAuction(root) {
   const params = new URLSearchParams(location.hash.split('?')[1] || '');
   const budget = Number(params.get('budget') || BUDGET);
+  const focusPid = params.get('focus') || null;
 
   const [data, compRaw] = await Promise.all([
     fetchProjections({}),
@@ -241,6 +283,9 @@ export async function renderAuction(root) {
     return String(av).localeCompare(String(bv)) * auctionSortDir;
   });
 
+  const focusedPlayer = focusPid ? allRanked.find(p=>String(p.player_id)===String(focusPid)) : null;
+  const liveAdvice = focusedPlayer ? liveAdviceFor(focusedPlayer, state, myRemaining, maxBid, myNeeds, slotsLeft) : null;
+
   root.innerHTML = `
     <div class="hero reveal in">
       <h1>Auction Draft <span class="badge" style="background:var(--color-accent,#16A34A); color:white; margin-left:8px; vertical-align:middle">$${budget}</span></h1>
@@ -399,7 +444,29 @@ export async function renderAuction(root) {
       </div>
     </div>` : ''}
 
-    <!-- Position Filter -->
+    <!-- Live Auction — select the player being auctioned for instant advice -->
+    <div class="card reveal in" id="liveAuctionCard" style="margin-top:16px; ${focusedPlayer ? `border-left:3px solid ${liveAdvice.color}; background: linear-gradient(90deg, ${liveAdvice.color}14, transparent)` : ''}">
+      <div class="card-header"><h3 style="color:${focusedPlayer ? liveAdvice.color : 'var(--text-muted)'}">${focusedPlayer ? `On the Block — ${escapeHtml(focusedPlayer.player_name)}` : 'Live Auction — select the player being auctioned'}</h3><span class="kicker">${focusedPlayer ? liveAdvice.title : 'Click 👁 Focus on any row for instant bid advice'}</span>${focusedPlayer ? `<button class="chip" id="clearFocus" style="margin-left:auto">✕ Clear</button>` : ''}</div>
+      <div class="card-body" style="display:flex; flex-direction:column; gap:10px">
+        ${focusedPlayer ? `
+        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center">
+          <div style="display:flex; align-items:center; gap:10px">${playerAvatar(focusedPlayer, 36)}<div><div style="font:700 14px 'Fira Sans',sans-serif">${escapeHtml(focusedPlayer.player_name)} ${posBadge(focusedPlayer.position)} ${teamLogo(focusedPlayer.team,16)} <span class="mono" style="font-size:11px; color:var(--text-muted)">T${focusedPlayer.fp_tier ?? focusedPlayer.tier} · ECR #${focusedPlayer.fp_ecr ?? '—'} · ADP #${focusedPlayer.fp_adp ?? '—'}</span></div><div class="mono" style="font-size:11px; color:var(--text-muted)">Gridiron ${focusedPlayer.weekly.toFixed(1)} wk → ${focusedPlayer.ros.toFixed(0)} season · Market ${focusedPlayer.marketRos!=null?focusedPlayer.marketRos.toFixed(0):'—'} · Δ ${focusedPlayer.deltaRos!=null?(Number(focusedPlayer.deltaRos)>0?'+':'')+Number(focusedPlayer.deltaRos).toFixed(0):'—'} · VOR +${focusedPlayer.vor.toFixed(0)} · $${focusedPlayer.auction} val</div></div></div>
+          <span class="badge" style="background:${focusedPlayer.edge==='BUY'?'var(--emerald-dim)':'var(--crimson-dim)'}; color:${focusedPlayer.edge==='BUY'?'var(--emerald)':'var(--crimson)'}">${focusedPlayer.edge} ${deltaSeasonBadge(focusedPlayer.deltaRos)}</span>
+        </div>
+        <div class="alert" style="background:${liveAdvice.color}14; border:1px solid ${liveAdvice.color}33; color:var(--text)"><strong style="color:${liveAdvice.color}">${liveAdvice.title}</strong> — ${liveAdvice.text}</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; font:500 11px 'Fira Sans',sans-serif">
+          <span class="kicker">Cap</span> <span class="mono" style="font-size:16px; font-weight:700; color:${liveAdvice.color}">$${liveAdvice.cap}</span> <span class="micro faint">(max $${maxBid} · $${myRemaining} left · ${slotsLeft} slots)</span>
+          <span style="flex:1"></span>
+          <button class="btn btn-primary btn-sm" data-pid="${focusedPlayer.player_id}" id="liveDraftBtn">Draft ${escapeHtml(focusedPlayer.player_name)} for $${liveAdvice.cap}</button>
+          <button class="btn btn-ghost btn-sm" data-pid="${focusedPlayer.player_id}" id="livePassBtn">Pass — nominate next</button>
+        </div>
+        ${focusedPlayer.seasonStatDeltas && focusedPlayer.seasonStatDeltas.length ? `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px,1fr)); gap:8px; margin-top:4px; padding-top:8px; border-top:1px solid var(--border)">${focusedPlayer.seasonStatDeltas.slice(0,6).map(s=>`<div style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:6px 8px"><div class="mono" style="font-size:10px; color:var(--text-faint)">${s.label} season</div><div class="mono" style="font-size:11px">${s.model.toFixed(0)} <span style="color:var(--text-faint)">vs</span> ${s.market!=null?s.market.toFixed(0):'—'} <span style="color:${s.delta!=null?(s.delta>0?'var(--emerald)':'var(--crimson)'):'var(--text-faint)'}">${s.delta!=null?(s.delta>0?'+':'')+s.delta.toFixed(0):''}</span></div></div>`).join('')}</div>` : ''}
+        ` : `<div class="micro faint">Type a name in the search box (e.g. “Gibbs”) then click <span class="mono" style="background:var(--surface-raised); padding:2px 6px; border-radius:6px">👁 Focus</span> on the row being auctioned. Board sorting Highest↔Lowest stays — use the “↕ Highest → Lowest” toggle.</div>
+          <div style="display:flex; gap:8px; margin-top:4px"><input id="liveSearch" placeholder="Quick focus: type player name… (Enter to focus first match)" style="flex:1; background:var(--surface-raised); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px; font:400 13px 'Fira Sans',sans-serif" /></div>
+        `}
+      </div>
+    </div>
+
     <div class="responsive-view">
     <div class="card reveal in" style="margin-top:16px">
       <div class="card-header">
@@ -485,10 +552,13 @@ export async function renderAuction(root) {
                 <td class="mono-muted" style="font-size:11px">${(p.ros - p.widthRos).toFixed(0)}–${(p.ros + p.widthRos).toFixed(0)}</td>
                 <td class="faint" style="font:600 11px 'Fira Sans',sans-serif">T${p.tier}</td>
                 <td>
-                  ${p.isDrafted
-                    ? `<span class="micro faint">${p.draftedBy === 'me' ? 'MINE' : 'gone'}${p.draftedPrice ? ' $' + p.draftedPrice : ''}</span>`
-                    : `<button class="btn btn-ghost btn-sm draftBtn" data-pid="${p.player_id}" data-name="${escapeHtml(p.player_name)}" data-val="${p.auction}" style="font-size:11px; padding:2px 8px">Draft</button>`
-                  }
+                  <div style="display:flex; gap:4px; align-items:center">
+                    <button class="btn btn-ghost btn-sm focusBtn" data-pid="${p.player_id}" title="Focus for live advice" style="font-size:11px; padding:2px 6px">👁</button>
+                    ${p.isDrafted
+                      ? `<span class="micro faint">${p.draftedBy === 'me' ? 'MINE' : 'gone'}${p.draftedPrice ? ' $' + p.draftedPrice : ''}</span>`
+                      : `<button class="btn btn-ghost btn-sm draftBtn" data-pid="${p.player_id}" data-name="${escapeHtml(p.player_name)}" data-val="${p.auction}" style="font-size:11px; padding:2px 8px">Draft</button>`
+                    }
+                  </div>
                 </td>
               </tr>
             `).join('');
@@ -596,6 +666,50 @@ export async function renderAuction(root) {
     const p = new URLSearchParams(location.hash.split('?')[1] || '');
     if (e.target.checked) p.set('hide', '1');
     else p.delete('hide');
+    location.hash = 'auction?' + p.toString();
+  });
+
+  // Live Auction focus (select player being auctioned for instant advice)
+  root.querySelectorAll('.focusBtn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const pid = btn.dataset.pid;
+      const p = new URLSearchParams(location.hash.split('?')[1] || '');
+      p.set('focus', pid);
+      location.hash = 'auction?' + p.toString();
+    });
+  });
+  root.querySelector('#clearFocus')?.addEventListener('click', ()=>{
+    const p = new URLSearchParams(location.hash.split('?')[1] || '');
+    p.delete('focus');
+    location.hash = 'auction?' + p.toString();
+  });
+  const liveSearch = root.querySelector('#liveSearch');
+  if (liveSearch) {
+    liveSearch.addEventListener('keydown', e=>{
+      if (e.key==='Enter') {
+        e.preventDefault();
+        const q = liveSearch.value.trim().toLowerCase();
+        if (!q) return;
+        const m = allRanked.find(pl=> pl.player_name.toLowerCase().includes(q) && !pl.isDrafted) || allRanked.find(pl=> pl.player_name.toLowerCase().includes(q));
+        if (m) {
+          const p = new URLSearchParams(location.hash.split('?')[1] || '');
+          p.set('focus', m.player_id);
+          location.hash = 'auction?' + p.toString();
+        }
+      }
+    });
+  }
+  root.querySelector('#liveDraftBtn')?.addEventListener('click', ()=>{
+    const pid = root.querySelector('#liveDraftBtn')?.dataset.pid;
+    if (!pid) return;
+    const pl = allRanked.find(p=>String(p.player_id)===String(pid));
+    if (!pl) return;
+    const cap = liveAdvice ? liveAdvice.cap : pl.auction;
+    showDraftModal(root, pid, pl.player_name, cap, state, allRanked);
+  });
+  root.querySelector('#livePassBtn')?.addEventListener('click', ()=>{
+    const p = new URLSearchParams(location.hash.split('?')[1] || '');
+    p.delete('focus');
     location.hash = 'auction?' + p.toString();
   });
 
