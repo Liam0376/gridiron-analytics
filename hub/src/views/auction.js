@@ -503,7 +503,7 @@ export async function renderAuction(root) {
       </div>
     </div>
 
-    <div class="responsive-view">
+    <div class="responsive-view auction-board">
     <div class="card reveal in" style="margin-top:16px">
       <div class="card-header">
         <h3>Auction Board — ${activePos === 'ALL' ? 'All Positions' : activePos} ${auctionEdge !== 'ALL' ? `· ${auctionEdge}` : ''}</h3>
