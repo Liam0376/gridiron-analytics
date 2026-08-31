@@ -1,4 +1,4 @@
-import { fetchProjections } from '../api.js';
+import { fetchProjections, fetchComparison } from '../api.js';
 import { posBadge } from '../components/badges.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
@@ -23,11 +23,28 @@ function saveDraftState(state) {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (_) {}
 }
 
+function edgeBadgeAuction(edge) {
+  if (edge === 'BUY') return `<span class="badge" style="background:var(--emerald-dim); color:var(--emerald); border:1px solid rgba(16,185,129,0.22); font-size:10px">▲ BUY</span>`;
+  if (edge === 'SELL') return `<span class="badge" style="background:var(--crimson-dim); color:var(--crimson); border:1px solid rgba(239,68,68,0.22); font-size:10px">▼ SELL</span>`;
+  return `<span class="badge" style="background:rgba(255,255,255,0.06); color:var(--text-faint); border:1px solid var(--border); font-size:10px">—</span>`;
+}
+function deltaSeasonBadge(d) {
+  if (d == null) return `<span class="mono" style="color:var(--text-faint)">—</span>`;
+  const v = Number(d);
+  const color = v > 8 ? 'var(--emerald)' : v < -8 ? 'var(--crimson)' : 'var(--text-muted)';
+  const arrow = v > 8 ? '↑' : v < -8 ? '↓' : '·';
+  const sign = v > 0 ? '+' : '';
+  return `<span class="mono" style="color:${color}; font-weight:700; font-size:11px">${arrow} ${sign}${v.toFixed(0)}</span>`;
+}
+
 export async function renderAuction(root) {
   const params = new URLSearchParams(location.hash.split('?')[1] || '');
   const budget = Number(params.get('budget') || BUDGET);
 
-  const data = await fetchProjections({});
+  const [data, compRaw] = await Promise.all([
+    fetchProjections({}),
+    fetchComparison({ limit: 800 }).catch(() => ({ players: [], count: 0, fetched_at: null, meta: {} })),
+  ]);
   let players = data.players || [];
   if (!players.length) {
     root.innerHTML = `
@@ -35,19 +52,56 @@ export async function renderAuction(root) {
     return;
   }
 
+  const compById = new Map((compRaw.players || []).map(c => [String(c.player_id), c]));
+  const hasComparison = compById.size > 0;
+  let compareAuctionEnabled = hasComparison;
+  // allow toggle via localStorage
+  try { const v = localStorage.getItem('ffba-auction-compare'); if (v === '0') compareAuctionEnabled = false; if (v === '1' && hasComparison) compareAuctionEnabled = true; } catch {}
+
   const state = loadDraftState();
 
   // Full-season ROS (17 games for pre-draft)
   const remaining = SEASON_GAMES;
-  const rosPlayers = players.map(p => ({
-    ...p,
-    ros: Number(p.projected_points ?? p.point_estimate ?? 0) * remaining,
-    weekly: Number(p.projected_points ?? 0),
-    widthRos: Number(p.width ?? 5) * Math.sqrt(remaining),
-    isDrafted: !!state.drafted[p.player_id],
-    draftedBy: state.drafted[p.player_id]?.by || null,
-    draftedPrice: state.drafted[p.player_id]?.price || null,
-  }));
+  const rosPlayers = players.map(p => {
+    const pid = String(p.player_id);
+    const c = compById.get(pid);
+    // Prefer comparison model_points (weekly projection from stat_projector wk10) if available
+    const weeklyModel = c && c.model_points != null ? Number(c.model_points) : Number(p.projected_points ?? p.point_estimate ?? 0);
+    const weeklyMarket = c && c.market_points != null ? Number(c.market_points) : null;
+    const ros = weeklyModel * remaining;
+    const marketRos = weeklyMarket != null ? weeklyMarket * remaining : null;
+    const deltaRos = marketRos != null ? +(ros - marketRos).toFixed(1) : null;
+    // Stat deltas season-scaled for tooltip
+    let seasonStatDeltas = null;
+    if (c && Array.isArray(c.stat_deltas) && c.stat_deltas.length) {
+      seasonStatDeltas = c.stat_deltas.map(s => ({
+        ...s,
+        modelSeason: s.model != null ? +(s.model * remaining).toFixed(1) : null,
+        marketSeason: s.market != null ? +(s.market * remaining).toFixed(1) : null,
+        deltaSeason: s.delta != null ? +(s.delta * remaining).toFixed(1) : null,
+      }));
+    }
+    return {
+      ...p,
+      // overwrite weekly with comparison model weekly for consistency
+      weekly: weeklyModel,
+      ros,
+      marketWeekly: weeklyMarket,
+      marketRos,
+      deltaRos,
+      seasonStatDeltas,
+      widthRos: Number(p.width ?? c?.width ?? 5) * Math.sqrt(remaining),
+      fp_ecr: c?.fp_ecr ?? null,
+      fp_ecr_pos: c?.fp_ecr_pos ?? null,
+      fp_adp: c?.fp_adp ?? null,
+      delta_rank: c?.delta_rank ?? null,
+      edge: c?.edge || 'NEUTRAL',
+      edge_score: c?.edge_score ?? 0,
+      isDrafted: !!state.drafted[p.player_id],
+      draftedBy: state.drafted[p.player_id]?.by || null,
+      draftedPrice: state.drafted[p.player_id]?.price || null,
+    };
+  });
 
   // Position buckets
   const byPos = { QB:[], RB:[], WR:[], TE:[], K:[], DEF:[] };
@@ -122,7 +176,6 @@ export async function renderAuction(root) {
   const flexBudget = Math.round((budget - Object.values(posBudget).reduce((s, v) => s + v.recommended, 0)));
 
   // Nomination strategy: players to nominate that drain opponents
-  // Nominate high-value players at positions YOU don't need early
   const myRosterPositions = state.myRoster.map(id => {
     const p = rosPlayers.find(x => x.player_id === id);
     return p ? (p.position || '').toUpperCase() : '';
@@ -144,7 +197,6 @@ export async function renderAuction(root) {
 
   // Draft tracker stats
   const draftedCount = Object.keys(state.drafted).length;
-  const draftedPlayers = allRanked.filter(p => p.isDrafted);
   const availablePlayers = allRanked.filter(p => !p.isDrafted);
   const myRosterPlayers = state.myRoster.map(id => allRanked.find(p => p.player_id === id)).filter(Boolean);
   const mySpent = myRosterPlayers.reduce((s, p) => s + (state.drafted[p.player_id]?.price || 0), 0);
@@ -153,24 +205,59 @@ export async function renderAuction(root) {
   const slotsLeft = ROSTER_SIZE - myRosterCount;
   const maxBid = slotsLeft > 1 ? myRemaining - (slotsLeft - 1) : myRemaining;
 
+  // Comparison counts for header
+  const buyCount = [...compById.values()].filter(c => c.edge === 'BUY').length;
+  const sellCount = [...compById.values()].filter(c => c.edge === 'SELL').length;
+  const marketCovered = [...compById.values()].filter(c => c.market_points != null).length;
+
   // Position filter
   const activePos = params.get('pos') || 'ALL';
-
   const filteredPlayers = activePos === 'ALL'
     ? availablePlayers
     : availablePlayers.filter(p => (p.position || '').toUpperCase() === activePos);
 
+  // Edge filter for auction
+  const auctionEdge = params.get('edge') || 'ALL';
+
   root.innerHTML = `
     <div class="hero reveal in">
       <h1>Auction Draft <span class="badge" style="background:var(--color-accent,#16A34A); color:white; margin-left:8px; vertical-align:middle">$${budget}</span></h1>
-      <p>Full-season VOR (${SEASON_GAMES}g) → auction $. 2-FLEX league inflates RB/WR/TE. Draft is <strong>Sunday night</strong>.</p>
+      <p>Full-season VOR (${SEASON_GAMES}g) → auction $. 2-FLEX league inflates RB/WR/TE. Season totals = <span class="mono" style="color:var(--amber)">Model wk×17</span> vs <span class="mono" style="color:var(--sky)">Market wk×17 (Sleeper)</span> + <span class="mono" style="color:var(--text-muted)">FP ECR/ADP</span>. Use Market Δ &amp; Edge to find <strong>$ value leaks</strong> — BUY where Gridiron &gt; Market.</p>
     </div>
+
+    ${hasComparison ? `
+    <div class="kpi-row reveal in" style="margin-top:12px">
+      <div class="kpi-card" style="border-left:3px solid var(--emerald)">
+        <div class="kpi-label">BUY edges — season</div>
+        <div class="kpi-value" style="color:var(--emerald)">${buyCount}</div>
+        <div class="kpi-bar"><div class="kpi-bar-fill good" style="width:${Math.min(100, Math.round((buyCount/Math.max(1, Math.min(40, compById.size/6)))*100))}%"></div></div>
+        <div class="micro faint" style="font-size:11px; margin-top:6px">Model season ≥ +51 pts (+3/wk) vs Sleeper, or rank ≥12 better than ECR</div>
+      </div>
+      <div class="kpi-card" style="border-left:3px solid var(--crimson)">
+        <div class="kpi-label">SELL flags — overpriced</div>
+        <div class="kpi-value" style="color:var(--crimson)">${sellCount}</div>
+        <div class="kpi-bar"><div class="kpi-bar-fill bad" style="width:${Math.min(100, Math.round((sellCount/Math.max(1, Math.min(40, compById.size/6)))*100))}%"></div></div>
+        <div class="micro faint" style="font-size:11px; margin-top:6px">Market ≥ +51 pts vs Model · avoid paying sticker</div>
+      </div>
+      <div class="kpi-card" style="border-left:3px solid var(--sky)">
+        <div class="kpi-label">Market coverage (season)</div>
+        <div class="kpi-value" style="color:var(--sky)">${marketCovered} / ${compById.size}</div>
+        <div class="kpi-bar"><div class="kpi-bar-fill" style="background:var(--sky); width:${Math.round((marketCovered/Math.max(1, compById.size))*100)}%"></div></div>
+        <div class="micro faint" style="font-size:11px; margin-top:6px">Sleeper wk×17 for ROS · ECR sparse on free FP tier (10 DST limit) — Market $ is primary</div>
+      </div>
+      <div class="kpi-card" style="border-left:3px solid var(--amber)">
+        <div class="kpi-label">Auction vs Market</div>
+        <div class="kpi-value" style="font-size:14px; line-height:1.2">VOR $ from Model<br><span style="font:600 11px 'Fira Sans',sans-serif; color:var(--text-muted); letter-spacing:0.04em; text-transform:uppercase">$${budget} × ${TEAMS} teams · ${compareAuctionEnabled ? 'Market Δ shown' : 'toggle Market to see Δ'}</span></div>
+        <div style="display:flex; gap:6px; margin-top:8px"><button class="chip ${compareAuctionEnabled ? 'active' : ''}" id="toggleAuctionCompare" style="font-size:11px">${compareAuctionEnabled ? '✓ Market + ECR on' : 'Show Market + ECR'}</button><button class="chip" id="copyModelVsMarketCsv" style="font-size:11px">Copy Model vs Market CSV</button></div>
+      </div>
+    </div>
+    ` : `<div class="alert alert-info reveal in" style="margin-top:12px">Market comparison warming up — run refresh to populate Sleeper season (wk×17) + FP ECR/ADP. Auction currently shows Model only. Free sources: Sleeper <code class="inline">/projections</code> + FantasyPros limited (DST-only free) — Market_pts primary for season edges.</div>`}
 
     <!-- My Draft Tracker -->
     <div class="kpi-row reveal in" style="margin-top:12px">
       <div class="kpi-card">
         <div class="kpi-label">My Budget</div>
-        <div class="kpi-value mono" style="color:${myRemaining > 50 ? 'var(--color-accent)' : myRemaining > 20 ? 'var(--amber)' : 'var(--danger)'}">$${myRemaining}</div>
+        <div class="kpi-value mono" style="color:${myRemaining > 50 ? 'var(--color-accent)' : myRemaining > 20 ? 'var(--amber)' : 'var(--crimson)'}">$${myRemaining}</div>
         <div class="kpi-bar"><div class="kpi-bar-fill ${myRemaining > 100 ? 'good' : myRemaining > 30 ? 'ok' : 'bad'}" style="width:${(myRemaining / budget * 100).toFixed(0)}%"></div></div>
         <div class="micro faint">spent $${mySpent} / $${budget}</div>
       </div>
@@ -218,15 +305,17 @@ export async function renderAuction(root) {
     <div class="card reveal in" style="margin-top:16px">
       <div class="card-header"><h3>Nomination Strategy</h3><span class="kicker">nominate these to drain opponents</span></div>
       <div class="card-body" style="font:400 13px 'Fira Sans',sans-serif; color:var(--text-muted); line-height:1.6">
-        <div class="alert alert-ok" style="margin-bottom:12px">Nominate players at positions you've filled (or don't need yet). Force opponents to spend early while you save budget for YOUR targets.</div>
+        <div class="alert alert-ok" style="margin-bottom:12px">Nominate players at positions you've filled (or don't need yet). Force opponents to spend early while you save budget for YOUR targets. <strong>Prefer high Market $ but lower Model $</strong> — let others overpay where Market is hot but Gridiron is cool (SELL).</div>
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           ${nominationTargets.map(p => `
-            <div style="padding:6px 10px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; display:flex; align-items:center; gap:6px">
+            <div style="padding:6px 10px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; display:flex; align-items:center; gap:6px; ${p.edge==='BUY' ? 'border-left:3px solid var(--emerald)' : p.edge==='SELL' ? 'border-left:3px solid var(--crimson)' : ''}">
               ${playerAvatar(p, 24)}
               ${posBadge(p.position)}
               <strong style="font:600 12px 'Fira Sans',sans-serif">${escapeHtml(p.player_name)}</strong>
               ${teamLogo(p.team, 14)}
               <span class="badge" style="background:var(--amber-dim); color:var(--amber)">$${p.auction}</span>
+              ${compareAuctionEnabled && hasComparison ? edgeBadgeAuction(p.edge) : ''}
+              ${compareAuctionEnabled && p.marketRos != null ? `<span class="mono" style="font-size:10px; color:var(--text-faint)">mkt ${(Number(p.marketRos)).toFixed(0)}</span>` : ''}
             </div>
           `).join('')}
         </div>
@@ -240,10 +329,10 @@ export async function renderAuction(root) {
       <div class="card-body" style="font:400 13px 'Fira Sans',sans-serif; color:var(--text-muted); line-height:1.6">
         <ol style="margin:0; padding-left:18px">
           <li><strong>Stars & Scrubs:</strong> Spend 60-70% ($150-175) on 4-5 elite starters. Your 2-FLEX league means 7 RB/WR/TE start — premium on volume backs and target hogs.</li>
-          <li><strong>Floor early, ceiling late:</strong> Target <strong>high VOR + narrow interval</strong> first (reliable). Late-round take shots on <strong>wide interval</strong> guys (upside lottery).</li>
+          <li><strong>Gridiron > Market = value:</strong> Filter <code class="inline">BUY</code> in Auction to see where Model season total beats Market season by ≥51 pts — bid up to Model $ there.</li>
           <li><strong>K/DEF = $1 always.</strong> MAE on kickers is 4+ pts — pure noise. Stream them.</li>
           <li><strong>$1 bench:</strong> Fill bench last at $1. Waiver wire value > draft bench value in 12-team.</li>
-          <li><strong>Nominate positions you've filled</strong> to force opponents into bidding wars. Nominate RBs if you already got yours.</li>
+          <li><strong>Nominate positions you've filled</strong> — prefer SELL-flagged players so opponents burn cash where you’re cold.</li>
         </ol>
       </div>
     </div>
@@ -252,21 +341,22 @@ export async function renderAuction(root) {
     ${myRosterCount > 0 ? `
     <div class="card reveal in" style="margin-top:16px">
       <div class="card-header"><h3>My Drafted Players</h3>
-        <button class="btn btn-ghost btn-sm" id="clearDraft" style="color:var(--danger)">Reset Draft</button>
+        <button class="btn btn-ghost btn-sm" id="clearDraft" style="color:var(--crimson)">Reset Draft</button>
       </div>
       <div class="table-wrap" style="border:0; border-radius:0">
         <table>
-          <thead><tr><th>Player</th><th>Pos</th><th>Paid</th><th>Value</th><th>+/-</th></tr></thead>
+          <thead><tr><th>Player</th><th>Pos</th><th>Paid</th><th>Value</th><th>+/-</th>${compareAuctionEnabled && hasComparison ? '<th>Season Δ</th><th>Edge</th>' : ''}</tr></thead>
           <tbody>
             ${myRosterPlayers.map(p => {
               const paid = state.drafted[p.player_id]?.price || 0;
               const diff = p.auction - paid;
-              return `<tr style="--team-accent:${getTeamColor((p.team||'').toUpperCase())}">
+              return `<tr style="--team-accent:${getTeamColor((p.team||'').toUpperCase())}; ${p.edge==='BUY' ? 'background:rgba(16,185,129,0.06)' : p.edge==='SELL' ? 'background:rgba(239,68,68,0.06)' : ''}">
                 <td><div class="player-cell">${playerAvatar(p, 28)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(p.player_name)}</div><div class="player-cell-sub">${teamLogo(p.team, 14)} ${escapeHtml(p.team || '')}</div></div></div></td>
                 <td>${posBadge(p.position)}</td>
                 <td class="mono">$${paid}</td>
                 <td class="mono">$${p.auction}</td>
-                <td class="mono" style="color:${diff > 0 ? 'var(--color-accent)' : diff < 0 ? 'var(--danger)' : 'var(--text-muted)'}">${diff > 0 ? '+' : ''}${diff}</td>
+                <td class="mono" style="color:${diff > 0 ? '#10B981' : diff < 0 ? 'var(--crimson)' : 'var(--text-muted)'}">${diff > 0 ? '+' : ''}${diff}</td>
+                ${compareAuctionEnabled && hasComparison ? `<td>${deltaSeasonBadge(p.deltaRos)}</td><td>${edgeBadgeAuction(p.edge)}</td>` : ''}
               </tr>`;
             }).join('')}
           </tbody>
@@ -278,11 +368,15 @@ export async function renderAuction(root) {
     <div class="responsive-view">
     <div class="card reveal in" style="margin-top:16px">
       <div class="card-header">
-        <h3>Auction Board — ${activePos === 'ALL' ? 'All Positions' : activePos}</h3>
+        <h3>Auction Board — ${activePos === 'ALL' ? 'All Positions' : activePos} ${auctionEdge !== 'ALL' ? `· ${auctionEdge}` : ''}</h3>
         <div class="row" style="gap:8px; flex-wrap:wrap">
           ${['ALL', ...posGroups].map(pos => `
             <button class="btn btn-sm ${activePos === pos ? '' : 'btn-ghost'} posFilter" data-pos="${pos}" style="${activePos === pos ? 'background:var(--color-accent); color:white' : ''}">${pos}</button>
           `).join('')}
+          ${hasComparison ? `
+            <span style="border-left:1px solid var(--border); margin:0 4px"></span>
+            ${['ALL','BUY','SELL'].map(e=>`<button class="btn btn-sm ${auctionEdge===e ? '' : 'btn-ghost'} edgeFilter" data-edge="${e}" style="${auctionEdge===e ? (e==='BUY' ? 'background:var(--emerald); color:white' : e==='SELL' ? 'background:var(--crimson); color:white' : 'background:var(--color-accent); color:white') : ''}">${e==='ALL' ? 'All' : e==='BUY' ? '▲ BUY' : '▼ SELL'}</button>`).join('')}
+          ` : ''}
           <span style="border-left:1px solid var(--border); margin:0 4px"></span>
           <button class="btn btn-ghost btn-sm" id="copyAuction">Copy CSV</button>
           <label class="faint" style="font:500 12px 'Fira Sans',sans-serif">
@@ -290,21 +384,33 @@ export async function renderAuction(root) {
           </label>
         </div>
       </div>
-      <div class="table-wrap" style="border:0; border-radius:0">
-        <table>
-          <thead><tr><th>#</th><th>Player</th><th>Pos</th><th>Wk Avg</th><th>ROS (${SEASON_GAMES}g)</th><th>VOR</th><th>Auction $</th><th>Interval</th><th>T</th><th>Draft</th></tr></thead>
+      <div class="table-wrap" style="border:0; border-radius:0; overflow-x:auto">
+        <table style="min-width:${compareAuctionEnabled && hasComparison ? '1120px' : '720px'}">
+          <thead><tr><th>#</th><th>Player</th><th>Pos</th><th>Model Wk</th><th>Season (17g)</th>${compareAuctionEnabled && hasComparison ? '<th style=\"color:var(--sky)\">Market Season</th><th>Season Δ</th><th>ECR</th><th>ADP</th>' : ''}<th>VOR</th><th>Auction $</th>${compareAuctionEnabled && hasComparison ? '<th>Edge</th>' : ''}<th>Interval</th><th>T</th><th>Draft</th></tr></thead>
           <tbody>
-            ${filteredPlayers.slice(0, 120).map((p, i) => `
-              <tr style="${p.isDrafted ? 'opacity:0.35; text-decoration:line-through' : ''};--team-accent:${getTeamColor((p.team||'').toUpperCase())}" data-pid="${p.player_id}" data-team="${p.team || ''}">
+            ${(() => {
+              let list = filteredPlayers;
+              if (hasComparison && compareAuctionEnabled && auctionEdge !== 'ALL') {
+                list = list.filter(p => (p.edge || 'NEUTRAL') === auctionEdge);
+              }
+              return list.slice(0, 120).map((p, i) => `
+              <tr style="${p.isDrafted ? 'opacity:0.35; text-decoration:line-through' : ''};--team-accent:${getTeamColor((p.team||'').toUpperCase())}; ${p.edge==='BUY' ? 'background:rgba(16,185,129,0.06)' : p.edge==='SELL' ? 'background:rgba(239,68,68,0.06)' : ''}" data-pid="${p.player_id}" data-team="${p.team || ''}">
                 <td class="mono-muted" style="font-size:11px">${i + 1}</td>
                 <td>
                   <div class="player-cell">${playerAvatar(p, 28)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(p.player_name)}</div><div class="player-cell-sub">${teamLogo(p.team, 14)} ${escapeHtml(p.team || '')}${p.opponent_team ? ' vs ' + escapeHtml(p.opponent_team) : ''}</div></div></div>
                 </td>
                 <td>${posBadge(p.position)}</td>
-                <td class="mono">${p.weekly.toFixed(1)}</td>
-                <td class="mono">${p.ros.toFixed(1)}</td>
-                <td class="mono" style="color:${p.vor > 30 ? 'var(--color-accent)' : p.vor > 15 ? 'var(--amber)' : 'var(--text-muted)'}">+${p.vor.toFixed(1)}</td>
-                <td><span class="badge" style="background:${p.auction >= 15 ? 'var(--color-accent)' : p.auction >= 5 ? 'var(--amber-dim)' : 'var(--surface-raised)'}; color:${p.auction >= 15 ? 'white' : p.auction >= 5 ? 'var(--amber)' : 'var(--text-muted)'}; border:1px solid ${p.auction >= 15 ? 'var(--color-accent)' : 'var(--border)'}">$${p.auction}</span></td>
+                <td class="mono" style="color:var(--amber)">${p.weekly.toFixed(1)}</td>
+                <td class="mono" style="font-weight:700">${p.ros.toFixed(0)}</td>
+                ${compareAuctionEnabled && hasComparison ? `
+                <td class="mono" style="color:var(--sky)">${p.marketRos != null ? p.marketRos.toFixed(0) : '—'}</td>
+                <td>${deltaSeasonBadge(p.deltaRos)}</td>
+                <td class="mono" style="font-size:11px; color:var(--text-muted)">${p.fp_ecr != null ? '#'+p.fp_ecr : '—'}</td>
+                <td class="mono" style="font-size:11px; color:var(--text-muted)">${p.fp_adp != null ? '#'+p.fp_adp : (p.fp_adp==null && p.marketRos==null ? '—' : '—')}</td>
+                ` : ''}
+                <td class="mono" style="color:${p.vor > 30 ? '#10B981' : p.vor > 15 ? 'var(--amber)' : 'var(--text-muted)'}">+${p.vor.toFixed(0)}</td>
+                <td><span class="badge" style="background:${p.auction >= 15 ? '#16A34A' : p.auction >= 5 ? 'var(--amber-dim)' : 'var(--surface-raised)'}; color:${p.auction >= 15 ? 'white' : p.auction >= 5 ? 'var(--amber)' : 'var(--text-muted)'}; border:1px solid ${p.auction >= 15 ? '#16A34A' : 'var(--border)'}">$${p.auction}</span></td>
+                ${compareAuctionEnabled && hasComparison ? `<td>${edgeBadgeAuction(p.edge)}</td>` : ''}
                 <td class="mono-muted" style="font-size:11px">${(p.ros - p.widthRos).toFixed(0)}–${(p.ros + p.widthRos).toFixed(0)}</td>
                 <td class="faint" style="font:600 11px 'Fira Sans',sans-serif">T${p.tier}</td>
                 <td>
@@ -314,18 +420,48 @@ export async function renderAuction(root) {
                   }
                 </td>
               </tr>
-            `).join('')}
+            `).join('');
+            })()}
           </tbody>
         </table>
       </div>
     </div>
     <div class="player-cards-grid">
-      ${filteredPlayers.filter(p => !p.isDrafted).slice(0, 50).map(p => playerCard(p, { showDraftBtn: true, showTeamLogo: true })).join('')}
+      ${(() => {
+        let list = filteredPlayers.filter(p => !p.isDrafted);
+        if (hasComparison && compareAuctionEnabled && auctionEdge !== 'ALL') list = list.filter(p => (p.edge || 'NEUTRAL') === auctionEdge);
+        return list.slice(0, 50).map(p => {
+          const base = playerCard(p, { showDraftBtn: true, showTeamLogo: true });
+          if (!compareAuctionEnabled || !hasComparison) return base;
+          // inject auction + market footer
+          const seasonDelta = p.deltaRos != null ? `<span class="mono" style="font-size:10px; color:${Number(p.deltaRos) > 8 ? 'var(--emerald)' : Number(p.deltaRos) < -8 ? 'var(--crimson)' : 'var(--text-faint)'}">${Number(p.deltaRos)>0?'+':''}${Number(p.deltaRos).toFixed(0)} season Δ</span>` : `<span class="mono" style="font-size:10px; color:var(--text-faint)">season Δ —</span>`;
+          return base.replace('</div>\\n', `  <div style="margin-top:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--border)"><span class="mono" style="font-size:10px; color:var(--text-muted)">Mkt ${p.marketRos != null ? p.marketRos.toFixed(0) : '—'}</span>${seasonDelta}<span class="spacer"></span>${edgeBadgeAuction(p.edge)}</div></div>\\n`);
+        }).join('');
+      })()}
     </div>
     </div>
   `;
 
   // --- Event handlers ---
+
+  // Toggle auction compare
+  root.querySelector('#toggleAuctionCompare')?.addEventListener('click', () => {
+    const next = !compareAuctionEnabled;
+    try { localStorage.setItem('ffba-auction-compare', next ? '1' : '0'); } catch {}
+    renderAuction(root);
+  });
+  root.querySelector('#copyModelVsMarketCsv')?.addEventListener('click', () => {
+    let list = filteredPlayers;
+    if (hasComparison && compareAuctionEnabled && auctionEdge !== 'ALL') list = list.filter(p => (p.edge || 'NEUTRAL') === auctionEdge);
+    const rows = [['rank','player','pos','team','model_wk','model_season','market_season','season_delta','fp_ecr','fp_adp','vor','auction','edge']];
+    list.slice(0,150).forEach((p,i)=>{
+      rows.push([i+1, `"${p.player_name}"`, p.position, p.team, p.weekly.toFixed(1), p.ros.toFixed(1), p.marketRos != null ? p.marketRos.toFixed(1) : '', p.deltaRos != null ? p.deltaRos.toFixed(1) : '', p.fp_ecr ?? '', p.fp_adp ?? '', p.vor.toFixed(1), p.auction, p.edge]);
+    });
+    const csv = rows.map(r=>r.join(',')).join('\n');
+    navigator.clipboard.writeText(csv);
+    const b = root.querySelector('#copyModelVsMarketCsv');
+    if (b) { const t=b.textContent; b.textContent='Copied ✓'; setTimeout(()=>b.textContent=t,1200); }
+  });
 
   // Position filter buttons
   root.querySelectorAll('.posFilter').forEach(btn => {
@@ -334,6 +470,16 @@ export async function renderAuction(root) {
       const p = new URLSearchParams(location.hash.split('?')[1] || '');
       if (pos === 'ALL') p.delete('pos');
       else p.set('pos', pos);
+      location.hash = 'auction?' + p.toString();
+    });
+  });
+  // Edge filter
+  root.querySelectorAll('.edgeFilter').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const e = btn.dataset.edge;
+      const p = new URLSearchParams(location.hash.split('?')[1] || '');
+      if (e === 'ALL') p.delete('edge');
+      else p.set('edge', e);
       location.hash = 'auction?' + p.toString();
     });
   });
@@ -356,12 +502,14 @@ export async function renderAuction(root) {
     });
   });
 
-  // Copy CSV
+  // Copy CSV (original)
   root.querySelector('#copyAuction')?.addEventListener('click', () => {
-    const csvPlayers = filteredPlayers.filter(p => !p.isDrafted);
-    const csv = ['rank,player,pos,team,weekly,ros,vor,auction,interval,tier']
+    let list = filteredPlayers;
+    if (hasComparison && compareAuctionEnabled && auctionEdge !== 'ALL') list = list.filter(p => (p.edge || 'NEUTRAL') === auctionEdge);
+    const csvPlayers = list.filter(p => !p.isDrafted);
+    const csv = ['rank,player,pos,team,weekly,ros,vor,auction,market_season,season_delta,fp_ecr,fp_adp,edge,interval,tier']
       .concat(csvPlayers.slice(0, 120).map((p, i) =>
-        `${i + 1},"${p.player_name}",${p.position},${p.team},${p.weekly.toFixed(1)},${p.ros.toFixed(1)},${p.vor.toFixed(1)},${p.auction},${(p.ros - p.widthRos).toFixed(0)}-${(p.ros + p.widthRos).toFixed(0)},T${p.tier}`
+        `${i + 1},"${p.player_name}",${p.position},${p.team},${p.weekly.toFixed(1)},${p.ros.toFixed(1)},${p.vor.toFixed(1)},${p.auction},${p.marketRos != null ? p.marketRos.toFixed(0) : ''},${p.deltaRos != null ? p.deltaRos.toFixed(0) : ''},${p.fp_ecr ?? ''},${p.fp_adp ?? ''},${p.edge},${(p.ros - p.widthRos).toFixed(0)}-${(p.ros + p.widthRos).toFixed(0)},T${p.tier}`
       )).join('\n');
     navigator.clipboard.writeText(csv);
     const b = root.querySelector('#copyAuction');
