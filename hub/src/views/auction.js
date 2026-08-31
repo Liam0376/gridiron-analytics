@@ -132,9 +132,9 @@ export async function renderAuction(root) {
   // Full-season ROS (17 games for pre-draft)
   const remaining = SEASON_GAMES;
   const rosPlayers = players.map(p => {
-    const pid = String(p.player_id);
-    const c = compById.get(pid) || compByNamePos.get(`${(p.player_name||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim()}|${(p.position||'').toUpperCase()}`);
-    // Prefer comparison model_points (weekly projection from stat_projector wk10) if available
+    const nkey = `${(p.player_name||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim()}|${(p.position||'').toUpperCase()}`;
+    const c = compByNamePos.get(nkey) || compById.get(String(p.player_id));
+    // Always prefer comparison data (has FP season, ECR, ADP, StatsGuy) over raw projection stats
     const weeklyModel = c && c.model_points != null ? Number(c.model_points) : Number(p.projected_points ?? p.point_estimate ?? 0);
     const weeklyMarket = c && c.market_points != null ? Number(c.market_points) : null;
     const ros = weeklyModel * remaining;
