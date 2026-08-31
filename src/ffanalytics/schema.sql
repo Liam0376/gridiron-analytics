@@ -81,3 +81,10 @@ CREATE TABLE IF NOT EXISTS weather (
     precip_prob REAL,
     fetched_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS market_consensus (
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    data JSON NOT NULL,
+    fetched_at TEXT NOT NULL
+);

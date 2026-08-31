@@ -117,6 +117,15 @@ export async function fetchTeamRatings() {
   return await tryHub('/team-ratings') || { ratings: [] };
 }
 
+export async function fetchComparison({ edge, limit } = {}) {
+  const qs = new URLSearchParams();
+  if (edge) qs.set('edge', edge);
+  if (limit) qs.set('limit', String(limit));
+  const hub = await tryHub(`/comparison${qs.toString() ? `?${qs}` : ''}`);
+  if (hub && Array.isArray(hub.players)) return hub;
+  return { players: [], count: 0, fetched_at: null, meta: { source: 'none' } };
+}
+
 // Utility: staleness helper
 export function computeStaleness(lastUpdated) {
   if (!lastUpdated) return { level: 'cold', label: 'cold — no data' };

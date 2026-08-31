@@ -243,6 +243,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.handle_waiver(conn)
             elif path == "/hub-api/rosters":
                 self.handle_rosters_raw(conn)
+            elif path == "/hub-api/comparison":
+                self.handle_comparison(conn, qs)
             else:
                 self.send_error(404, f"unknown hub-api path {path}")
         except Exception as e:
@@ -573,6 +575,34 @@ class Handler(BaseHTTPRequestHandler):
         data = load_json_blob(row) or []
         self.json({"rosters": data})
 
+    def handle_comparison(self, conn, qs):
+        # Model vs Market (Sleeper pts+stats vs FantasyPros ECR/ADP) — built by refresh.py
+        row = None
+        fetched_at = None
+        try:
+            row = try_fetch_one(conn, "SELECT data, fetched_at FROM market_consensus ORDER BY fetched_at DESC LIMIT 1")
+        except Exception:
+            row = None
+        players = []
+        if row:
+            players = load_json_blob(row, key="data") or []
+            fetched_at = row["fetched_at"] if "fetched_at" in row.keys() else None
+        # fallback: if empty, report meta so UI can degrade gracefully
+        if not isinstance(players, list):
+            players = []
+        # optional edge filter ?edge=BUY
+        edge_filter = (qs.get("edge", [None])[0] or "").upper()
+        if edge_filter in ("BUY", "SELL", "NEUTRAL"):
+            players = [p for p in players if (p.get("edge") or "").upper() == edge_filter]
+        # cap
+        limit = 300
+        try:
+            if qs.get("limit", [None])[0]:
+                limit = max(10, min(800, int(qs.get("limit")[0])))
+        except Exception:
+            pass
+        self.json({"players": players[:limit], "count": len(players), "fetched_at": fetched_at, "meta": {"source": "market_consensus", "preseason_note": "Market pts empty until Week 1 publish; rank comparison (ECR/ADP) works now."}})
+
     def handle_waiver(self, conn):
         # reuse projections but filter to free agents (not rostered)
         row = try_fetch_one(conn, "SELECT data FROM rosters ORDER BY season DESC, week DESC LIMIT 1")
@@ -620,7 +650,7 @@ def main():
     Handler.db_path = db_path
     print(f"hub read-only proxy → {db_path} (mode=ro)")
     print(f"listening on http://{args.host}:{args.port}  (127.0.0.1 only)")
-    print("endpoints: /health, /hub-api/meta, /hub-api/projections, /hub-api/matchups, /hub-api/roster, /hub-api/news, /hub-api/refresh-log, /hub-api/team-ratings")
+    print("endpoints: /health, /hub-api/meta, /hub-api/projections, /hub-api/matchups, /hub-api/roster, /hub-api/news, /hub-api/refresh-log, /hub-api/team-ratings, /hub-api/comparison")
     print("zero writes, zero tokens, read-only")
 
     httpd = HTTPServer((args.host, args.port), Handler)

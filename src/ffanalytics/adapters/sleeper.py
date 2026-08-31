@@ -60,3 +60,29 @@ def get_league_matchups(league_id: str, week: int, session=None) -> list[dict]:
     http = _session_or_default(session)
     resp = _get_with_retry(http, f"{BASE_URL}/league/{league_id}/matchups/{week}", timeout=10)
     return resp.json()
+
+
+def get_sleeper_players(session=None) -> dict:
+    """Fetch full NFL player directory keyed by Sleeper player_id.
+    Contains gsis_id (nflverse player_id), position, team, full_name.
+    """
+    http = _session_or_default(session)
+    resp = _get_with_retry(http, f"{BASE_URL}/players/nfl", timeout=30)
+    return resp.json()
+
+
+def get_sleeper_projections(season: int, week: int, season_type: str = "regular", session=None) -> dict:
+    """Fetch Sleeper market projections for a given season/week.
+
+    Returns dict keyed by Sleeper player_id -> {pts_ppr, pass_yd, rush_yd, ...}.
+    Free, includes projected stats (pass_yd, rush_yd, rec, rec_yd, etc.) + pts_ppr.
+    Empty dict when preseason / not yet published.
+    """
+    http = _session_or_default(session)
+    # Sleeper path is /projections/nfl/{season_type}/{season}/{week}
+    url = f"{BASE_URL}/projections/nfl/{season_type}/{season}/{week}"
+    resp = _get_with_retry(http, url, timeout=15)
+    try:
+        return resp.json()
+    except Exception:
+        return {}

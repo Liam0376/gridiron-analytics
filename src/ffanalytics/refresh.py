@@ -159,6 +159,8 @@ def run_refresh_with_data(
     try:
         player_stats = nflverse.get_weekly_player_stats(stats_season, nfl_module=nfl_module)
         data["player_stats"] = player_stats
+        data["model_projections"] = []
+        _model_projs: list[dict] = []
         
         # Build stat-level projections for target week using production stat_projector
         try:
@@ -188,6 +190,8 @@ def run_refresh_with_data(
                 pid = str(s.get("player_id") or s.get("id") or "")
                 if pid in proj_map:
                     s["projected_points"] = proj_map[pid]["projected_points"]
+            _model_projs = projs
+            data["model_projections"] = projs
         except Exception as p_exc:
             logger.warning(f"Projection model execution warning: {p_exc}")
 
@@ -198,6 +202,56 @@ def run_refresh_with_data(
         status["nflverse"] = False
         # Set empty default on failure
         data["player_stats"] = []
+        data["model_projections"] = []
+        _model_projs = []
+
+    # --- Market consensus: Sleeper projections (pts + stats) + FantasyPros ECR/ADP ---
+    # Free, local, isolated — failures do not abort refresh; comparison degrades to model-only.
+    try:
+        from ffanalytics.adapters import fantasypros as fp_adapter
+        from ffanalytics.comparison import build_comparison, map_market_to_gsis
+
+        current_wk_m = _compute_nfl_week()
+        target_wk_m = current_wk_m if current_wk_m > 0 else 1
+        # Sleeper players map (gsis_id crosswalk) — cached fetch, okay to repeat
+        try:
+            sleeper_players_map = sleeper.get_sleeper_players(session=sleeper_session)
+        except Exception:
+            sleeper_players_map = {}
+        # Market projections keyed by sleeper_id -> pts_ppr + stats
+        try:
+            market_raw = sleeper.get_sleeper_projections(season, target_wk_m, session=sleeper_session)
+        except Exception:
+            market_raw = {}
+        market_by_gsis = {}
+        try:
+            if market_raw and sleeper_players_map:
+                market_by_gsis = map_market_to_gsis(market_raw, sleeper_players_map)
+        except Exception:
+            market_by_gsis = {}
+        # FantasyPros ECR/ADP ranks (free tier)
+        try:
+            fpros_players_list = fp_adapter.get_fantasypros_players()
+        except Exception:
+            fpros_players_list = []
+        data["sleeper_players_map"] = sleeper_players_map  # not stored, used for comparison only
+        data["market_by_gsis"] = market_by_gsis
+        data["fpros_players"] = fpros_players_list if isinstance(fpros_players_list, list) else []
+        # Build enriched comparison rows (model vs market + ranks)
+        try:
+            data["comparison"] = build_comparison(_model_projs, market_by_gsis, fpros_players_list)
+        except Exception as cmp_exc:
+            logger.warning(f"Comparison build failed: {cmp_exc}")
+            data["comparison"] = []
+
+        _log(conn, "market", True, None, ran_at_iso)
+        status["market"] = True
+    except Exception as exc:
+        _log(conn, "market", False, str(exc), ran_at_iso)
+        status["market"] = False
+        data["comparison"] = []
+        data["market_by_gsis"] = {}
+        data["fpros_players"] = []
 
     # Fetch news and trending
     try:
@@ -296,6 +350,34 @@ def run_refresh_with_data(
                    VALUES (?, ?, 'fantasypros_news', ?, ?)""",
                 (season, week, json.dumps(data["fantasypros_news"]), now.isoformat()),
             )
+        # Market consensus (model vs Sleeper pts+stats vs FantasyPros ECR/ADP) — hub reads read-only
+        if data.get("comparison"):
+            try:
+                conn.execute(
+                    """CREATE TABLE IF NOT EXISTS market_consensus (
+                        season INTEGER NOT NULL,
+                        week INTEGER NOT NULL,
+                        data JSON NOT NULL,
+                        fetched_at TEXT NOT NULL
+                    )"""
+                )
+                conn.execute(
+                    """INSERT INTO market_consensus (season, week, data, fetched_at)
+                       VALUES (?, ?, ?, ?)""",
+                    (season, week, json.dumps(data["comparison"]), now.isoformat()),
+                )
+            except Exception as mc_exc:
+                logger.warning(f"market_consensus store failed: {mc_exc}")
+        # Also store FPros ranks + market stats raw for debugging (best-effort, optional)
+        if data.get("fpros_players"):
+            try:
+                conn.execute(
+                    """INSERT INTO news_data (season, week, kind, data, fetched_at)
+                       VALUES (?, ?, 'fpros_ranks', ?, ?)""",
+                    (season, week, json.dumps(data["fpros_players"][:800]), now.isoformat()),
+                )
+            except Exception:
+                pass
 
         # Resolve outcomes for shadow recommendations using actual player stats
         try:
