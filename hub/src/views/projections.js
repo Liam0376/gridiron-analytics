@@ -160,6 +160,7 @@ export async function renderProjections(root) {
             <input id="localSearch" placeholder="Try:  pos:WR wind>15  or  healthy:true  — chips: pos, team, opp, proj, wind, interval, trending" autocomplete="off" />
           </label>
           <span class="kicker" id="countLabel" style="white-space:nowrap"></span>
+          <button class="chip" id="toggleProjSortDir" title="Flip sorting: highest ↔ lowest">↕ Highest → Lowest</button>
         </div>
         <div class="filters" id="quickChips">
           <button class="chip" data-chip="pos:QB">QB</button>
@@ -261,10 +262,25 @@ export async function renderProjections(root) {
       if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = k==='player_name' ? 1 : -1; }
       currentPage = 1;
       updateTable();
+      updateSortToggleLabel();
     };
     th.addEventListener('click', triggerSort);
     th.addEventListener('keydown', e=>{ if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); triggerSort(); }});
   });
+  function updateSortToggleLabel(){
+    const btn = root.querySelector('#toggleProjSortDir');
+    if (!btn) return;
+    const dirLabel = sortDir===-1 ? 'Highest → Lowest' : 'Lowest → Highest';
+    btn.textContent = `↕ ${dirLabel}`;
+    btn.title = `Currently ${dirLabel} by ${sortKey} — click to flip`;
+  }
+  root.querySelector('#toggleProjSortDir')?.addEventListener('click', ()=>{
+    sortDir *= -1;
+    currentPage = 1;
+    updateTable();
+    updateSortToggleLabel();
+  });
+  updateSortToggleLabel();
 
   function filteredWithEdge(base) {
     let rows = filterPlayers(base, currentQuery);

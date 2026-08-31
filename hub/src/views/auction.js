@@ -214,15 +214,32 @@ export async function renderAuction(root) {
   const buyCount = [...compById.values()].filter(c => c.edge === 'BUY').length;
   const sellCount = [...compById.values()].filter(c => c.edge === 'SELL').length;
   const marketCovered = [...compById.values()].filter(c => c.market_season_points != null || c.market_points != null).length;
-
-  // Position filter
+  // Filters
   const activePos = params.get('pos') || 'ALL';
-  const filteredPlayers = activePos === 'ALL'
-    ? availablePlayers
-    : availablePlayers.filter(p => (p.position || '').toUpperCase() === activePos);
-
-  // Edge filter for auction
   const auctionEdge = params.get('edge') || 'ALL';
+  // Sorting: ?sort=auction&dir=-1  (default auction descending = highest to lowest)
+  const allowedSort = new Set(['player_name','position','weekly','ros','marketRos','deltaRos','fp_ecr','fp_adp','vor','auction','edge_score','tier']);
+  const auctionSortKey = allowedSort.has(params.get('sort')) ? params.get('sort') : 'auction';
+  const auctionSortDir = params.get('dir') === '1' ? 1 : -1;
+
+  let filteredPlayers = activePos === 'ALL'
+    ? [...availablePlayers]
+    : availablePlayers.filter(p => (p.position || '').toUpperCase() === activePos);
+  if (hasComparison && compareAuctionEnabled && auctionEdge !== 'ALL') {
+    filteredPlayers = filteredPlayers.filter(p => (p.edge || 'NEUTRAL') === auctionEdge);
+  }
+  // Sort: numeric descending is highest to lowest; ascending is lowest to highest
+  filteredPlayers.sort((a,b)=>{
+    const av = a[auctionSortKey];
+    const bv = b[auctionSortKey];
+    // handle string vs number, nulls last
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * auctionSortDir;
+    if (typeof av === 'string' && typeof bv === 'string') return av.localeCompare(bv) * auctionSortDir;
+    return String(av).localeCompare(String(bv)) * auctionSortDir;
+  });
 
   root.innerHTML = `
     <div class="hero reveal in">
@@ -398,20 +415,34 @@ export async function renderAuction(root) {
         <span class="mono" style="color:var(--text-faint); margin-left:auto">ECR 519 / ADP 695 via CSVs — full, not sparse</span>
       </div>
       ` : ''}
-      <div class="table-wrap" style="border:0; border-radius:0; overflow-x:auto">
+      <div class="card" style="padding:8px 12px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+        <span class="kicker">Sort</span>
+        <span class="mono" style="font-size:11px; color:var(--text-muted)">Click any header to sort — </span>
+        <button class="chip ${auctionSortKey==='auction' ? 'active' : ''}" data-sort="auction" title="Sort by Auction $">Auction $ ${auctionSortKey==='auction' ? (auctionSortDir===-1 ? '▼ Highest → Lowest' : '▲ Lowest → Highest') : '↕'}</button>
+        <button class="chip ${auctionSortKey==='ros' ? 'active' : ''}" data-sort="ros">Gridiron Season ${auctionSortKey==='ros' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</button>
+        ${compareAuctionEnabled && hasComparison ? `<button class="chip ${auctionSortKey==='marketRos' ? 'active' : ''}" data-sort="marketRos">Market Season ${auctionSortKey==='marketRos' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</button><button class="chip ${auctionSortKey==='deltaRos' ? 'active' : ''}" data-sort="deltaRos">Δ ${auctionSortKey==='deltaRos' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</button>` : ''}
+        <button class="chip" id="toggleSortDir" title="Flip highest↔lowest">↕ ${auctionSortDir===-1 ? 'Highest → Lowest' : 'Lowest → Highest'}</button>
+        <span class="mono" style="font-size:11px; color:var(--text-faint); margin-left:auto">Tip: click headers to sort any column both ways</span>
+      </div>
+      <div class="table-wrap" style="border:0; border-radius:0; overflow-x:auto; margin-top:10px">
         <table style="min-width:${compareAuctionEnabled && hasComparison ? '1180px' : '720px'}">
           <thead>
             <tr>
-              <th>#</th><th>Player</th><th>Pos</th>
+              <th style="width:32px">#</th>
+              <th data-sort="player_name" tabindex="0" role="button" aria-label="Sort by Player" style="cursor:pointer">Player ${auctionSortKey==='player_name' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
+              <th data-sort="position" tabindex="0" role="button" aria-label="Sort by Pos" style="cursor:pointer">Pos ${auctionSortKey==='position' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
               ${compareAuctionEnabled && hasComparison ? `
-              <th style="color:var(--amber); border-bottom:2px solid var(--amber)" title="Gridiron weekly projection (stat_projector)">Gridiron Wk</th>
-              <th style="color:var(--amber); border-bottom:2px solid var(--amber)" title="Gridiron season = weekly ×17">Gridiron<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--amber); opacity:0.7">Season 17g</span></th>
-              <th style="color:var(--sky); border-bottom:2px solid var(--sky)" title="Market season — FantasyPros season projections (596, full YDS/TDS) — fallback Sleeper weekly ×17">Market<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--sky); opacity:0.7">Season 17g</span></th>
-              <th style="border-bottom:2px solid var(--border)" title="Season Δ = Gridiron Season − Market Season">Season Δ<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--text-faint)">Grid−Mkt</span></th>
-              <th title="FantasyPros ECR 519 + Tiers via CSV">ECR</th>
-              <th title="FantasyPros ADP 695 via CSV">ADP</th>
-              ` : `<th>Model Wk</th><th>Season (17g)</th>`}
-              <th>VOR</th><th>Auction $</th>${compareAuctionEnabled && hasComparison ? '<th>Edge</th>' : ''}<th>Interval</th><th>T</th><th>Draft</th>
+              <th data-sort="weekly" tabindex="0" role="button" aria-label="Sort by Gridiron Wk" style="color:var(--amber); border-bottom:2px solid var(--amber); cursor:pointer" title="Gridiron weekly projection (stat_projector)">Gridiron Wk ${auctionSortKey==='weekly' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--amber); opacity:0.7">Season 17g</span></th>
+              <th data-sort="ros" tabindex="0" role="button" aria-label="Sort by Gridiron Season" style="color:var(--amber); border-bottom:2px solid var(--amber); cursor:pointer" title="Gridiron season = weekly ×17">Gridiron<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--amber); opacity:0.7">Season 17g ${auctionSortKey==='ros' ? (auctionSortDir===-1 ? '▼' : '▲') : ''}</span></th>
+              <th data-sort="marketRos" tabindex="0" role="button" aria-label="Sort by Market Season" style="color:var(--sky); border-bottom:2px solid var(--sky); cursor:pointer" title="Market season — FantasyPros season projections (596, full YDS/TDS) — fallback Sleeper weekly ×17">Market<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--sky); opacity:0.7">Season 17g ${auctionSortKey==='marketRos' ? (auctionSortDir===-1 ? '▼' : '▲') : ''}</span></th>
+              <th data-sort="deltaRos" tabindex="0" role="button" aria-label="Sort by Season Δ" style="border-bottom:2px solid var(--border); cursor:pointer" title="Season Δ = Gridiron Season − Market Season">Season Δ<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--text-faint)">Grid−Mkt ${auctionSortKey==='deltaRos' ? (auctionSortDir===-1 ? '▼' : '▲') : ''}</span></th>
+              <th data-sort="fp_ecr" tabindex="0" role="button" aria-label="Sort by ECR" style="cursor:pointer" title="FantasyPros ECR 519 + Tiers via CSV">ECR ${auctionSortKey==='fp_ecr' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
+              <th data-sort="fp_adp" tabindex="0" role="button" aria-label="Sort by ADP" style="cursor:pointer" title="FantasyPros ADP 695 via CSV">ADP ${auctionSortKey==='fp_adp' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
+              ` : `<th data-sort="weekly" tabindex="0" role="button" style="cursor:pointer">Model Wk ${auctionSortKey==='weekly' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th><th data-sort="ros" tabindex="0" role="button" style="cursor:pointer">Season (17g) ${auctionSortKey==='ros' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>`}
+              <th data-sort="vor" tabindex="0" role="button" aria-label="Sort by VOR" style="cursor:pointer">VOR ${auctionSortKey==='vor' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
+              <th data-sort="auction" tabindex="0" role="button" aria-label="Sort by Auction $" style="cursor:pointer">Auction $ ${auctionSortKey==='auction' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
+              ${compareAuctionEnabled && hasComparison ? '<th data-sort="edge_score" tabindex="0" role="button" aria-label="Sort by Edge" style="cursor:pointer">Edge ↕</th>' : ''}
+              <th>Interval</th><th data-sort="tier" tabindex="0" role="button" style="cursor:pointer">T ${auctionSortKey==='tier' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th><th>Draft</th>
             </tr>
           </thead>
           <tbody>
@@ -516,6 +547,30 @@ export async function renderAuction(root) {
     const p = new URLSearchParams(location.hash.split('?')[1] || '');
     if (e.target.checked) p.set('hide', '1');
     else p.delete('hide');
+    location.hash = 'auction?' + p.toString();
+  });
+
+  // Sort: click header or sort chips to order highest↔lowest
+  root.querySelectorAll('[data-sort]').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const key = th.getAttribute('data-sort');
+      const p = new URLSearchParams(location.hash.split('?')[1] || '');
+      const curKey = p.get('sort') || 'auction';
+      const curDir = p.get('dir') === '1' ? 1 : -1;
+      let nextDir = -1;
+      if (curKey === key) nextDir = curDir * -1;
+      else nextDir = (key === 'player_name' ? 1 : -1);
+      p.set('sort', key);
+      p.set('dir', String(nextDir));
+      location.hash = 'auction?' + p.toString();
+    });
+    th.addEventListener('keydown', e=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); th.click(); }});
+  });
+  root.querySelector('#toggleSortDir')?.addEventListener('click', ()=>{
+    const p = new URLSearchParams(location.hash.split('?')[1] || '');
+    const curDir = p.get('dir') === '1' ? 1 : -1;
+    p.set('sort', p.get('sort') || 'auction');
+    p.set('dir', String(curDir * -1));
     location.hash = 'auction?' + p.toString();
   });
 
