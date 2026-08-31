@@ -89,12 +89,20 @@ export async function renderAuction(root) {
   ]);
   let players = data.players || [];
   const compById = new Map((compRaw.players || []).map(c => [String(c.player_id), c]));
+  // Secondary lookup by name+position (comparison uses synthetic IDs, projections use real IDs)
+  const compByNamePos = new Map();
+  for (const c of (compRaw.players || [])) {
+    const key = `${(c.player_name||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim()}|${(c.position||'').toUpperCase()}`;
+    compByNamePos.set(key, c);
+  }
 
   // Merge any market-only or rookie players from compRaw into players list if missing
   const existingIds = new Set(players.map(p => String(p.player_id)));
+  const existingByNamePos = new Set(players.map(p => `${(p.player_name||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim()}|${(p.position||'').toUpperCase()}`));
   for (const c of (compRaw.players || [])) {
     const cid = String(c.player_id);
-    if (!existingIds.has(cid)) {
+    const nkey = `${(c.player_name||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim()}|${(c.position||'').toUpperCase()}`;
+    if (!existingIds.has(cid) && !existingByNamePos.has(nkey)) {
       players.push({
         player_id: cid,
         player_name: c.player_name,
@@ -105,6 +113,7 @@ export async function renderAuction(root) {
         ...c,
       });
       existingIds.add(cid);
+      existingByNamePos.add(nkey);
     }
   }
 
@@ -124,7 +133,7 @@ export async function renderAuction(root) {
   const remaining = SEASON_GAMES;
   const rosPlayers = players.map(p => {
     const pid = String(p.player_id);
-    const c = compById.get(pid);
+    const c = compById.get(pid) || compByNamePos.get(`${(p.player_name||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim()}|${(p.position||'').toUpperCase()}`);
     // Prefer comparison model_points (weekly projection from stat_projector wk10) if available
     const weeklyModel = c && c.model_points != null ? Number(c.model_points) : Number(p.projected_points ?? p.point_estimate ?? 0);
     const weeklyMarket = c && c.market_points != null ? Number(c.market_points) : null;

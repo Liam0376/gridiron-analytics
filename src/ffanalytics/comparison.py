@@ -473,15 +473,18 @@ def build_comparison(
         adp_pos = fp.get("rank_adp_pos")
         tier = fp.get("tier")
 
+        # Use FP season total as model source when Gridiron has no data (preseason)
+        model_pts_fp = m_pts / 17.0 if m_pts is not None else 0.0
+
         rows.append({
             "player_id": pid,
             "player_name": name,
             "position": pos,
             "team": team,
             "opponent_team": "",
-            "model_points": 0.0,
+            "model_points": round(model_pts_fp, 2),
             "market_points": round(m_pts / 17.0, 2) if m_pts is not None else None,
-            "delta_points": round(0 - (m_pts / 17.0), 2) if m_pts is not None else None,
+            "delta_points": round(model_pts_fp - (m_pts / 17.0), 2) if m_pts is not None else None,
             "model_overall_rank": None,
             "model_pos_rank": None,
             "fp_ecr": int(ecr) if ecr else None,
@@ -499,10 +502,10 @@ def build_comparison(
             "stat_deltas": [],
             "market_season_points": round(m_pts, 1) if m_pts is not None else None,
             "market_season_stats": m_stats,
-            "model_season_points": 0.0,
-            "delta_season": round(0 - m_pts, 1) if m_pts is not None else None,
+            "model_season_points": round(m_pts, 1) if m_pts is not None else 0.0,
+            "delta_season": 0.0 if m_pts is not None else None,
             "season_stat_deltas": [],
-            "point_estimate": 0.0,
+            "point_estimate": round(model_pts_fp, 2),
             "projection_lower": None,
             "projection_upper": None,
             "width": 20.0,
