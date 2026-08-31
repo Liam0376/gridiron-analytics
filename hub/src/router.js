@@ -1,9 +1,9 @@
 const routes = [
   { id: 'dashboard', label: 'Dashboard', path: '#dashboard' },
+  { id: 'team', label: 'Team Hub', path: '#team' },
   { id: 'matchups', label: 'Matchups', path: '#matchups' },
   { id: 'projections', label: 'Projections', path: '#projections' },
-  { id: 'tierlists', label: 'Tierlists', path: '#tierlists' },
-  { id: 'auction', label: 'Auction', path: '#auction' },
+  { id: 'tierlists', label: 'Tier Lists', path: '#tierlists' },
   { id: 'roster', label: 'My Roster', path: '#roster' },
   { id: 'waiver', label: 'Waiver', path: '#waiver' },
   { id: 'trade', label: 'Trade Lab', path: '#trade' },

@@ -69,6 +69,23 @@ def get_league_matchups(league_id: str, week: int, session=None) -> list[dict]:
     return resp.json()
 
 
+def get_users(league_id: str, session=None) -> list[dict]:
+    """Fetch users for a league, returning user records with user_id, display_name, team_name, avatar."""
+    http = _session_or_default(session)
+    resp = _get_with_retry(http, f"{BASE_URL}/league/{league_id}/users", timeout=10)
+    data = resp.json()
+    users = []
+    for u in data:
+        meta = u.get("metadata") or {}
+        users.append({
+            "user_id": str(u.get("user_id", "")),
+            "display_name": u.get("display_name") or u.get("username") or "",
+            "team_name": meta.get("team_name") or "",
+            "avatar": u.get("avatar"),
+        })
+    return users
+
+
 def get_sleeper_players(session=None) -> dict:
     """Fetch full NFL player directory keyed by Sleeper player_id.
     Contains gsis_id (nflverse player_id), position, team, full_name.

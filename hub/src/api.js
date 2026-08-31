@@ -76,11 +76,11 @@ export async function fetchMatchups({ week } = {}) {
   return { leagueMatchups: [], nflSlate: [], week: week ?? null };
 }
 
-export async function fetchRoster() {
+export async function fetchRoster({ roster_id } = {}) {
   // Hub proxy is the only source that can join rosters + player_stats read-only
-  const hub = await tryHub('/roster');
+  const hub = await tryHub(`/roster${roster_id ? `?roster_id=${encodeURIComponent(roster_id)}` : ''}`);
   if (hub) return hub;
-  return { roster: [], bench: [], leagueRosters: [] };
+  return { starters: [], bench: [], reserve: [], myRoster: [], teamMeta: {}, leagueRosters: [] };
 }
 
 export async function fetchWaiver() {

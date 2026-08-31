@@ -512,4 +512,64 @@ def build_comparison(
             "wind_mph": None,
         })
 
+    # Calculate Auction ($ Gridiron VOR) & Market Auction ($ FP/SG consensus)
+    starter_budget_pool = 2040.0
+    pos_repl_counts = {"QB": 12, "RB": 28, "WR": 32, "TE": 12, "K": 12, "DEF": 12}
+
+    model_repl_pts = {}
+    for pos_k, count in pos_repl_counts.items():
+        pos_rows = [r for r in rows if r.get("position") == pos_k and r.get("model_season_points") is not None]
+        pos_rows.sort(key=lambda r: float(r["model_season_points"]), reverse=True)
+        if len(pos_rows) >= count:
+            model_repl_pts[pos_k] = float(pos_rows[count - 1]["model_season_points"])
+        elif pos_rows:
+            model_repl_pts[pos_k] = float(pos_rows[-1]["model_season_points"]) * 0.8
+        else:
+            model_repl_pts[pos_k] = 100.0
+
+    market_repl_pts = {}
+    for pos_k, count in pos_repl_counts.items():
+        pos_rows = [r for r in rows if r.get("position") == pos_k and r.get("market_season_points") is not None]
+        pos_rows.sort(key=lambda r: float(r["market_season_points"]), reverse=True)
+        if len(pos_rows) >= count:
+            market_repl_pts[pos_k] = float(pos_rows[count - 1]["market_season_points"])
+        elif pos_rows:
+            market_repl_pts[pos_k] = float(pos_rows[-1]["market_season_points"]) * 0.8
+        else:
+            market_repl_pts[pos_k] = 100.0
+
+    total_model_vor = sum(max(0.0, float(r.get("model_season_points") or 0) - model_repl_pts.get(r.get("position"), 100.0)) for r in rows) or 1.0
+    total_market_vor = sum(max(0.0, float(r.get("market_season_points") or 0) - market_repl_pts.get(r.get("position"), 100.0)) for r in rows) or 1.0
+
+    for r in rows:
+        pos_k = r.get("position")
+        msp = r.get("model_season_points")
+        mk_sp = r.get("market_season_points")
+        sg_val = r.get("statsguy_value")
+
+        m_vor = max(0.0, float(msp) - model_repl_pts.get(pos_k, 100.0)) if msp is not None else 0.0
+        if m_vor > 0:
+            auction_val = max(1, int(round((m_vor / total_model_vor) * starter_budget_pool)))
+        elif msp and msp > 50:
+            auction_val = 1
+        else:
+            auction_val = 0
+        r["auction"] = auction_val
+
+        mk_vor = max(0.0, float(mk_sp) - market_repl_pts.get(pos_k, 100.0)) if mk_sp is not None else 0.0
+        if mk_vor > 0:
+            mk_auction_val = max(1, int(round((mk_vor / total_market_vor) * starter_budget_pool)))
+        elif sg_val is not None and sg_val > 0:
+            mk_auction_val = max(1, int(round((sg_val / 9500.0) ** 1.2 * 65.0)))
+        elif mk_sp and mk_sp > 50:
+            mk_auction_val = 1
+        else:
+            mk_auction_val = None
+        r["marketAuction"] = mk_auction_val
+
+        if auction_val is not None and mk_auction_val is not None:
+            r["deltaAuction"] = int(auction_val - mk_auction_val)
+        else:
+            r["deltaAuction"] = None
+
     return rows

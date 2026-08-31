@@ -7,17 +7,18 @@ import { renderDashboard } from './views/dashboard.js';
 import { renderMatchups } from './views/matchups.js';
 import { renderProjections } from './views/projections.js';
 import { renderTierlists } from './views/tierlists.js';
-import { renderAuction } from './views/auction.js';
+import { renderTeam } from './views/team.js';
 import { renderRoster } from './views/roster.js';
 import { renderWaiver } from './views/waiver.js';
 import { renderTrade } from './views/trade.js';
 
 const views = {
   dashboard: renderDashboard,
+  team: renderTeam,
   matchups: renderMatchups,
   projections: renderProjections,
   tierlists: renderTierlists,
-  auction: renderAuction,
+  auction: renderTeam,
   roster: renderRoster,
   waiver: renderWaiver,
   trade: renderTrade,

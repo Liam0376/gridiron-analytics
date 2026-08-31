@@ -136,6 +136,12 @@ def run_refresh_with_data(
     # Get Sleeper data
     try:
         league_settings = sleeper.get_league_settings(config.LEAGUE_ID, session=sleeper_session)
+        try:
+            users = sleeper.get_users(config.LEAGUE_ID, session=sleeper_session)
+            league_settings["users"] = users
+        except Exception as u_exc:
+            logger.warning(f"Failed to fetch sleeper users: {u_exc}")
+            league_settings["users"] = []
         rosters = sleeper.get_rosters(config.LEAGUE_ID, session=sleeper_session)
         injury_status = sleeper.get_injury_statuses(session=sleeper_session)
         current_week = _compute_nfl_week()
@@ -150,7 +156,7 @@ def run_refresh_with_data(
         _log(conn, "sleeper", False, str(exc), ran_at_iso)
         status["sleeper"] = False
         # Set empty defaults on failure
-        data["league_settings"] = {"scoring_settings": {}, "roster_positions": []}
+        data["league_settings"] = {"scoring_settings": {}, "roster_positions": [], "users": []}
         data["rosters"] = []
         data["injury_status"] = {}
         data["matchups"] = []

@@ -50,3 +50,15 @@ def test_get_league_matchups_returns_list():
     result = sleeper.get_league_matchups("123", week=1, session=session)
     assert len(result) == 2
     assert result[0]["matchup_id"] == 1
+
+def test_get_users_returns_user_records():
+    from ffanalytics.adapters import sleeper
+    payload = [
+        {"user_id": "12345", "display_name": "JohnDoe", "metadata": {"team_name": "The Champs"}, "avatar": "av1"},
+        {"user_id": "67890", "username": "Jane", "metadata": {}, "avatar": None},
+    ]
+    session = _mock_session(payload)
+    users = sleeper.get_users("123", session=session)
+    assert len(users) == 2
+    assert users[0] == {"user_id": "12345", "display_name": "JohnDoe", "team_name": "The Champs", "avatar": "av1"}
+    assert users[1]["display_name"] == "Jane"

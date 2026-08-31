@@ -164,6 +164,51 @@ def load_json_blob(row, key="data"):
         return None
 
 SLEEPER_PLAYERS_CACHE = {}
+SLEEPER_USERS_CACHE = {}
+
+def get_sleeper_users(conn=None):
+    global SLEEPER_USERS_CACHE
+    if not SLEEPER_USERS_CACHE:
+        if conn:
+            try:
+                row = try_fetch_one(conn, "SELECT data FROM league_settings ORDER BY season DESC LIMIT 1")
+                l_data = load_json_blob(row) or {}
+                db_users = l_data.get("users") or []
+                for u in db_users:
+                    if isinstance(u, dict):
+                        uid = str(u.get("user_id", ""))
+                        if uid:
+                            avatar = u.get("avatar")
+                            avatar_url = f"https://sleepercdn.com/avatars/thumbs/{avatar}" if avatar else None
+                            SLEEPER_USERS_CACHE[uid] = {
+                                "user_id": uid,
+                                "display_name": u.get("display_name") or uid,
+                                "team_name": u.get("team_name") or u.get("display_name") or f"Team {uid[:4]}",
+                                "avatar": avatar,
+                                "avatar_url": avatar_url,
+                            }
+            except Exception:
+                pass
+        if not SLEEPER_USERS_CACHE:
+            try:
+                import urllib.request
+                req = urllib.request.urlopen("https://api.sleeper.app/v1/league/1397736035240173568/users", timeout=5)
+                users_list = json.loads(req.read().decode())
+                for u in users_list:
+                    uid = str(u.get("user_id"))
+                    meta = u.get("metadata") or {}
+                    avatar = u.get("avatar")
+                    avatar_url = f"https://sleepercdn.com/avatars/thumbs/{avatar}" if avatar else None
+                    SLEEPER_USERS_CACHE[uid] = {
+                        "user_id": uid,
+                        "display_name": u.get("display_name") or uid,
+                        "team_name": meta.get("team_name") or u.get("display_name") or f"Team {uid[:4]}",
+                        "avatar": avatar,
+                        "avatar_url": avatar_url,
+                    }
+            except Exception:
+                SLEEPER_USERS_CACHE = {}
+    return SLEEPER_USERS_CACHE
 
 def get_sleeper_player_name(player_id: str) -> str:
     global SLEEPER_PLAYERS_CACHE
@@ -293,6 +338,25 @@ class Handler(BaseHTTPRequestHandler):
         if r and not (r["lat"] == 40.0 and r["lon"] == -74.0):
             weather_placeholder = False
 
+        # teams list containing all 12 teams
+        teams = []
+        rosters_row = try_fetch_one(conn, "SELECT data FROM rosters ORDER BY rowid DESC LIMIT 1")
+        rosters = load_json_blob(rosters_row) or []
+        users_map = get_sleeper_users(conn)
+
+        for r in (rosters if isinstance(rosters, list) else []):
+            if not isinstance(r, dict): continue
+            r_id = r.get("roster_id")
+            o_id = str(r.get("owner_id") or "")
+            u_info = users_map.get(o_id, {})
+            owner_name = u_info.get("display_name") or u_info.get("team_name") or f"Team {r_id}"
+            teams.append({
+                "roster_id": r_id,
+                "user_id": o_id,
+                "owner_name": owner_name,
+                "avatar": u_info.get("avatar"),
+            })
+
         self.json({
             "season": data.get("season") or season,
             "week": week,
@@ -304,6 +368,7 @@ class Handler(BaseHTTPRequestHandler):
             "scoring_settings": scoring,
             "roster_positions": roster_pos,
             "counts": counts,
+            "teams": teams,
             "weather_placeholder": weather_placeholder,
             "db": str(self.db_path),
         })
@@ -491,7 +556,35 @@ class Handler(BaseHTTPRequestHandler):
         row = try_fetch_one(conn, "SELECT data FROM injury_status ORDER BY rowid DESC LIMIT 1")
         injuries = load_json_blob(row) or {}
 
-        # Pre-load Sleeper player metadata dictionary if available
+        # Load comparison market_consensus blob from DB
+        comp_row = try_fetch_one(conn, "SELECT data FROM market_consensus ORDER BY fetched_at DESC LIMIT 1")
+        comp_list = load_json_blob(comp_row, key="data") or []
+
+        def _norm_n(name: str) -> str:
+            if not name: return ""
+            import re
+            n = name.lower().strip()
+            n = re.sub(r"\b(jr\.?|sr\.?|ii|iii|iv|v)\b", "", n)
+            n = re.sub(r"[^a-z0-9 ]", "", n)
+            return re.sub(r"\s+", " ", n).strip()
+
+        comp_by_id = {}
+        comp_by_name_pos = {}
+        comp_by_name = {}
+        for c in (comp_list if isinstance(comp_list, list) else []):
+            if isinstance(c, dict):
+                pid = str(c.get("player_id", ""))
+                if pid:
+                    comp_by_id[pid] = c
+                p_name = c.get("player_name") or ""
+                pos = (c.get("position") or "").upper()
+                norm = _norm_n(p_name)
+                if norm:
+                    if pos:
+                        comp_by_name_pos[(norm, pos)] = c
+                    comp_by_name[norm] = c
+
+        # Pre-load Sleeper player & user metadata
         global SLEEPER_PLAYERS_CACHE
         if not SLEEPER_PLAYERS_CACHE:
             try:
@@ -501,6 +594,54 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 SLEEPER_PLAYERS_CACHE = {}
 
+        users_map = get_sleeper_users(conn)
+
+        # Build list of 12 league rosters summary (allTeams)
+        all_teams = []
+        for r in (rosters if isinstance(rosters, list) else []):
+            if not isinstance(r, dict): continue
+            r_id = r.get("roster_id")
+            o_id = str(r.get("owner_id") or "")
+            u_info = users_map.get(o_id, {})
+            disp_name = u_info.get("display_name") or u_info.get("team_name") or f"Team {r_id}"
+            t_name = u_info.get("team_name") or u_info.get("display_name") or f"Team {r_id}"
+            all_teams.append({
+                "roster_id": r_id,
+                "user_id": o_id,
+                "owner_id": o_id,
+                "owner_name": disp_name,
+                "display_name": disp_name,
+                "team_name": t_name,
+                "avatar": u_info.get("avatar"),
+                "avatar_url": u_info.get("avatar_url"),
+                "players_count": len(r.get("players") or []),
+            })
+
+        # Target roster selection: ?roster_id=N or ?owner_id=X. Default to roster_id=1.
+        req_roster_id = (qs.get("roster_id", [None])[0] or "").strip()
+        req_owner_id = (qs.get("owner_id", [None])[0] or "").strip()
+
+        target_roster = None
+        if req_roster_id and isinstance(rosters, list):
+            for r in rosters:
+                if isinstance(r, dict) and str(r.get("roster_id")).lower() == req_roster_id.lower():
+                    target_roster = r
+                    break
+        elif req_owner_id and isinstance(rosters, list):
+            for r in rosters:
+                if isinstance(r, dict) and str(r.get("owner_id") or "").lower() == req_owner_id.lower():
+                    target_roster = r
+                    break
+
+        if not target_roster and isinstance(rosters, list):
+            # Default to roster_id=1
+            for r in rosters:
+                if isinstance(r, dict) and str(r.get("roster_id")) == "1":
+                    target_roster = r
+                    break
+            if not target_roster and rosters:
+                target_roster = rosters[0]
+
         # map player_id / gsis_id -> stats
         pmap = {}
         for p in (players if isinstance(players, list) else []):
@@ -508,49 +649,110 @@ class Handler(BaseHTTPRequestHandler):
                 pid = str(p.get("player_id") or p.get("id") or "")
                 if pid: pmap[pid] = p
 
-        starters, bench = [], []
-        if rosters and isinstance(rosters, list):
-            # Sleeper rosters: first team with players is active team
-            first = None
-            for r in rosters:
-                if isinstance(r, dict) and r.get("players") and len(r.get("players", [])) > 0:
-                    first = r
-                    break
-            if not first and rosters:
-                first = rosters[0]
+        starters, bench, reserve = [], [], []
+        team_info = {}
+        if target_roster and isinstance(target_roster, dict):
+            r_id = target_roster.get("roster_id")
+            o_id = str(target_roster.get("owner_id") or "")
+            u_info = users_map.get(o_id, {})
+            disp_name = u_info.get("display_name") or u_info.get("team_name") or f"Team {r_id}"
+            t_name = u_info.get("team_name") or u_info.get("display_name") or f"Team {r_id}"
+            team_info = {
+                "roster_id": r_id,
+                "user_id": o_id,
+                "owner_id": o_id,
+                "owner_name": disp_name,
+                "team_name": t_name,
+                "avatar": u_info.get("avatar"),
+                "avatar_url": u_info.get("avatar_url"),
+            }
+            ids = target_roster.get("players") or []
+            raw_starters = set(target_roster.get("starters") or [])
+            raw_reserve = set(target_roster.get("reserve") or [])
 
-            if first and isinstance(first, dict):
-                ids = first.get("players") or []
-                raw_starters = set(first.get("starters") or [])
-                for idx, pid in enumerate(ids):
-                    sp = SLEEPER_PLAYERS_CACHE.get(str(pid), {})
-                    p_name = sp.get("full_name") or f"{sp.get('first_name','')} {sp.get('last_name','')}".strip() or str(pid)
-                    pos = (sp.get("position") or ("DEF" if str(pid).isalpha() else "UNK")).upper()
-                    team = (sp.get("team") or "").upper()
-                    gsis = sp.get("gsis_id")
+            # Slot counters for starters
+            pos_counters = {"QB": 0, "RB": 0, "WR": 0, "TE": 0, "FLEX": 0, "K": 0, "DEF": 0}
+            for idx, pid in enumerate(ids):
+                sp = SLEEPER_PLAYERS_CACHE.get(str(pid), {})
+                p_name = sp.get("full_name") or f"{sp.get('first_name','')} {sp.get('last_name','')}".strip() or str(pid)
+                pos = (sp.get("position") or ("DEF" if str(pid).isalpha() else "UNK")).upper()
+                team = (sp.get("team") or "").upper()
+                gsis = sp.get("gsis_id")
 
-                    st = pmap.get(str(gsis) if gsis else str(pid)) or {}
-                    pts = float(st.get("projected_points") or st.get("fantasy_points") or 0)
+                st = pmap.get(str(gsis) if gsis else str(pid)) or {}
+                pts = float(st.get("projected_points") or st.get("fantasy_points") or 0)
 
-                    item = {
-                        "player_id": str(pid),
-                        "player_name": p_name,
-                        "position": pos,
-                        "team": team,
-                        "projected_points": round(pts, 2),
-                        "projection_lower": round(pts - 2.5, 2),
-                        "projection_upper": round(pts + 2.5, 2),
-                        "width": 5.0,
-                        "injury_status": injuries.get(str(pid)) or sp.get("injury_status"),
-                        "opponent_team": st.get("opponent_team") or "",
-                        "slot": f"SLOT {idx+1}" if str(pid) in raw_starters else "BENCH",
-                    }
-                    if idx < 10 or str(pid) in raw_starters:
-                        starters.append(item)
-                    else:
-                        bench.append(item)
+                comp = (
+                    comp_by_id.get(str(pid)) or
+                    (comp_by_id.get(str(gsis)) if gsis else None) or
+                    comp_by_name_pos.get((_norm_n(p_name), pos)) or
+                    comp_by_name.get(_norm_n(p_name)) or
+                    {}
+                )
 
-        self.json({"starters": starters, "bench": bench, "myRoster": starters, "meta": {"rosters": len(rosters), "players": len(players)}})
+                is_starter = str(pid) in raw_starters or (not raw_starters and idx < 10)
+                is_ir = str(pid) in raw_reserve
+
+                slot_label = "BENCH"
+                if is_ir:
+                    slot_label = "IR"
+                elif is_starter:
+                    pos_counters[pos] = pos_counters.get(pos, 0) + 1
+                    count = pos_counters[pos]
+                    if pos == "QB": slot_label = "QB"
+                    elif pos == "RB": slot_label = f"RB{count}" if count <= 2 else f"FLEX{count-2}"
+                    elif pos == "WR": slot_label = f"WR{count}" if count <= 2 else f"FLEX{count-2}"
+                    elif pos == "TE": slot_label = "TE" if count == 1 else f"FLEX{count-1}"
+                    elif pos == "K": slot_label = "K"
+                    elif pos == "DEF": slot_label = "DEF"
+                    else: slot_label = f"SLOT {idx+1}"
+
+                item = {
+                    "player_id": str(pid),
+                    "player_name": p_name,
+                    "position": pos,
+                    "team": team,
+                    "projected_points": round(pts, 2),
+                    "projection_lower": round(pts - 2.5, 2),
+                    "projection_upper": round(pts + 2.5, 2),
+                    "width": 5.0,
+                    "injury_status": injuries.get(str(pid)) or sp.get("injury_status"),
+                    "opponent_team": st.get("opponent_team") or "",
+                    "slot": slot_label,
+                    # Comparison enrichment
+                    "market_season_points": comp.get("market_season_points"),
+                    "model_points": comp.get("model_points") if comp.get("model_points") is not None else round(pts, 2),
+                    "auction": comp.get("auction"),
+                    "marketAuction": comp.get("marketAuction"),
+                    "deltaAuction": comp.get("deltaAuction"),
+                    "edge": comp.get("edge") or "NEUTRAL",
+                    "fp_ecr": comp.get("fp_ecr"),
+                    "fp_ecr_pos": comp.get("fp_ecr_pos"),
+                    "fp_adp": comp.get("fp_adp"),
+                    "fp_tier": comp.get("fp_tier"),
+                    "statsguy_rank": comp.get("statsguy_rank"),
+                    "statsguy_value": comp.get("statsguy_value"),
+                    "season_stat_deltas": comp.get("season_stat_deltas") or [],
+                    "market_season_stats": comp.get("market_season_stats") or {},
+                }
+                if is_ir:
+                    reserve.append(item)
+                elif is_starter:
+                    starters.append(item)
+                else:
+                    bench.append(item)
+
+        self.json({
+            "starters": starters,
+            "bench": bench,
+            "reserve": reserve,
+            "myRoster": starters,
+            "team_info": team_info,
+            "teamMeta": team_info,
+            "allTeams": all_teams,
+            "leagueRosters": all_teams,
+            "meta": {"rosters": len(rosters), "players": len(players)}
+        })
 
     def handle_news(self, conn):
         trending = []
