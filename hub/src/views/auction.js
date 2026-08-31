@@ -260,7 +260,7 @@ export async function renderAuction(root) {
   const activePos = params.get('pos') || 'ALL';
   const auctionEdge = params.get('edge') || 'ALL';
   // Sorting: ?sort=auction&dir=-1  (default auction descending = highest to lowest)
-  const allowedSort = new Set(['player_name','position','weekly','ros','marketRos','deltaRos','fp_ecr','fp_adp','vor','auction','edge_score','tier']);
+  const allowedSort = new Set(['player_name','position','weekly','ros','marketRos','deltaRos','fp_ecr','fp_adp','statsguy_rank','vor','auction','edge_score','tier']);
   const auctionSortKey = allowedSort.has(params.get('sort')) ? params.get('sort') : 'auction';
   const auctionSortDir = params.get('dir') === '1' ? 1 : -1;
 
@@ -508,7 +508,7 @@ export async function renderAuction(root) {
         <span class="mono" style="font-size:11px; color:var(--text-faint); margin-left:auto">Tip: click headers to sort any column both ways</span>
       </div>
       <div class="table-wrap" style="border:0; border-radius:0; overflow-x:auto; margin-top:10px">
-        <table style="min-width:${compareAuctionEnabled && hasComparison ? '1180px' : '720px'}">
+        <table style="min-width:${compareAuctionEnabled && hasComparison ? '1260px' : '720px'}">
           <thead>
             <tr>
               <th style="width:32px">#</th>
@@ -521,6 +521,7 @@ export async function renderAuction(root) {
               <th data-sort="deltaRos" tabindex="0" role="button" aria-label="Sort by Season Δ" style="border-bottom:2px solid var(--border); cursor:pointer" title="Season Δ = Gridiron Season − Market Season">Season Δ<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--text-faint)">Grid−Mkt ${auctionSortKey==='deltaRos' ? (auctionSortDir===-1 ? '▼' : '▲') : ''}</span></th>
               <th data-sort="fp_ecr" tabindex="0" role="button" aria-label="Sort by ECR" style="cursor:pointer" title="FantasyPros ECR 519 + Tiers via CSV">ECR ${auctionSortKey==='fp_ecr' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
               <th data-sort="fp_adp" tabindex="0" role="button" aria-label="Sort by ADP" style="cursor:pointer" title="FantasyPros ADP 695 via CSV">ADP ${auctionSortKey==='fp_adp' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
+              ${compareAuctionEnabled && hasComparison ? `<th data-sort="statsguy_rank" tabindex="0" role="button" aria-label="Sort by StatsGuy rank" style="cursor:pointer; color:var(--violet)" title="StatsGuy real-trade value 0-10000 (211 ranked, top 211 only)">SG ${auctionSortKey==='statsguy_rank' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>` : ''}
               ` : `<th data-sort="weekly" tabindex="0" role="button" style="cursor:pointer">Model Wk ${auctionSortKey==='weekly' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th><th data-sort="ros" tabindex="0" role="button" style="cursor:pointer">Season (17g) ${auctionSortKey==='ros' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>`}
               <th data-sort="vor" tabindex="0" role="button" aria-label="Sort by VOR" style="cursor:pointer">VOR ${auctionSortKey==='vor' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
               <th data-sort="auction" tabindex="0" role="button" aria-label="Sort by Auction $" style="cursor:pointer">Auction $ ${auctionSortKey==='auction' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
@@ -548,6 +549,7 @@ export async function renderAuction(root) {
                 <td>${deltaSeasonBadge(p.deltaRos)}</td>
                 <td class="mono" style="font-size:11px; color:var(--text-muted)">${p.fp_ecr != null ? `#${p.fp_ecr}${p.fp_tier ? ` <span style="background:var(--violet-dim); color:var(--violet); border:1px solid rgba(168,85,247,0.18); border-radius:999px; padding:1px 5px; font:700 10px 'JetBrains Mono',monospace">T${p.fp_tier}</span>` : ''}` : '—'}</td>
                 <td class="mono" style="font-size:11px; color:var(--text-muted)">${p.fp_adp != null ? '#'+p.fp_adp : '—'}</td>
+                ${compareAuctionEnabled && hasComparison ? `<td class="mono" style="font-size:11px; color:var(--violet)">${p.statsguy_rank!=null ? `#${p.statsguy_rank} <span style="color:var(--text-faint)">(${p.statsguy_value.toFixed(0)})</span>` : '—'}</td>` : ''}
                 ` : ''}
                 <td class="mono" style="color:${p.vor > 30 ? '#10B981' : p.vor > 15 ? 'var(--amber)' : 'var(--text-muted)'}">+${p.vor.toFixed(0)}</td>
                 <td><span class="badge" style="background:${p.auction >= 15 ? '#16A34A' : p.auction >= 5 ? 'var(--amber-dim)' : 'var(--surface-raised)'}; color:${p.auction >= 15 ? 'white' : p.auction >= 5 ? 'var(--amber)' : 'var(--text-muted)'}; border:1px solid ${p.auction >= 15 ? '#16A34A' : 'var(--border)'}">$${p.auction}</span></td>
