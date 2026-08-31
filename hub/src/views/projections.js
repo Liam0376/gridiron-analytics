@@ -326,7 +326,7 @@ export async function renderProjections(root) {
         const high = Number(p.projection_upper ?? p.upper_bound ?? proj + (p.width ?? 5)/2);
         const width = Number(p.width ?? p.projection_width ?? (high - low));
         const market = p.market_points != null ? Number(p.market_points).toFixed(1) : '—';
-        const ecr = p.fp_ecr != null ? `#${p.fp_ecr}${p.fp_ecr_pos ? ` (#${p.fp_ecr_pos} ${pos})` : ''}` : '—';
+        const ecr = p.fp_ecr != null ? `#${p.fp_ecr}${p.fp_ecr_pos ? ` (#${p.fp_ecr_pos} ${pos})` : ''}${p.fp_tier ? ` <span style="background:var(--violet-dim); color:var(--violet); border:1px solid rgba(168,85,247,0.18); border-radius:999px; padding:1px 5px; font:700 10px 'JetBrains Mono',monospace">T${p.fp_tier}</span>` : ''}` : '—';
         const adp = p.fp_adp != null ? `#${p.fp_adp}` : '—';
         const edgeCell = compareEnabled && hasComparison ? edgeBadge(p.edge) : '';
         const rowAccent = p.edge === 'BUY' ? 'var(--emerald)' : p.edge === 'SELL' ? 'var(--crimson)' : getTeamColor(p.team);

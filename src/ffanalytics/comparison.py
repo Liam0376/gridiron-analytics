@@ -182,6 +182,7 @@ def build_comparison(
         fp_ecr_pos = None
         fp_adp = None
         fp_adp_pos = None
+        fp_tier = None
         if fpros:
             # prefer PPR ranks, fall back to generic
             fp_ecr = fpros.get("rank_ecr_ppr") if fpros.get("rank_ecr_ppr") else fpros.get("rank_ecr")
@@ -189,6 +190,7 @@ def build_comparison(
             # ADP
             fp_adp = fpros.get("rank_adp_ppr") if fpros.get("rank_adp_ppr") else fpros.get("rank_adp")
             fp_adp_pos = fpros.get("rank_adp_pos")
+            fp_tier = fpros.get("tier")
             # FantasyPros uses 0 to mean unranked; coerce to None
             if fp_ecr == 0:
                 fp_ecr = None
@@ -196,8 +198,12 @@ def build_comparison(
                 fp_ecr_pos = None
             if fp_adp == 0:
                 fp_adp = None
+            if fp_tier == 0:
+                fp_tier = None
         # Sleeper ADP fallback — free, covers ~3125 gsis vs FP free tier 10 DST only.
         # Ensures ADP column shows for every draftable player even when FP ECR is sparse.
+        # CSV files (if present) already give full 695 ADP coverage, so this fallback
+        # only fires when CSV not loaded and API limited.
         if fp_adp is None and market:
             try:
                 sleeper_adp = market.get("adp_dd_ppr") if market.get("adp_dd_ppr") is not None else market.get("pos_adp_dd_ppr")
@@ -291,6 +297,7 @@ def build_comparison(
             "fp_ecr_pos": int(fp_ecr_pos) if fp_ecr_pos is not None else None,
             "fp_adp": int(fp_adp) if fp_adp is not None else None,
             "fp_adp_pos": int(fp_adp_pos) if fp_adp_pos is not None else None,
+            "fp_tier": int(fp_tier) if fp_tier is not None else None,
             "delta_rank": delta_rank,
             "delta_pos_rank": delta_pos_rank,
             "edge": edge,

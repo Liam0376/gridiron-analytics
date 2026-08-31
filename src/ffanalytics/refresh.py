@@ -229,9 +229,20 @@ def run_refresh_with_data(
                 market_by_gsis = map_market_to_gsis(market_raw, sleeper_players_map)
         except Exception:
             market_by_gsis = {}
-        # FantasyPros ECR/ADP ranks (free tier)
+        # FantasyPros ECR/ADP ranks — prefer local CSV exports (full 519 ECR + 695 ADP)
+        # over free API tier (10 DST limit). CSVs are checked at repo root / data.
         try:
-            fpros_players_list = fp_adapter.get_fantasypros_players()
+            try:
+                from ffanalytics.adapters.fantasypros_csv import get_fantasypros_csv_players
+                csv_players = get_fantasypros_csv_players()
+            except Exception as _csv_e:
+                csv_players = []
+                logger.info(f"FantasyPros CSV not loaded: {_csv_e}")
+            if csv_players:
+                fpros_players_list = csv_players
+                logger.info(f"FantasyPros CSV loaded: {len(csv_players)} players (ECR+ADP full)")
+            else:
+                fpros_players_list = fp_adapter.get_fantasypros_players()
         except Exception:
             fpros_players_list = []
         data["sleeper_players_map"] = sleeper_players_map  # not stored, used for comparison only

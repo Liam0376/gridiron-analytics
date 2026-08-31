@@ -94,6 +94,7 @@ export async function renderAuction(root) {
       fp_ecr: c?.fp_ecr ?? null,
       fp_ecr_pos: c?.fp_ecr_pos ?? null,
       fp_adp: c?.fp_adp ?? null,
+      fp_tier: c?.fp_tier ?? null,
       delta_rank: c?.delta_rank ?? null,
       edge: c?.edge || 'NEUTRAL',
       edge_score: c?.edge_score ?? 0,
@@ -427,8 +428,8 @@ export async function renderAuction(root) {
                 ${compareAuctionEnabled && hasComparison ? `
                 <td class="mono" style="color:var(--sky)">${p.marketRos != null ? p.marketRos.toFixed(0) : '—'}</td>
                 <td>${deltaSeasonBadge(p.deltaRos)}</td>
-                <td class="mono" style="font-size:11px; color:var(--text-muted)">${p.fp_ecr != null ? '#'+p.fp_ecr : '—'}</td>
-                <td class="mono" style="font-size:11px; color:var(--text-muted)">${p.fp_adp != null ? '#'+p.fp_adp : (p.fp_adp==null && p.marketRos==null ? '—' : '—')}</td>
+                <td class="mono" style="font-size:11px; color:var(--text-muted)">${p.fp_ecr != null ? `#${p.fp_ecr}${p.fp_tier ? ` <span style="background:var(--violet-dim); color:var(--violet); border:1px solid rgba(168,85,247,0.18); border-radius:999px; padding:1px 5px; font:700 10px 'JetBrains Mono',monospace">T${p.fp_tier}</span>` : ''}` : '—'}</td>
+                <td class="mono" style="font-size:11px; color:var(--text-muted)">${p.fp_adp != null ? '#'+p.fp_adp : '—'}</td>
                 ` : ''}
                 <td class="mono" style="color:${p.vor > 30 ? '#10B981' : p.vor > 15 ? 'var(--amber)' : 'var(--text-muted)'}">+${p.vor.toFixed(0)}</td>
                 <td><span class="badge" style="background:${p.auction >= 15 ? '#16A34A' : p.auction >= 5 ? 'var(--amber-dim)' : 'var(--surface-raised)'}; color:${p.auction >= 15 ? 'white' : p.auction >= 5 ? 'var(--amber)' : 'var(--text-muted)'}; border:1px solid ${p.auction >= 15 ? '#16A34A' : 'var(--border)'}">$${p.auction}</span></td>
