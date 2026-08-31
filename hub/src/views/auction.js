@@ -616,7 +616,7 @@ export async function renderAuction(root) {
           if (!compareAuctionEnabled || !hasComparison) return base;
           // inject auction + market footer
           const seasonDelta = p.deltaRos != null ? `<span class="mono" style="font-size:10px; color:${Number(p.deltaRos) > 8 ? 'var(--emerald)' : Number(p.deltaRos) < -8 ? 'var(--crimson)' : 'var(--text-faint)'}">${Number(p.deltaRos)>0?'+':''}${Number(p.deltaRos).toFixed(0)} season Δ</span>` : `<span class="mono" style="font-size:10px; color:var(--text-faint)">season Δ —</span>`;
-          return base.replace('</div>\\n', `  <div style="margin-top:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--border)"><span class="mono" style="font-size:10px; color:var(--text-muted)">Mkt ${p.marketRos != null ? p.marketRos.toFixed(0) : '—'}</span>${seasonDelta}<span class="spacer"></span>${edgeBadgeAuction(p.edge)}</div></div>\\n`);
+          return base.replace('</div>\\n', `  <div style="margin-top:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--border)"><button class="btn btn-ghost btn-sm focusBtn" data-pid="${p.player_id}" title="Focus for live advice" style="font-size:11px; padding:2px 6px">👁</button><span class="mono" style="font-size:10px; color:var(--text-muted)">Mkt ${p.marketRos != null ? p.marketRos.toFixed(0) : '—'}</span>${seasonDelta}<span class="spacer"></span>${edgeBadgeAuction(p.edge)}</div></div>\\n`);
         }).join('');
       })()}
     </div>
