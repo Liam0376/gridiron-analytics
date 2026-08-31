@@ -330,7 +330,7 @@ def build_comparison(
                 edge = "SELL"
                 edge_score = min(edge_score, delta_pts * 4)
 
-        # Stat deltas for panel — weekly (Sleeper weekly starter)
+        # Stat deltas for panel — weekly (Sleeper weekly starter) — only meaningful per position
         stat_deltas: list[dict] = []
         for mdl_k, slp_k, label in COMPARE_STATS:
             model_v = p.get(mdl_k)
@@ -339,14 +339,15 @@ def build_comparison(
                 try:
                     mv = float(model_v) if model_v is not None else 0.0
                     kv = float(market_v) if market_v is not None else 0.0
-                    d = round(mv - kv, 2) if (market_v is not None) else None
-                    stat_deltas.append({
-                        "key": mdl_k,
-                        "label": label,
-                        "model": round(mv, 2),
-                        "market": round(kv, 2) if market_v is not None else None,
-                        "delta": d,
-                    })
+                    if abs(mv) > 0.5 or (market_v is not None and abs(kv) > 0.5):
+                        d = round(mv - kv, 2) if (market_v is not None) else None
+                        stat_deltas.append({
+                            "key": mdl_k,
+                            "label": label,
+                            "model": round(mv, 2),
+                            "market": round(kv, 2) if market_v is not None else None,
+                            "delta": d,
+                        })
                 except Exception:
                     pass
 
@@ -362,7 +363,7 @@ def build_comparison(
                 edge = "SELL"
                 edge_score = min(edge_score, delta_season / 4)
         season_stat_deltas: list[dict] = []
-        # Model season stats = weekly stat ×17
+        # Model season stats = weekly stat ×17 — only keep meaningful for position (yards >10 or TD/rec >0.1)
         for mdl_k, _slp_k, label in COMPARE_STATS:
             market_s = market_season_stats.get(mdl_k)
             model_w = p.get(mdl_k)
@@ -371,8 +372,8 @@ def build_comparison(
                     mv_s = float(model_w) * 17 if model_w is not None else 0.0
                     kv_s = float(market_s) if market_s is not None else 0.0
                     d_s = round(mv_s - kv_s, 1) if market_s is not None else None
-                    # only keep if meaningful (model or market non-zero)
-                    if mv_s != 0 or market_s is not None:
+                    # keep only if either side is meaningful (>0.5 yards or >0.05 TD/rec)
+                    if abs(mv_s) > 0.5 or (market_s is not None and abs(kv_s) > 0.5):
                         season_stat_deltas.append({
                             "key": mdl_k,
                             "label": label,
