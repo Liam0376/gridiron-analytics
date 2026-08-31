@@ -141,6 +141,9 @@ export async function renderAuction(root) {
       fp_ecr_pos: c?.fp_ecr_pos ?? null,
       fp_adp: c?.fp_adp ?? null,
       fp_tier: c?.fp_tier ?? null,
+      statsguy_value: c?.statsguy_value ?? null,
+      statsguy_rank: c?.statsguy_rank ?? null,
+      statsguy_pos_rank: c?.statsguy_pos_rank ?? null,
       delta_rank: c?.delta_rank ?? null,
       edge: c?.edge || 'NEUTRAL',
       edge_score: c?.edge_score ?? 0,
@@ -207,6 +210,23 @@ export async function renderAuction(root) {
   marketStarters.forEach(pp=>{ pp.marketAuction=Math.max(1, Math.round((pp.marketVor/totalMarketVor)*totalStarterBudget)); });
   rosPlayers.filter(pp=>!marketStarters.includes(pp)).forEach(pp=> pp.marketAuction=1);
   rosPlayers.forEach(pp=>{ pp.deltaAuction = pp.auction - (pp.marketAuction||1); });
+  // Blend Market $ with StatsGuy real-trade 0-10000 (211 ranked) where available: 60% FP VOR $ + 40% SG $ (SG scaled to same budget)
+  const topFpAuction = Math.max(...rosPlayers.map(x=> x.marketAuction||0)) || 45;
+  const sgMax = 10000;
+  rosPlayers.forEach(pp=>{
+    if (pp.statsguy_value!=null) {
+      const sgAuction = Math.max(1, Math.round((pp.statsguy_value / sgMax) * topFpAuction));
+      const blended = Math.round(pp.marketAuction * 0.6 + sgAuction * 0.4);
+      pp.marketAuctionFP = pp.marketAuction;
+      pp.marketAuctionSG = sgAuction;
+      pp.marketAuction = blended;
+      pp.deltaAuction = pp.auction - blended;
+      // also adjust deltas for edge (recompute edge if blended changes significantly)
+      // keep original edge (rank+weekly based) but also consider blended $ edge
+      if (pp.deltaAuction >= 5 && pp.edge!=='BUY') { pp.edge='BUY'; pp.edge_score = Math.max(pp.edge_score||0, pp.deltaAuction); }
+      else if (pp.deltaAuction <= -5 && pp.edge!=='SELL') { pp.edge='SELL'; pp.edge_score = Math.min(pp.edge_score||0, pp.deltaAuction); }
+    }
+  });
   const allRanked = [...starters, ...benchPlayers].sort((a, b) => b.auction - a.auction || b.ros - a.ros);
 
   // Assign tiers
@@ -323,7 +343,7 @@ export async function renderAuction(root) {
         <div class="kpi-label">Market coverage (season)</div>
         <div class="kpi-value" style="color:var(--sky)">${marketCovered} / ${compById.size}</div>
         <div class="kpi-bar"><div class="kpi-bar-fill" style="background:var(--sky); width:${Math.round((marketCovered/Math.max(1, compById.size))*100)}%"></div></div>
-        <div class="micro faint" style="font-size:11px; margin-top:6px">FantasyPros season projections (596, YDS/TDS) + ECR 519/ADP 695 CSVs · Sleeper weekly fallback 98 starters</div>
+        <div class="micro faint" style="font-size:11px; margin-top:6px">Consensus Market $ — FP 596 VOR + SG 211 real trades (60/40) · ECR 519/ADP 695</div>
       </div>
       <div class="kpi-card" style="border-left:3px solid var(--amber)">
         <div class="kpi-label">Auction vs Market</div>
@@ -505,7 +525,7 @@ export async function renderAuction(root) {
       ${compareAuctionEnabled && hasComparison ? `
       <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; padding:8px 12px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; margin-bottom:10px; font:500 11px 'Fira Sans',sans-serif; line-height:1.4">
         <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--amber); border-radius:2px; display:inline-block"></span> <strong style="color:var(--amber)">Gridiron</strong> Model · Wk ×17 = season</span>
-        <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--sky); border-radius:2px; display:inline-block"></span> <strong style="color:var(--sky)">Market</strong> · FantasyPros season projections (596, full YDS/TDS) + Sleeper weekly fallback</span>
+        <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--sky); border-radius:2px; display:inline-block"></span> <strong style="color:var(--sky)">Market</strong> · Consensus 60% FP (596) + 40% SG real trades (211) VOR $200/12</span>
         <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--emerald); border-radius:2px; display:inline-block"></span> BUY = Model ≥ +51 pts vs Market (3/wk)</span>
         <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--crimson); border-radius:2px; display:inline-block"></span> SELL = Market ≥ +51 pts vs Model</span>
         <span class="mono" style="color:var(--text-faint); margin-left:auto">ECR 519 / ADP 695 via CSVs — full, not sparse</span>
@@ -538,7 +558,7 @@ export async function renderAuction(root) {
               ` : `<th data-sort="weekly" tabindex="0" role="button" style="cursor:pointer">Model Wk ${auctionSortKey==='weekly' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th><th data-sort="ros" tabindex="0" role="button" style="cursor:pointer">Season (17g) ${auctionSortKey==='ros' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>`}
               <th data-sort="vor" tabindex="0" role="button" aria-label="Sort by VOR" style="cursor:pointer">VOR ${auctionSortKey==='vor' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
               <th data-sort="auction" tabindex="0" role="button" aria-label="Sort by Gridiron $" style="cursor:pointer; color:var(--amber)" title="Gridiron $ — VOR $200/12">Gridiron $ ${auctionSortKey==='auction' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
-                            ${compareAuctionEnabled && hasComparison ? '<th data-sort="marketAuction" tabindex="0" role="button" aria-label="Sort by Market $" style="cursor:pointer; color:var(--sky)" title="Market $ — FP season VOR $200/12, 1:1 vs Gridiron $">Market $ ' + (auctionSortKey==='marketAuction' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕') + '</th><th data-sort="deltaAuction" tabindex="0" role="button" aria-label="Sort by $ Delta" style="cursor:pointer" title="Δ $ = Gridiron $ − Market $">Δ $ ' + (auctionSortKey==='deltaAuction' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕') + '</th>' : ''}
+                            ${compareAuctionEnabled && hasComparison ? '<th data-sort="marketAuction" tabindex="0" role="button" aria-label="Sort by Market $" style="cursor:pointer; color:var(--sky)" title="Market $ — Consensus 60% FP VOR + 40% SG real trades (211) $200/12">Market $ ' + (auctionSortKey==='marketAuction' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕') + '</th><th data-sort="deltaAuction" tabindex="0" role="button" aria-label="Sort by $ Delta" style="cursor:pointer" title="Δ $ = Gridiron $ − Market $">Δ $ ' + (auctionSortKey==='deltaAuction' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕') + '</th>' : ''}
               ${compareAuctionEnabled && hasComparison ? '<th data-sort="edge_score" tabindex="0" role="button" aria-label="Sort by Edge" style="cursor:pointer">Edge ↕</th>' : ''}
               <th>Interval</th><th data-sort="tier" tabindex="0" role="button" style="cursor:pointer">T ${auctionSortKey==='tier' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th><th>Draft</th>
             </tr>
