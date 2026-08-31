@@ -95,15 +95,8 @@ button { font: inherit; }
 
 /* Tables — dense: row height 36px, font 12-13px, sticky header + sticky first col per ui-ux-pro-max */
 .table-wrap { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); scroll-margin-top: var(--header-height); -webkit-transform: translateZ(0); transform: translateZ(0); }
-table { width: 100%; width: max-content; min-width: 100%; border-collapse: collapse; min-width: 760px; }
+table { width: 100%; border-collapse: collapse; min-width: 760px; }
 thead th { font: 600 11px 'Fira Sans', 'Instrument Sans', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); background: var(--surface); position: -webkit-sticky; position: sticky; top: 0; z-index: 2; white-space: nowrap; height: var(--table-row-height); }
-/* Safari 14+ sticky + 1600px table fix */
-@supports (-webkit-touch-callout: none) {
-  .table-wrap { overflow-x: scroll; }
-  table { width: max-content; }
-  thead th { position: -webkit-sticky; }
-}
-html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 tbody td { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); font: 400 12px 'Fira Sans', 'Instrument Sans', sans-serif; color: var(--text); white-space: nowrap; height: var(--table-row-height); }
 tbody tr:hover td {
   background-color: var(--surface-hover);
