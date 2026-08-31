@@ -57,7 +57,9 @@ def build_gsis_map(sleeper_players: dict) -> dict[str, str]:
     for sid, p in sleeper_players.items():
         gsis = p.get("gsis_id")
         if gsis:
-            m[str(sid)] = str(gsis)
+            gsis = str(gsis).strip()
+            if gsis:
+                m[str(sid)] = gsis
     return m
 
 
@@ -68,8 +70,10 @@ def map_market_to_gsis(market_by_sleeper: dict, sleeper_players: dict) -> dict[s
     for sid, proj in market_by_sleeper.items():
         gsis = gsis_map.get(str(sid))
         if gsis and isinstance(proj, dict) and proj:
-            # keep only meaningful projections (has pts_ppr)
-            if "pts_ppr" in proj:
+            # Keep if it has points or ADP (ADP covers ~3125 gsis vs 264 pts-only)
+            # ADP fallback gives every draftable an ADP rank even when weekly starter
+            # projection not yet published.
+            if "pts_ppr" in proj or "adp_dd_ppr" in proj or "pos_adp_dd_ppr" in proj:
                 out[gsis] = proj
     return out
 
@@ -153,10 +157,16 @@ def build_comparison(
         market_pts = None
         market_stats: dict[str, float] = {}
         if market:
-            try:
-                market_pts = float(market.get("pts_ppr") or market.get("pts_half_ppr") or 0)
-            except Exception:
-                market_pts = None
+            # pts_ppr absent => no weekly starter projection (ADP-only entry) -> keep None
+            if "pts_ppr" in market or "pts_half_ppr" in market:
+                try:
+                    raw = market.get("pts_ppr")
+                    if raw is None:
+                        raw = market.get("pts_half_ppr")
+                    if raw is not None:
+                        market_pts = float(raw)
+                except Exception:
+                    market_pts = None
             # pull market stats for delta panel
             for mdl_k, slp_k in MODEL_TO_SLEEPER.items():
                 v = market.get(slp_k)
@@ -186,6 +196,25 @@ def build_comparison(
                 fp_ecr_pos = None
             if fp_adp == 0:
                 fp_adp = None
+        # Sleeper ADP fallback — free, covers ~3125 gsis vs FP free tier 10 DST only.
+        # Ensures ADP column shows for every draftable player even when FP ECR is sparse.
+        if fp_adp is None and market:
+            try:
+                sleeper_adp = market.get("adp_dd_ppr") if market.get("adp_dd_ppr") is not None else market.get("pos_adp_dd_ppr")
+                # Sleeper uses 999/1000 for undrafted/fringe — treat as missing
+                if sleeper_adp is not None:
+                    v = float(sleeper_adp)
+                    if v < 500:
+                        fp_adp = int(v)
+                        if fp_adp_pos is None:
+                            pos_adp = market.get("pos_adp_dd_ppr")
+                            if pos_adp is not None:
+                                try:
+                                    fp_adp_pos = int(float(pos_adp))
+                                except Exception:
+                                    pass
+            except Exception:
+                pass
 
         # deltas
         delta_pts = None
