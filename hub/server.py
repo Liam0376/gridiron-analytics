@@ -294,8 +294,11 @@ class Handler(BaseHTTPRequestHandler):
             weather_placeholder = False
 
         self.json({
-            "season": season,
+            "season": data.get("season") or season,
             "week": week,
+            "leagueName": data.get("name") or data.get("league_name") or "Fantasy Bahamas",
+            "leagueId": data.get("league_id") or "1397736035240173568",
+            "totalRosters": data.get("total_rosters", 12),
             "lastUpdated": last,
             "last_updated": last,
             "scoring_settings": scoring,
@@ -468,52 +471,86 @@ class Handler(BaseHTTPRequestHandler):
 
     def handle_roster(self, conn, qs):
         # Build starters/bench from rosters + player_stats
-        row = try_fetch_one(conn, "SELECT data FROM rosters ORDER BY season DESC, week DESC LIMIT 1")
+        row = try_fetch_one(conn, "SELECT data FROM rosters ORDER BY rowid DESC LIMIT 1")
         rosters = load_json_blob(row) or []
         row = None
         try:
-            row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 ORDER BY season DESC, week DESC LIMIT 1")
+            row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 ORDER BY rowid DESC LIMIT 1")
         except: row = None
         if not row or not load_json_blob(row):
             try:
-                for cand in conn.execute("SELECT data FROM player_stats ORDER BY season DESC, week DESC LIMIT 10").fetchall():
+                for cand in conn.execute("SELECT data FROM player_stats ORDER BY rowid DESC LIMIT 10").fetchall():
                     data = load_json_blob(cand)
                     if isinstance(data, list) and len(data) > 10:
                         row = cand
                         break
             except: pass
         if not row:
-            row = try_fetch_one(conn, "SELECT data FROM player_stats ORDER BY season DESC, week DESC LIMIT 1")
+            row = try_fetch_one(conn, "SELECT data FROM player_stats ORDER BY rowid DESC LIMIT 1")
         players = load_json_blob(row) or []
-        row = try_fetch_one(conn, "SELECT data FROM injury_status ORDER BY season DESC LIMIT 1")
+        row = try_fetch_one(conn, "SELECT data FROM injury_status ORDER BY rowid DESC LIMIT 1")
         injuries = load_json_blob(row) or {}
 
-        # map player_id -> stats
-        pmap = {str(p.get("player_id") or p.get("id")): p for p in players if isinstance(p, dict)}
+        # Pre-load Sleeper player metadata dictionary if available
+        global SLEEPER_PLAYERS_CACHE
+        if not SLEEPER_PLAYERS_CACHE:
+            try:
+                import urllib.request
+                req = urllib.request.urlopen("https://api.sleeper.app/v1/players/nfl", timeout=5)
+                SLEEPER_PLAYERS_CACHE = json.loads(req.read().decode())
+            except Exception:
+                SLEEPER_PLAYERS_CACHE = {}
 
-        # flatten rostered players (all rosters) — for demo pick first roster as "my team" if multiple
+        # map player_id / gsis_id -> stats
+        pmap = {}
+        for p in (players if isinstance(players, list) else []):
+            if isinstance(p, dict):
+                pid = str(p.get("player_id") or p.get("id") or "")
+                if pid: pmap[pid] = p
+
         starters, bench = [], []
         if rosters and isinstance(rosters, list):
-            # Sleeper rosters have {roster_id, owner_id, players: [ids]}
-            first = rosters[0] if rosters else None
-            if first:
+            # Sleeper rosters: first team with players is active team
+            first = None
+            for r in rosters:
+                if isinstance(r, dict) and r.get("players") and len(r.get("players", [])) > 0:
+                    first = r
+                    break
+            if not first and rosters:
+                first = rosters[0]
+
+            if first and isinstance(first, dict):
                 ids = first.get("players") or []
-                for pid in ids[:16]:
-                    p = pmap.get(str(pid), {"player_id": str(pid), "short_name": str(pid), "position": "UNK"})
-                    pts = float(p.get("fantasy_points") or 0)
-                    starters.append({
+                raw_starters = set(first.get("starters") or [])
+                for idx, pid in enumerate(ids):
+                    sp = SLEEPER_PLAYERS_CACHE.get(str(pid), {})
+                    p_name = sp.get("full_name") or f"{sp.get('first_name','')} {sp.get('last_name','')}".strip() or str(pid)
+                    pos = (sp.get("position") or ("DEF" if str(pid).isalpha() else "UNK")).upper()
+                    team = (sp.get("team") or "").upper()
+                    gsis = sp.get("gsis_id")
+
+                    st = pmap.get(str(gsis) if gsis else str(pid)) or {}
+                    pts = float(st.get("projected_points") or st.get("fantasy_points") or 0)
+
+                    item = {
                         "player_id": str(pid),
-                        "player_name": p.get("short_name") or p.get("player_display_name") or str(pid),
-                        "position": (p.get("position") or "UNK").upper(),
-                        "projected_points": round(pts,2),
-                        "projection_lower": round(pts-2.5,2),
-                        "projection_upper": round(pts+2.5,2),
+                        "player_name": p_name,
+                        "position": pos,
+                        "team": team,
+                        "projected_points": round(pts, 2),
+                        "projection_lower": round(pts - 2.5, 2),
+                        "projection_upper": round(pts + 2.5, 2),
                         "width": 5.0,
-                        "injury_status": injuries.get(str(pid)),
-                        "team": p.get("recent_team") or "",
-                        "opponent_team": p.get("opponent_team") or "",
-                    })
-        self.json({"starters": starters[:10], "bench": bench, "myRoster": starters, "meta": {"rosters": len(rosters), "players": len(players)}})
+                        "injury_status": injuries.get(str(pid)) or sp.get("injury_status"),
+                        "opponent_team": st.get("opponent_team") or "",
+                        "slot": f"SLOT {idx+1}" if str(pid) in raw_starters else "BENCH",
+                    }
+                    if idx < 10 or str(pid) in raw_starters:
+                        starters.append(item)
+                    else:
+                        bench.append(item)
+
+        self.json({"starters": starters, "bench": bench, "myRoster": starters, "meta": {"rosters": len(rosters), "players": len(players)}})
 
     def handle_news(self, conn):
         trending = []
@@ -605,7 +642,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def handle_waiver(self, conn):
         # reuse projections but filter to free agents (not rostered)
-        row = try_fetch_one(conn, "SELECT data FROM rosters ORDER BY season DESC, week DESC LIMIT 1")
+        row = try_fetch_one(conn, "SELECT data FROM rosters ORDER BY rowid DESC LIMIT 1")
         rosters = load_json_blob(row) or []
         rostered = set()
         for r in rosters if isinstance(rosters, list) else []:

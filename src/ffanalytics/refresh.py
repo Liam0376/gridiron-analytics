@@ -281,10 +281,10 @@ def run_refresh_with_data(
             data["comparison"] = []
 
         _log(conn, "market", True, None, ran_at_iso)
-        result["market"] = True
+        status["market"] = True
     except Exception as exc:
         _log(conn, "market", False, str(exc), ran_at_iso)
-        result["market"] = False
+        status["market"] = False
         data["comparison"] = []
         data["market_by_gsis"] = {}
         data["fpros_players"] = []

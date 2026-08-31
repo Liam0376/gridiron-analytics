@@ -37,8 +37,15 @@ def get_league_settings(league_id: str, session=None) -> dict:
     resp = _get_with_retry(http, f"{BASE_URL}/league/{league_id}", timeout=10)
     data = resp.json()
     return {
-        "scoring_settings": data["scoring_settings"],
-        "roster_positions": data["roster_positions"],
+        "league_id": data.get("league_id") or league_id,
+        "name": data.get("name") or "Fantasy Bahamas",
+        "league_name": data.get("name") or "Fantasy Bahamas",
+        "season": data.get("season") or "2026",
+        "scoring_settings": data.get("scoring_settings", {}),
+        "roster_positions": data.get("roster_positions", []),
+        "settings": data.get("settings", {}),
+        "avatar": data.get("avatar"),
+        "total_rosters": data.get("total_rosters", 12),
     }
 
 def get_rosters(league_id: str, session=None) -> list[dict]:
