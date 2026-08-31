@@ -383,7 +383,8 @@ def build_weekly_projections(
     Incorporates Vegas lines and weather from schedule data.
     """
     reg = [s for s in season_stats if s.get("season_type") == "REG"]
-    prior_data = [s for s in reg if s.get("week", 0) < target_week]
+    filtered_prior = [s for s in reg if s.get("week", 0) < target_week]
+    prior_data = filtered_prior if filtered_prior else reg
 
     game_ctx = build_game_context(schedule)
 
@@ -418,9 +419,7 @@ def build_weekly_projections(
     projections = []
     for pid, info in player_info.items():
         team = info["team"]
-        ctx = game_ctx.get((team, target_week))
-        if not ctx:
-            continue
+        ctx = game_ctx.get((team, target_week)) or {"implied_total": 21.0, "wind": 0, "temp": 70, "opponent": "BYE"}
 
         history = player_games[pid]
         position = info["position"]

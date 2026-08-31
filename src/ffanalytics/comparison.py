@@ -163,12 +163,16 @@ def build_comparison(
 
     # Build enriched rows
     rows: list[dict] = []
+    seen_keys: set[tuple[str, str]] = set()
     for p in sorted_model:
         pid = str(p.get("player_id") or p.get("id") or "")
         if not pid:
             continue
         pos = (p.get("position") or p.get("position_group") or "UNK").upper()
         team = p.get("team") or p.get("recent_team") or ""
+        norm_name = _normalize_name(p.get("player_display_name") or p.get("player_name") or "")
+        if norm_name and pos:
+            seen_keys.add((norm_name, pos))
         model_pts = float(p.get("projected_points") or p.get("point_estimate") or 0)
 
         market = market_by_gsis.get(pid)
@@ -420,6 +424,89 @@ def build_comparison(
             "projection_upper": p.get("projection_upper"),
             "width": p.get("width"),
             "wind_mph": p.get("wind_mph"),
+        })
+
+    # Fallback pass: Add all draftable market players (CSVs, FP season projs, StatsGuy) not captured in model_projections
+    market_fallback_candidates: list[dict] = []
+    for fp in (fpros_players or []):
+        name = fp.get("player_name") or fp.get("short_name") or ""
+        norm = _normalize_name(name)
+        pos = (fp.get("position_id") or fp.get("position") or "").upper()
+        if pos == "DST": pos = "DEF"
+        if not norm or not pos or (norm, pos) in seen_keys:
+            continue
+        seen_keys.add((norm, pos))
+        team = (fp.get("team_id") or fp.get("team") or "").upper()
+        pid = f"fp_{fp.get('rank_ecr') or fp.get('rank_adp') or len(rows)+1}_{norm.replace(' ', '_')}"
+
+        # check FP season projections
+        m_pts = None
+        m_stats: dict[str, float] = {}
+        if fp_projections:
+            proj_row = fp_projections.get((norm, team, pos))
+            if not proj_row:
+                for (n, t, pp), r_row in fp_projections.items():
+                    if n == norm and pp == pos: proj_row = r_row; break
+            if proj_row:
+                try:
+                    if proj_row.get("fpts") is not None: m_pts = float(proj_row["fpts"])
+                except Exception: pass
+                for mk in ["passing_yards", "passing_tds", "passing_interceptions", "rushing_yards", "rushing_tds", "receiving_yards", "receiving_tds", "receptions", "fumbles_lost_total"]:
+                    if proj_row.get(mk) is not None:
+                        try: m_stats[mk] = float(proj_row[mk])
+                        except Exception: pass
+
+        # check StatsGuy
+        sg_val = None; sg_rk = None; sg_pos_rk = None
+        if statsguy_lut:
+            sg = _best_fpros_match(name, team, pos, statsguy_lut)
+            if sg:
+                try:
+                    if sg.get("value") is not None: sg_val = float(sg["value"])
+                    if sg.get("rank") is not None: sg_rk = int(sg["rank"])
+                    if sg.get("positionRank") is not None: sg_pos_rk = int(sg["positionRank"])
+                except Exception: pass
+
+        ecr = fp.get("rank_ecr_ppr") or fp.get("rank_ecr")
+        ecr_pos = fp.get("rank_ecr_pos")
+        adp = fp.get("rank_adp_ppr") or fp.get("rank_adp")
+        adp_pos = fp.get("rank_adp_pos")
+        tier = fp.get("tier")
+
+        rows.append({
+            "player_id": pid,
+            "player_name": name,
+            "position": pos,
+            "team": team,
+            "opponent_team": "",
+            "model_points": 0.0,
+            "market_points": round(m_pts / 17.0, 2) if m_pts is not None else None,
+            "delta_points": round(0 - (m_pts / 17.0), 2) if m_pts is not None else None,
+            "model_overall_rank": None,
+            "model_pos_rank": None,
+            "fp_ecr": int(ecr) if ecr else None,
+            "fp_ecr_pos": int(ecr_pos) if ecr_pos else None,
+            "fp_adp": int(adp) if adp else None,
+            "fp_adp_pos": int(adp_pos) if adp_pos else None,
+            "fp_tier": int(tier) if tier else None,
+            "statsguy_value": round(sg_val, 1) if sg_val is not None else None,
+            "statsguy_rank": sg_rk,
+            "statsguy_pos_rank": sg_pos_rk,
+            "delta_rank": None,
+            "delta_pos_rank": None,
+            "edge": "NEUTRAL",
+            "edge_score": 0.0,
+            "stat_deltas": [],
+            "market_season_points": round(m_pts, 1) if m_pts is not None else None,
+            "market_season_stats": m_stats,
+            "model_season_points": 0.0,
+            "delta_season": round(0 - m_pts, 1) if m_pts is not None else None,
+            "season_stat_deltas": [],
+            "point_estimate": 0.0,
+            "projection_lower": None,
+            "projection_upper": None,
+            "width": 20.0,
+            "wind_mph": None,
         })
 
     return rows

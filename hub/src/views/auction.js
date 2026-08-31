@@ -88,13 +88,31 @@ export async function renderAuction(root) {
     fetchComparison({ limit: 800 }).catch(() => ({ players: [], count: 0, fetched_at: null, meta: {} })),
   ]);
   let players = data.players || [];
+  const compById = new Map((compRaw.players || []).map(c => [String(c.player_id), c]));
+
+  // Merge any market-only or rookie players from compRaw into players list if missing
+  const existingIds = new Set(players.map(p => String(p.player_id)));
+  for (const c of (compRaw.players || [])) {
+    const cid = String(c.player_id);
+    if (!existingIds.has(cid)) {
+      players.push({
+        player_id: cid,
+        player_name: c.player_name,
+        position: c.position,
+        team: c.team,
+        projected_points: c.model_points || 0,
+        point_estimate: c.model_points || 0,
+        ...c,
+      });
+      existingIds.add(cid);
+    }
+  }
+
   if (!players.length) {
     root.innerHTML = `
       <div class="hero reveal in"><h1>Auction Draft</h1><p>No projection data. Run <code class="inline">bash hub/start.sh --auto</code> first.</p></div>`;
     return;
   }
-
-  const compById = new Map((compRaw.players || []).map(c => [String(c.player_id), c]));
   const hasComparison = compById.size > 0;
   let compareAuctionEnabled = hasComparison;
   // allow toggle via localStorage
