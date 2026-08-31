@@ -584,6 +584,7 @@ export async function renderAuction(root) {
       })()}
     </div>
     </div>
+    <div id="playerDetailModal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.7); backdrop-filter:blur(8px); align-items:center; justify-content:center; padding:16px"><div id="playerDetailContent" style="background:var(--surface); border:1px solid var(--border); border-radius:16px; max-width:640px; width:100%; max-height:90vh; overflow:auto"></div></div>
   `;
 
   // --- Event handlers ---
@@ -714,6 +715,52 @@ export async function renderAuction(root) {
     const p = new URLSearchParams(location.hash.split('?')[1] || '');
     p.delete('focus');
     location.hash = 'auction?' + p.toString();
+  });
+
+  // Draftea-style separate player modal (photo + values + stat graphs) — click any player cell/avatar
+  const _modal = root.querySelector('#playerDetailModal');
+  const _modalContent = root.querySelector('#playerDetailContent');
+  function openPlayerModal(pid){
+    const pl = allRanked.find(p=>String(p.player_id)===String(pid));
+    if (!pl || !_modal || !_modalContent) return;
+    _modalContent.innerHTML = `
+      <div style="padding:16px; display:flex; gap:16px; align-items:center; border-bottom:1px solid var(--border)">
+        ${playerAvatar(pl, 72)}
+        <div style="flex:1">
+          <div style="font:700 18px 'Fira Sans',sans-serif; display:flex; gap:8px; align-items:center; flex-wrap:wrap">${escapeHtml(pl.player_name)} ${posBadge(pl.position)} ${teamLogo(pl.team,20)}</div>
+          <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:4px">T${pl.fp_tier ?? pl.tier} · ECR #${pl.fp_ecr ?? '—'} · ADP #${pl.fp_adp ?? '—'} · <span style="color:var(--violet)">${pl.statsguy_value!=null?`SG ${pl.statsguy_value.toFixed(0)} (#${pl.statsguy_rank})`:'SG — outside top 211'}</span> · VOR +${pl.vor.toFixed(0)} · $${pl.auction} val · ${pl.edge}</div>
+          <div class="mono" style="font-size:11px; color:var(--text-muted)">Gridiron ${pl.weekly.toFixed(1)} wk → ${pl.ros.toFixed(0)} season · Market ${pl.marketRos!=null?pl.marketRos.toFixed(0):'—'} season</div>
+        </div>
+        <button id="closePlayerModal" style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:8px; color:var(--text); cursor:pointer">✕</button>
+      </div>
+      <div style="padding:16px; display:flex; flex-direction:column; gap:12px">
+        <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px">
+          <div style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:10px; text-align:center"><div class="kicker">Gridiron $</div><div class="mono" style="font-size:20px; font-weight:700; color:var(--amber)">$${pl.auction}</div><div class="micro faint">VOR ${pl.vor.toFixed(0)} · ${pl.edge}</div></div>
+          <div style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:10px; text-align:center"><div class="kicker">StatsGuy Market</div><div class="mono" style="font-size:20px; font-weight:700; color:var(--violet)">${pl.statsguy_value!=null?pl.statsguy_value.toFixed(0):'—'}</div><div class="micro faint">${pl.statsguy_rank?`#${pl.statsguy_rank} real trades`:'outside top 211'}</div></div>
+        </div>
+        ${(()=>{ const stats = pl.seasonStatDeltas && pl.seasonStatDeltas.length ? pl.seasonStatDeltas : []; if(!stats.length) return '<div class="micro faint">No season stat deltas for this player.</div>'; const maxAbs = Math.max(...stats.map(s=> Math.max(Math.abs(s.model), Math.abs(s.market||0), 10))); return `<div style="display:flex; flex-direction:column; gap:8px">${stats.slice(0,6).map(s=>{ const pctM=Math.min(100, Math.round(Math.abs(s.model)/maxAbs*100)); const pctK=s.market!=null?Math.min(100, Math.round(Math.abs(s.market)/maxAbs*100)):0; const dColor=s.delta!=null?(s.delta>0?'var(--emerald)':'var(--crimson)'):'var(--text-faint)'; return `<div style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:8px"><div style="display:flex; justify-content:space-between"><span class="mono" style="font-size:11px; color:var(--text-faint)">${s.label} season</span><span class="mono" style="font-size:11px; color:${dColor}; font-weight:700">${s.delta!=null?(s.delta>0?'+':'')+s.delta.toFixed(0):''}</span></div><div style="display:flex; gap:8px; align-items:center; margin-top:6px"><span class="mono" style="font-size:11px; min-width:40px; text-align:right; color:var(--amber)">${s.model.toFixed(0)}</span><div style="flex:1; height:8px; background:rgba(255,255,255,0.08); border-radius:999px; position:relative; overflow:hidden"><div style="position:absolute; left:0; top:0; bottom:0; width:${pctM}%; background:var(--amber); border-radius:999px"></div><div style="position:absolute; left:0; top:0; bottom:0; width:${pctK}%; background:var(--sky); opacity:0.6; border-radius:999px"></div></div><span class="mono" style="font-size:11px; min-width:40px; color:var(--text-muted)">${s.market!=null?s.market.toFixed(0):'—'}</span></div><div class="mono" style="font-size:10px; color:var(--text-faint); margin-top:4px"><span style="color:var(--amber)">● Gridiron</span> <span style="color:var(--sky)">● Market (FP season)</span></div></div>`}).join('')}</div>`; })()}
+        <div style="display:flex; gap:8px; margin-top:4px"><button class="btn btn-primary btn-sm" style="flex:1" id="modalFocusBtn" data-pid="${pl.player_id}">👁 Focus for live advice</button><button class="btn btn-ghost btn-sm" id="modalCloseBtn2">Close</button></div>
+      </div>
+    `;
+    _modal.style.display = 'flex';
+    _modal.querySelector('#closePlayerModal')?.addEventListener('click', ()=> _modal.style.display='none');
+    _modal.querySelector('#modalCloseBtn2')?.addEventListener('click', ()=> _modal.style.display='none');
+    _modal.querySelector('#modalFocusBtn')?.addEventListener('click', ()=>{
+      const p = new URLSearchParams(location.hash.split('?')[1] || '');
+      p.set('focus', pl.player_id);
+      location.hash = 'auction?' + p.toString();
+      _modal.style.display='none';
+    });
+    _modal.addEventListener('click', e=>{ if(e.target===_modal) _modal.style.display='none'; }, {once:true});
+  }
+  root.querySelectorAll('.player-cell').forEach(cell=>{
+    cell.style.cursor='pointer';
+    cell.title='Open Draftea-style details';
+    cell.addEventListener('click', ()=>{
+      const tr = cell.closest('tr');
+      const pid = tr?.dataset.pid || tr?.getAttribute('data-pid');
+      if (pid) openPlayerModal(pid);
+    });
   });
 
   // Sort: click header or sort chips to order highest↔lowest
