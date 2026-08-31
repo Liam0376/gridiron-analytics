@@ -541,7 +541,7 @@ export async function renderAuction(root) {
         <span class="mono" style="font-size:11px; color:var(--text-faint); margin-left:auto">Tip: click headers to sort any column both ways</span>
       </div>
       <div class="table-wrap" style="border:0; border-radius:0; overflow-x:auto; margin-top:10px">
-        <table style="min-width:${compareAuctionEnabled && hasComparison ? '1600px' : '720px'}">
+        <table style="min-width:${compareAuctionEnabled && hasComparison ? '1340px' : '720px'}">
           <thead>
             <tr>
               <th style="width:32px">#</th>
