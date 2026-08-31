@@ -177,6 +177,15 @@ export async function renderProjections(root) {
     </div>
 
     <div class="responsive-view">
+    ${compareEnabled && hasComparison ? `
+    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; padding:8px 12px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; margin-bottom:10px; font:500 11px 'Fira Sans',sans-serif; line-height:1.4">
+      <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--amber); border-radius:2px; display:inline-block"></span> <strong style="color:var(--amber)">Gridiron</strong> Model · weekly PPR (×17 for Auction)</span>
+      <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--sky); border-radius:2px; display:inline-block"></span> <strong style="color:var(--sky)">Sleeper</strong> Market · free Sleeper projections</span>
+      <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--emerald); border-radius:2px; display:inline-block"></span> BUY = Model ≥ +3 pts / ≥12 ranks better</span>
+      <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--crimson); border-radius:2px; display:inline-block"></span> SELL = Market ≥ +3 / 12 better</span>
+      <span class="mono" style="color:var(--text-faint); margin-left:auto">FP ECR/ADP sparse on free tier — Market pts primary</span>
+    </div>
+    ` : ''}
     <div class="table-wrap sticky-player reveal in" style="margin-top:16px">
       <table id="projTable" style="min-width:${compareEnabled && hasComparison ? '1180px' : '760px'}">
         <thead>
@@ -184,11 +193,11 @@ export async function renderProjections(root) {
             <th data-sort="player_name" tabindex="0" role="button" aria-label="Sort by Player">Player</th>
             <th data-sort="position" tabindex="0" role="button" aria-label="Sort by Position">Pos</th>
             <th data-sort="team" tabindex="0" role="button" aria-label="Sort by Team">Team</th>
-            <th data-sort="projected_points" tabindex="0" role="button" aria-label="Sort by Model Points">Model</th>
+            <th data-sort="projected_points" tabindex="0" role="button" aria-label="Sort by Gridiron Model Points" style="${compareEnabled && hasComparison ? 'color:var(--amber); border-bottom:2px solid var(--amber)' : ''}">Gridiron<br><span style="font:600 10px 'Fira Sans',sans-serif; color:${compareEnabled && hasComparison ? 'var(--amber)' : 'var(--text-faint)'}; opacity:0.7">Model</span></th>
             ${compareEnabled && hasComparison ? `
-            <th data-sort="market_points" tabindex="0" role="button" aria-label="Sort by Market Points">Market</th>
-            <th data-sort="delta_points" tabindex="0" role="button" aria-label="Sort by Points Delta">Δ Pts</th>
-            <th data-sort="fp_ecr" tabindex="0" role="button" aria-label="Sort by FantasyPros ECR">FP ECR</th>
+            <th data-sort="market_points" tabindex="0" role="button" aria-label="Sort by Sleeper Market Points" style="color:var(--sky); border-bottom:2px solid var(--sky)">Market<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--sky); opacity:0.7">Sleeper</span></th>
+            <th data-sort="delta_points" tabindex="0" role="button" aria-label="Sort by Points Delta" style="border-bottom:2px solid var(--border)">Δ<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--text-faint)">Grid−Mkt</span></th>
+            <th data-sort="fp_ecr" tabindex="0" role="button" aria-label="Sort by FantasyPros ECR">ECR</th>
             <th data-sort="delta_rank" tabindex="0" role="button" aria-label="Sort by Rank Delta">Δ Rk</th>
             <th data-sort="fp_adp" tabindex="0" role="button" aria-label="Sort by ADP">ADP</th>
             <th data-sort="edge_score" tabindex="0" role="button" aria-label="Sort by Edge">Edge</th>

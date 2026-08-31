@@ -384,9 +384,31 @@ export async function renderAuction(root) {
           </label>
         </div>
       </div>
+      ${compareAuctionEnabled && hasComparison ? `
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; padding:8px 12px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; margin-bottom:10px; font:500 11px 'Fira Sans',sans-serif; line-height:1.4">
+        <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--amber); border-radius:2px; display:inline-block"></span> <strong style="color:var(--amber)">Gridiron</strong> Model · Wk ×17 = season</span>
+        <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--sky); border-radius:2px; display:inline-block"></span> <strong style="color:var(--sky)">Sleeper</strong> Market · free Sleeper projections wk×17</span>
+        <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--emerald); border-radius:2px; display:inline-block"></span> BUY = Model ≥ +51 pts vs Market (3/wk)</span>
+        <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--crimson); border-radius:2px; display:inline-block"></span> SELL = Market ≥ +51 pts vs Model</span>
+        <span class="mono" style="color:var(--text-faint); margin-left:auto">FantasyPros ECR/ADP sparse on free tier (10 DST) — Market pts is primary</span>
+      </div>
+      ` : ''}
       <div class="table-wrap" style="border:0; border-radius:0; overflow-x:auto">
-        <table style="min-width:${compareAuctionEnabled && hasComparison ? '1120px' : '720px'}">
-          <thead><tr><th>#</th><th>Player</th><th>Pos</th><th>Model Wk</th><th>Season (17g)</th>${compareAuctionEnabled && hasComparison ? '<th style=\"color:var(--sky)\">Market Season</th><th>Season Δ</th><th>ECR</th><th>ADP</th>' : ''}<th>VOR</th><th>Auction $</th>${compareAuctionEnabled && hasComparison ? '<th>Edge</th>' : ''}<th>Interval</th><th>T</th><th>Draft</th></tr></thead>
+        <table style="min-width:${compareAuctionEnabled && hasComparison ? '1180px' : '720px'}">
+          <thead>
+            <tr>
+              <th>#</th><th>Player</th><th>Pos</th>
+              ${compareAuctionEnabled && hasComparison ? `
+              <th style="color:var(--amber); border-bottom:2px solid var(--amber)" title="Gridiron weekly projection (stat_projector)">Gridiron Wk</th>
+              <th style="color:var(--amber); border-bottom:2px solid var(--amber)" title="Gridiron season = weekly ×17">Gridiron<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--amber); opacity:0.7">Season 17g</span></th>
+              <th style="color:var(--sky); border-bottom:2px solid var(--sky)" title="Sleeper market weekly ×17 (free Sleeper /projections)">Market<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--sky); opacity:0.7">Season 17g</span></th>
+              <th style="border-bottom:2px solid var(--border)" title="Season Δ = Gridiron Season − Market Season">Season Δ<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--text-faint)">Grid−Mkt</span></th>
+              <th title="FantasyPros ECR (free tier limited)">ECR</th>
+              <th title="FantasyPros ADP (free tier limited)">ADP</th>
+              ` : `<th>Model Wk</th><th>Season (17g)</th>`}
+              <th>VOR</th><th>Auction $</th>${compareAuctionEnabled && hasComparison ? '<th>Edge</th>' : ''}<th>Interval</th><th>T</th><th>Draft</th>
+            </tr>
+          </thead>
           <tbody>
             ${(() => {
               let list = filteredPlayers;
