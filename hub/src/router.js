@@ -4,7 +4,7 @@ const routes = [
   { id: 'matchups', label: 'Matchups', path: '#matchups' },
   { id: 'projections', label: 'Projections', path: '#projections' },
   { id: 'tierlists', label: 'Tier Lists', path: '#tierlists' },
-  { id: 'roster', label: 'My Roster', path: '#roster' },
+  { id: 'roster', label: 'League Directory', path: '#roster' },
   { id: 'waiver', label: 'Waiver', path: '#waiver' },
   { id: 'trade', label: 'Trade Lab', path: '#trade' },
 ];

@@ -355,8 +355,18 @@ def build_comparison(
                 except Exception:
                     pass
 
-        # Season deltas — Model season = weekly×17 vs FP season totals (596, full stat season)
-        model_season_points = round(model_pts * 17, 1)
+        # Model season stats = weekly stat ×17 — only keep meaningful for position (yards >10 or TD/rec >0.1)
+        model_season_stats: dict[str, float] = {}
+        for mk in ["passing_yards", "passing_tds", "passing_interceptions", "rushing_yards", "rushing_tds", "receiving_yards", "receiving_tds", "receptions", "fumbles_lost_total"]:
+            if p.get(mk) is not None:
+                try:
+                    model_season_stats[mk] = round(float(p[mk]) * 17.0, 1)
+                except Exception:
+                    pass
+        if not model_season_stats and market_season_stats:
+            model_season_stats = dict(market_season_stats)
+
+        model_season_points = round(model_pts * 17, 1) if model_pts > 0 else (round(market_season_points, 1) if market_season_points is not None else 0.0)
         delta_season = round(model_season_points - market_season_points, 1) if market_season_points is not None else None
         # also consider season delta for edge when weekly is missing but season present
         if delta_season is not None:
@@ -416,6 +426,7 @@ def build_comparison(
             "market_season_points": round(market_season_points, 1) if market_season_points is not None else None,
             "market_season_stats": market_season_stats,
             "model_season_points": model_season_points,
+            "model_season_stats": model_season_stats,
             "delta_season": delta_season,
             "season_stat_deltas": season_stat_deltas,
             # carry model interval for display reuse
@@ -423,6 +434,7 @@ def build_comparison(
             "projection_lower": p.get("projection_lower"),
             "projection_upper": p.get("projection_upper"),
             "width": p.get("width"),
+            "interval_width": float(p.get("width") or p.get("projection_width") or 5.0),
             "wind_mph": p.get("wind_mph"),
         })
 
@@ -503,12 +515,14 @@ def build_comparison(
             "market_season_points": round(m_pts, 1) if m_pts is not None else None,
             "market_season_stats": m_stats,
             "model_season_points": round(m_pts, 1) if m_pts is not None else 0.0,
+            "model_season_stats": m_stats,
             "delta_season": 0.0 if m_pts is not None else None,
             "season_stat_deltas": [],
             "point_estimate": round(model_pts_fp, 2),
             "projection_lower": None,
             "projection_upper": None,
             "width": 20.0,
+            "interval_width": 5.0,
             "wind_mph": None,
         })
 

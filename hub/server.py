@@ -226,6 +226,420 @@ def get_sleeper_player_name(player_id: str) -> str:
         return f"{nm} ({pos})" if pos else nm
     return player_id
 
+NFL_TEAM_BYES_CACHE = {}
+
+def get_nfl_team_byes() -> dict[str, int]:
+    global NFL_TEAM_BYES_CACHE
+    if NFL_TEAM_BYES_CACHE:
+        return NFL_TEAM_BYES_CACHE
+    repo_root = Path(__file__).resolve().parent.parent
+    for fname in ["schedule_2026.json", "schedule_2025.json"]:
+        sched_file = repo_root / "data" / "nfl_cache" / fname
+        if sched_file.exists():
+            try:
+                with open(sched_file) as f:
+                    sched = json.load(f)
+                from collections import defaultdict
+                team_weeks = defaultdict(set)
+                for g in sched:
+                    w = g.get("week")
+                    if w and 1 <= w <= 18:
+                        if g.get("home_team"): team_weeks[g["home_team"]].add(w)
+                        if g.get("away_team"): team_weeks[g["away_team"]].add(w)
+                byes = {}
+                for t, weeks in team_weeks.items():
+                    missing = sorted(list(set(range(1, 19)) - weeks))
+                    if missing:
+                        byes[t] = missing[0]
+                if len(byes) >= 30:
+                    NFL_TEAM_BYES_CACHE = byes
+                    return NFL_TEAM_BYES_CACHE
+            except Exception:
+                pass
+    NFL_TEAM_BYES_CACHE = {
+        'ATL': 11, 'NYJ': 13, 'MIA': 6, 'DAL': 14, 'SF': 8, 'LA': 11, 'BUF': 7, 'TB': 10,
+        'MIN': 6, 'TEN': 9, 'LAC': 7, 'LV': 13, 'CLE': 11, 'NE': 11, 'KC': 5, 'HOU': 8,
+        'CIN': 6, 'CAR': 5, 'JAX': 7, 'CHI': 10, 'WAS': 7, 'IND': 13, 'ARI': 14, 'PIT': 9,
+        'NYG': 8, 'SEA': 11, 'PHI': 10, 'DET': 6, 'DEN': 10, 'NO': 8, 'BAL': 13, 'GB': 11
+    }
+    return NFL_TEAM_BYES_CACHE
+
+def _norm_n(name: str) -> str:
+    if not name: return ""
+    import re
+    n = name.lower().strip()
+    n = re.sub(r"\b(jr\.?|sr\.?|ii|iii|iv|v)\b", "", n)
+    n = re.sub(r"[^a-z0-9 ]", "", n)
+    return re.sub(r"\s+", " ", n).strip()
+
+def build_league_analytics(conn):
+    row = try_fetch_one(conn, "SELECT data FROM rosters ORDER BY rowid DESC LIMIT 1")
+    rosters = load_json_blob(row) or []
+    
+    row = None
+    try:
+        row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 ORDER BY rowid DESC LIMIT 1")
+    except Exception:
+        row = None
+    if not row or not load_json_blob(row):
+        try:
+            for cand in conn.execute("SELECT data FROM player_stats ORDER BY rowid DESC LIMIT 10").fetchall():
+                data = load_json_blob(cand)
+                if isinstance(data, list) and len(data) > 10:
+                    row = cand
+                    break
+        except Exception:
+            pass
+    if not row:
+        row = try_fetch_one(conn, "SELECT data FROM player_stats ORDER BY rowid DESC LIMIT 1")
+    players = load_json_blob(row) or []
+
+    row = try_fetch_one(conn, "SELECT data FROM injury_status ORDER BY rowid DESC LIMIT 1")
+    injuries = load_json_blob(row) or {}
+
+    comp_row = try_fetch_one(conn, "SELECT data FROM market_consensus ORDER BY fetched_at DESC LIMIT 1")
+    comp_list = load_json_blob(comp_row, key="data") or []
+
+    comp_by_id = {}
+    comp_by_name_pos = {}
+    comp_by_name = {}
+    for c in (comp_list if isinstance(comp_list, list) else []):
+        if isinstance(c, dict):
+            pid = str(c.get("player_id", ""))
+            if pid:
+                comp_by_id[pid] = c
+            p_name = c.get("player_name") or ""
+            pos = (c.get("position") or "").upper()
+            norm = _norm_n(p_name)
+            if norm:
+                if pos:
+                    comp_by_name_pos[(norm, pos)] = c
+                comp_by_name[norm] = c
+
+    global SLEEPER_PLAYERS_CACHE
+    if not SLEEPER_PLAYERS_CACHE:
+        try:
+            import urllib.request
+            req = urllib.request.urlopen("https://api.sleeper.app/v1/players/nfl", timeout=5)
+            SLEEPER_PLAYERS_CACHE = json.loads(req.read().decode())
+        except Exception:
+            SLEEPER_PLAYERS_CACHE = {}
+
+    users_map = get_sleeper_users(conn)
+    byes_map = get_nfl_team_byes()
+
+    pmap = {}
+    for p in (players if isinstance(players, list) else []):
+        if isinstance(p, dict):
+            pid = str(p.get("player_id") or p.get("id") or "")
+            if pid: pmap[pid] = p
+
+    teams_data_map = {}
+    team_summaries = []
+
+    for r in (rosters if isinstance(rosters, list) else []):
+        if not isinstance(r, dict): continue
+        r_id = r.get("roster_id")
+        o_id = str(r.get("owner_id") or "")
+        u_info = users_map.get(o_id, {})
+        disp_name = u_info.get("display_name") or u_info.get("team_name") or f"Team {r_id}"
+        t_name = u_info.get("team_name") or u_info.get("display_name") or f"Team {r_id}"
+        avatar = u_info.get("avatar")
+        avatar_url = u_info.get("avatar_url")
+
+        team_info = {
+            "roster_id": r_id,
+            "user_id": o_id,
+            "owner_id": o_id,
+            "owner_name": disp_name,
+            "display_name": disp_name,
+            "team_name": t_name,
+            "avatar": avatar,
+            "avatar_url": avatar_url,
+        }
+
+        ids = r.get("players") or []
+        raw_starters = set(r.get("starters") or [])
+        raw_reserve = set(r.get("reserve") or [])
+
+        starters, bench, reserve = [], [], []
+        pos_counters = {"QB": 0, "RB": 0, "WR": 0, "TE": 0, "FLEX": 0, "K": 0, "DEF": 0}
+
+        for idx, pid in enumerate(ids):
+            sp = SLEEPER_PLAYERS_CACHE.get(str(pid), {})
+            p_name = sp.get("full_name") or f"{sp.get('first_name','')} {sp.get('last_name','')}".strip() or str(pid)
+            pos = (sp.get("position") or ("DEF" if str(pid).isalpha() else "UNK")).upper()
+            team = (sp.get("team") or "").upper()
+            gsis = sp.get("gsis_id")
+
+            st = pmap.get(str(gsis) if gsis else str(pid)) or {}
+            comp = (
+                comp_by_id.get(str(pid)) or
+                (comp_by_id.get(str(gsis)) if gsis else None) or
+                comp_by_name_pos.get((_norm_n(p_name), pos)) or
+                comp_by_name.get(_norm_n(p_name)) or
+                {}
+            )
+
+            # 1. Fix 0.0 Projections Fallback
+            raw_pts = float(st.get("projected_points") or st.get("fantasy_points") or 0)
+            pts = raw_pts
+            if pts == 0.0:
+                m_pts = comp.get("model_points")
+                if m_pts is not None and float(m_pts) > 0:
+                    pts = float(m_pts)
+                else:
+                    mk_s = comp.get("market_season_points")
+                    if mk_s is not None and float(mk_s) > 0:
+                        pts = round(float(mk_s) / 17.0, 2)
+
+            # Conformal interval logic
+            width = float(comp.get("interval_width") or comp.get("width") or 5.0)
+            proj_lower = round(pts - (width / 2.0), 2)
+            proj_upper = round(pts + (width / 2.0), 2)
+
+            # Full season projected stats
+            m_season = comp.get("model_season_stats") or {}
+            mk_season = comp.get("market_season_stats") or {}
+            def _get_season_val(k, alts=()):
+                val = m_season.get(k)
+                if val is None: val = mk_season.get(k)
+                if val is None:
+                    for ak in alts:
+                        if ak in m_season: val = m_season[ak]; break
+                        if ak in mk_season: val = mk_season[ak]; break
+                if val is None and st and k in st:
+                    try: val = float(st[k]) * 17.0
+                    except: pass
+                if val is not None:
+                    try: return round(float(val), 1)
+                    except: pass
+                return 0.0
+
+            pass_yds = _get_season_val("passing_yards", ("pass_yds", "pass_yd"))
+            pass_tds = _get_season_val("passing_tds", ("pass_tds", "pass_td"))
+            rush_yds = _get_season_val("rushing_yards", ("rush_yds", "rush_yd"))
+            rush_tds = _get_season_val("rushing_tds", ("rush_tds", "rush_td"))
+            receptions = _get_season_val("receptions", ("rec",))
+            rec_yds = _get_season_val("receiving_yards", ("rec_yds", "rec_yd"))
+            rec_tds = _get_season_val("receiving_tds", ("rec_tds", "rec_td"))
+            targets = _get_season_val("targets")
+            if targets == 0.0 and receptions > 0:
+                targets = round(receptions / 0.70, 1)
+            r_att = _get_season_val("rushing_att")
+            if r_att == 0.0 and rush_yds > 0:
+                r_att = round(rush_yds / 4.2, 1)
+            touches = round(r_att + receptions, 1)
+
+            is_starter = str(pid) in raw_starters or (not raw_starters and idx < 10)
+            is_ir = str(pid) in raw_reserve
+
+            slot_label = "BENCH"
+            if is_ir:
+                slot_label = "IR"
+            elif is_starter:
+                pos_counters[pos] = pos_counters.get(pos, 0) + 1
+                count = pos_counters[pos]
+                if pos == "QB": slot_label = "QB"
+                elif pos == "RB": slot_label = f"RB{count}" if count <= 2 else f"FLEX{count-2}"
+                elif pos == "WR": slot_label = f"WR{count}" if count <= 2 else f"FLEX{count-2}"
+                elif pos == "TE": slot_label = "TE" if count == 1 else f"FLEX{count-1}"
+                elif pos == "K": slot_label = "K"
+                elif pos == "DEF": slot_label = "DEF"
+                else: slot_label = f"SLOT {idx+1}"
+
+            item = {
+                "player_id": str(pid),
+                "player_name": p_name,
+                "position": pos,
+                "team": team,
+                "projected_points": round(pts, 2),
+                "projection_lower": proj_lower,
+                "projection_upper": proj_upper,
+                "width": round(width, 2),
+                "injury_status": injuries.get(str(pid)) or sp.get("injury_status"),
+                "opponent_team": st.get("opponent_team") or "",
+                "slot": slot_label,
+                "pass_yds": pass_yds,
+                "pass_tds": pass_tds,
+                "rush_yds": rush_yds,
+                "rush_tds": rush_tds,
+                "receptions": receptions,
+                "rec_yds": rec_yds,
+                "rec_tds": rec_tds,
+                "touches": touches,
+                "targets": targets,
+                # Comparison enrichment
+                "market_season_points": comp.get("market_season_points"),
+                "model_points": comp.get("model_points") if comp.get("model_points") is not None else round(pts, 2),
+                "model_season_points": comp.get("model_season_points") if comp.get("model_season_points") is not None else round(pts * 17.0, 1),
+                "auction": comp.get("auction") or 0,
+                "marketAuction": comp.get("marketAuction") or 0,
+                "deltaAuction": comp.get("deltaAuction"),
+                "edge": comp.get("edge") or "NEUTRAL",
+                "fp_ecr": comp.get("fp_ecr"),
+                "fp_ecr_pos": comp.get("fp_ecr_pos"),
+                "fp_adp": comp.get("fp_adp"),
+                "fp_tier": comp.get("fp_tier"),
+                "statsguy_rank": comp.get("statsguy_rank"),
+                "statsguy_value": comp.get("statsguy_value"),
+                "season_stat_deltas": comp.get("season_stat_deltas") or [],
+                "market_season_stats": comp.get("market_season_stats") or {},
+            }
+
+            if is_ir:
+                reserve.append(item)
+            elif is_starter:
+                starters.append(item)
+            else:
+                bench.append(item)
+
+        all_rostered = starters + bench + reserve
+
+        # 2. Team Analytics Calculations
+        gridiron_val = round(sum(float(p.get("auction") or 0) for p in all_rostered), 2)
+        market_val = round(sum(float(p.get("marketAuction") or 0) for p in all_rostered), 2)
+        starter_pts = round(sum(float(p.get("projected_points") or 0) for p in starters), 2)
+
+        def _get_p_season(p):
+            if p.get("model_season_points") is not None:
+                return float(p["model_season_points"])
+            if p.get("market_season_points") is not None:
+                return float(p["market_season_points"])
+            return float(p.get("projected_points") or 0) * 17.0
+
+        total_season_pts = round(sum(_get_p_season(p) for p in all_rostered), 2)
+
+        # Position group scores (0-100)
+        pos_benchmarks = {"QB": 35.0, "RB": 75.0, "WR": 75.0, "TE": 30.0}
+        pos_scores = {}
+        for pos_k in ["QB", "RB", "WR", "TE"]:
+            p_list = [p for p in all_rostered if p.get("position") == pos_k]
+            pos_vor = sum(float(p.get("auction") or 0) for p in p_list)
+            bmark = pos_benchmarks.get(pos_k, 50.0)
+            raw_score = (pos_vor / bmark) * 80.0
+            depth_bonus = min(20.0, len(p_list) * 4.0)
+            score = min(100.0, max(15.0, round(raw_score + depth_bonus, 1)))
+            pos_scores[pos_k] = score
+
+        weakest_pos = min(pos_scores, key=pos_scores.get)
+
+        # Bye week matrix (1 to 18)
+        bye_matrix = {w: [] for w in range(1, 19)}
+        for p in all_rostered:
+            tm = p.get("team")
+            bw = byes_map.get(tm)
+            if bw and 1 <= bw <= 18:
+                bye_matrix[bw].append({
+                    "player_id": p["player_id"],
+                    "player_name": p["player_name"],
+                    "position": p["position"],
+                    "team": tm
+                })
+
+        # Start sit tossups
+        tossups = []
+        for b_p in bench:
+            b_pos = b_p.get("position")
+            b_upper = b_p.get("projection_upper", 0)
+            for s_p in starters:
+                s_pos = s_p.get("position")
+                s_slot = s_p.get("slot", "")
+                is_eligible = (b_pos == s_pos) or (b_pos in FLEX_ELIGIBLE and "FLEX" in s_slot)
+                if is_eligible:
+                    s_lower = s_p.get("projection_lower", 0)
+                    if b_upper > s_lower:
+                        tossups.append({
+                            "bench_player": b_p["player_name"],
+                            "bench_player_id": b_p["player_id"],
+                            "bench_position": b_p["position"],
+                            "bench_projection": b_p["projected_points"],
+                            "bench_upper": b_upper,
+                            "starter_player": s_p["player_name"],
+                            "starter_player_id": s_p["player_id"],
+                            "starter_position": s_p["position"],
+                            "starter_slot": s_slot,
+                            "starter_projection": s_p["projected_points"],
+                            "starter_lower": s_lower,
+                            "diff": round(b_upper - s_lower, 2),
+                        })
+
+        team_analytics = {
+            "gridiron_value": gridiron_val,
+            "market_value": market_val,
+            "projected_weekly_starter_pts": starter_pts,
+            "total_season_projected_pts": total_season_pts,
+            "position_group_scores": pos_scores,
+            "bye_week_matrix": bye_matrix,
+            "weakest_position": weakest_pos,
+            "start_sit_tossups": tossups,
+        }
+
+        team_entry = {
+            "roster_id": r_id,
+            "user_id": o_id,
+            "owner_id": o_id,
+            "owner_name": disp_name,
+            "display_name": disp_name,
+            "team_name": t_name,
+            "avatar": avatar,
+            "avatar_url": avatar_url,
+            "gridiron_value": gridiron_val,
+            "market_value": market_val,
+            "projected_weekly_starter_pts": starter_pts,
+            "total_season_projected_pts": total_season_pts,
+            "position_group_scores": pos_scores,
+            "weakest_position": weakest_pos,
+        }
+        team_summaries.append(team_entry)
+
+        teams_data_map[str(r_id)] = {
+            "starters": starters,
+            "bench": bench,
+            "reserve": reserve,
+            "team_info": team_info,
+            "team_analytics": team_analytics,
+        }
+
+    # 3. League-Wide Team Power Leaderboard
+    sorted_gridiron = sorted(team_summaries, key=lambda t: t["gridiron_value"], reverse=True)
+    for rk, t in enumerate(sorted_gridiron, 1): t["rank_gridiron"] = rk
+
+    sorted_market = sorted(team_summaries, key=lambda t: t["market_value"], reverse=True)
+    for rk, t in enumerate(sorted_market, 1): t["rank_market"] = rk
+
+    sorted_starter = sorted(team_summaries, key=lambda t: t["projected_weekly_starter_pts"], reverse=True)
+    for rk, t in enumerate(sorted_starter, 1): t["rank_starter_pts"] = rk
+
+    sorted_total = sorted(team_summaries, key=lambda t: t["total_season_projected_pts"], reverse=True)
+    for rk, t in enumerate(sorted_total, 1): t["rank_total_pts"] = rk
+
+    for t in team_summaries:
+        avg_rank = (t["rank_gridiron"] + t["rank_market"] + t["rank_starter_pts"] + t["rank_total_pts"]) / 4.0
+        t["composite_score"] = round(avg_rank, 2)
+
+    sorted_composite = sorted(team_summaries, key=lambda t: t["composite_score"])
+    for rk, t in enumerate(sorted_composite, 1):
+        t["composite_rank"] = rk
+        t["rank"] = rk
+        t["starter_fpts"] = t["projected_weekly_starter_pts"]
+
+    league_leaderboard = sorted_composite
+
+    for str_id, data in teams_data_map.items():
+        r_id = int(str_id)
+        for t in sorted_composite:
+            if t["roster_id"] == r_id:
+                data["team_info"]["rank"] = t["rank"]
+                data["team_info"]["composite_rank"] = t["composite_rank"]
+                data["team_info"]["rank_gridiron"] = t["rank_gridiron"]
+                data["team_info"]["rank_market"] = t["rank_market"]
+                data["team_info"]["rank_starter_pts"] = t["rank_starter_pts"]
+                data["team_analytics"]["rank"] = t["rank"]
+                break
+
+    return teams_data_map, league_leaderboard, rosters, players
+
 class Handler(BaseHTTPRequestHandler):
     db_path: Path = get_db_path(None)  # overridden in main
 
@@ -338,12 +752,9 @@ class Handler(BaseHTTPRequestHandler):
         if r and not (r["lat"] == 40.0 and r["lon"] == -74.0):
             weather_placeholder = False
 
-        # teams list containing all 12 teams
+        teams_data_map, league_leaderboard, rosters, players = build_league_analytics(conn)
         teams = []
-        rosters_row = try_fetch_one(conn, "SELECT data FROM rosters ORDER BY rowid DESC LIMIT 1")
-        rosters = load_json_blob(rosters_row) or []
         users_map = get_sleeper_users(conn)
-
         for r in (rosters if isinstance(rosters, list) else []):
             if not isinstance(r, dict): continue
             r_id = r.get("roster_id")
@@ -370,6 +781,7 @@ class Handler(BaseHTTPRequestHandler):
             "counts": counts,
             "teams": teams,
             "weather_placeholder": weather_placeholder,
+            "league_leaderboard": league_leaderboard,
             "db": str(self.db_path),
         })
 
@@ -535,65 +947,7 @@ class Handler(BaseHTTPRequestHandler):
         self.json({"leagueMatchups": league, "nflSlate": nfl_slate, "week": target_wk})
 
     def handle_roster(self, conn, qs):
-        # Build starters/bench from rosters + player_stats
-        row = try_fetch_one(conn, "SELECT data FROM rosters ORDER BY rowid DESC LIMIT 1")
-        rosters = load_json_blob(row) or []
-        row = None
-        try:
-            row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 ORDER BY rowid DESC LIMIT 1")
-        except: row = None
-        if not row or not load_json_blob(row):
-            try:
-                for cand in conn.execute("SELECT data FROM player_stats ORDER BY rowid DESC LIMIT 10").fetchall():
-                    data = load_json_blob(cand)
-                    if isinstance(data, list) and len(data) > 10:
-                        row = cand
-                        break
-            except: pass
-        if not row:
-            row = try_fetch_one(conn, "SELECT data FROM player_stats ORDER BY rowid DESC LIMIT 1")
-        players = load_json_blob(row) or []
-        row = try_fetch_one(conn, "SELECT data FROM injury_status ORDER BY rowid DESC LIMIT 1")
-        injuries = load_json_blob(row) or {}
-
-        # Load comparison market_consensus blob from DB
-        comp_row = try_fetch_one(conn, "SELECT data FROM market_consensus ORDER BY fetched_at DESC LIMIT 1")
-        comp_list = load_json_blob(comp_row, key="data") or []
-
-        def _norm_n(name: str) -> str:
-            if not name: return ""
-            import re
-            n = name.lower().strip()
-            n = re.sub(r"\b(jr\.?|sr\.?|ii|iii|iv|v)\b", "", n)
-            n = re.sub(r"[^a-z0-9 ]", "", n)
-            return re.sub(r"\s+", " ", n).strip()
-
-        comp_by_id = {}
-        comp_by_name_pos = {}
-        comp_by_name = {}
-        for c in (comp_list if isinstance(comp_list, list) else []):
-            if isinstance(c, dict):
-                pid = str(c.get("player_id", ""))
-                if pid:
-                    comp_by_id[pid] = c
-                p_name = c.get("player_name") or ""
-                pos = (c.get("position") or "").upper()
-                norm = _norm_n(p_name)
-                if norm:
-                    if pos:
-                        comp_by_name_pos[(norm, pos)] = c
-                    comp_by_name[norm] = c
-
-        # Pre-load Sleeper player & user metadata
-        global SLEEPER_PLAYERS_CACHE
-        if not SLEEPER_PLAYERS_CACHE:
-            try:
-                import urllib.request
-                req = urllib.request.urlopen("https://api.sleeper.app/v1/players/nfl", timeout=5)
-                SLEEPER_PLAYERS_CACHE = json.loads(req.read().decode())
-            except Exception:
-                SLEEPER_PLAYERS_CACHE = {}
-
+        teams_data_map, league_leaderboard, rosters, players = build_league_analytics(conn)
         users_map = get_sleeper_users(conn)
 
         # Build list of 12 league rosters summary (allTeams)
@@ -621,136 +975,36 @@ class Handler(BaseHTTPRequestHandler):
         req_roster_id = (qs.get("roster_id", [None])[0] or "").strip()
         req_owner_id = (qs.get("owner_id", [None])[0] or "").strip()
 
-        target_roster = None
-        if req_roster_id and isinstance(rosters, list):
-            for r in rosters:
-                if isinstance(r, dict) and str(r.get("roster_id")).lower() == req_roster_id.lower():
-                    target_roster = r
-                    break
-        elif req_owner_id and isinstance(rosters, list):
-            for r in rosters:
+        target_roster_id = "1"
+        if req_roster_id:
+            target_roster_id = req_roster_id
+        elif req_owner_id:
+            for r in (rosters if isinstance(rosters, list) else []):
                 if isinstance(r, dict) and str(r.get("owner_id") or "").lower() == req_owner_id.lower():
-                    target_roster = r
+                    target_roster_id = str(r.get("roster_id"))
                     break
 
-        if not target_roster and isinstance(rosters, list):
-            # Default to roster_id=1
-            for r in rosters:
-                if isinstance(r, dict) and str(r.get("roster_id")) == "1":
-                    target_roster = r
-                    break
-            if not target_roster and rosters:
-                target_roster = rosters[0]
+        if target_roster_id not in teams_data_map and teams_data_map:
+            target_roster_id = list(teams_data_map.keys())[0]
 
-        # map player_id / gsis_id -> stats
-        pmap = {}
-        for p in (players if isinstance(players, list) else []):
-            if isinstance(p, dict):
-                pid = str(p.get("player_id") or p.get("id") or "")
-                if pid: pmap[pid] = p
-
-        starters, bench, reserve = [], [], []
-        team_info = {}
-        if target_roster and isinstance(target_roster, dict):
-            r_id = target_roster.get("roster_id")
-            o_id = str(target_roster.get("owner_id") or "")
-            u_info = users_map.get(o_id, {})
-            disp_name = u_info.get("display_name") or u_info.get("team_name") or f"Team {r_id}"
-            t_name = u_info.get("team_name") or u_info.get("display_name") or f"Team {r_id}"
-            team_info = {
-                "roster_id": r_id,
-                "user_id": o_id,
-                "owner_id": o_id,
-                "owner_name": disp_name,
-                "team_name": t_name,
-                "avatar": u_info.get("avatar"),
-                "avatar_url": u_info.get("avatar_url"),
-            }
-            ids = target_roster.get("players") or []
-            raw_starters = set(target_roster.get("starters") or [])
-            raw_reserve = set(target_roster.get("reserve") or [])
-
-            # Slot counters for starters
-            pos_counters = {"QB": 0, "RB": 0, "WR": 0, "TE": 0, "FLEX": 0, "K": 0, "DEF": 0}
-            for idx, pid in enumerate(ids):
-                sp = SLEEPER_PLAYERS_CACHE.get(str(pid), {})
-                p_name = sp.get("full_name") or f"{sp.get('first_name','')} {sp.get('last_name','')}".strip() or str(pid)
-                pos = (sp.get("position") or ("DEF" if str(pid).isalpha() else "UNK")).upper()
-                team = (sp.get("team") or "").upper()
-                gsis = sp.get("gsis_id")
-
-                st = pmap.get(str(gsis) if gsis else str(pid)) or {}
-                pts = float(st.get("projected_points") or st.get("fantasy_points") or 0)
-
-                comp = (
-                    comp_by_id.get(str(pid)) or
-                    (comp_by_id.get(str(gsis)) if gsis else None) or
-                    comp_by_name_pos.get((_norm_n(p_name), pos)) or
-                    comp_by_name.get(_norm_n(p_name)) or
-                    {}
-                )
-
-                is_starter = str(pid) in raw_starters or (not raw_starters and idx < 10)
-                is_ir = str(pid) in raw_reserve
-
-                slot_label = "BENCH"
-                if is_ir:
-                    slot_label = "IR"
-                elif is_starter:
-                    pos_counters[pos] = pos_counters.get(pos, 0) + 1
-                    count = pos_counters[pos]
-                    if pos == "QB": slot_label = "QB"
-                    elif pos == "RB": slot_label = f"RB{count}" if count <= 2 else f"FLEX{count-2}"
-                    elif pos == "WR": slot_label = f"WR{count}" if count <= 2 else f"FLEX{count-2}"
-                    elif pos == "TE": slot_label = "TE" if count == 1 else f"FLEX{count-1}"
-                    elif pos == "K": slot_label = "K"
-                    elif pos == "DEF": slot_label = "DEF"
-                    else: slot_label = f"SLOT {idx+1}"
-
-                item = {
-                    "player_id": str(pid),
-                    "player_name": p_name,
-                    "position": pos,
-                    "team": team,
-                    "projected_points": round(pts, 2),
-                    "projection_lower": round(pts - 2.5, 2),
-                    "projection_upper": round(pts + 2.5, 2),
-                    "width": 5.0,
-                    "injury_status": injuries.get(str(pid)) or sp.get("injury_status"),
-                    "opponent_team": st.get("opponent_team") or "",
-                    "slot": slot_label,
-                    # Comparison enrichment
-                    "market_season_points": comp.get("market_season_points"),
-                    "model_points": comp.get("model_points") if comp.get("model_points") is not None else round(pts, 2),
-                    "auction": comp.get("auction"),
-                    "marketAuction": comp.get("marketAuction"),
-                    "deltaAuction": comp.get("deltaAuction"),
-                    "edge": comp.get("edge") or "NEUTRAL",
-                    "fp_ecr": comp.get("fp_ecr"),
-                    "fp_ecr_pos": comp.get("fp_ecr_pos"),
-                    "fp_adp": comp.get("fp_adp"),
-                    "fp_tier": comp.get("fp_tier"),
-                    "statsguy_rank": comp.get("statsguy_rank"),
-                    "statsguy_value": comp.get("statsguy_value"),
-                    "season_stat_deltas": comp.get("season_stat_deltas") or [],
-                    "market_season_stats": comp.get("market_season_stats") or {},
-                }
-                if is_ir:
-                    reserve.append(item)
-                elif is_starter:
-                    starters.append(item)
-                else:
-                    bench.append(item)
+        target_data = teams_data_map.get(target_roster_id, {
+            "starters": [], "bench": [], "reserve": [],
+            "team_info": {}, "team_analytics": {}
+        })
 
         self.json({
-            "starters": starters,
-            "bench": bench,
-            "reserve": reserve,
-            "myRoster": starters,
-            "team_info": team_info,
-            "teamMeta": team_info,
+            "starters": target_data["starters"],
+            "bench": target_data["bench"],
+            "reserve": target_data["reserve"],
+            "myRoster": target_data["starters"],
+            "team_info": target_data["team_info"],
+            "teamMeta": target_data["team_info"],
             "allTeams": all_teams,
             "leagueRosters": all_teams,
+            "team_analytics": target_data["team_analytics"],
+            "teamSummary": target_data["team_analytics"],
+            "league_leaderboard": league_leaderboard,
+            "team_leaderboard": league_leaderboard,
             "meta": {"rosters": len(rosters), "players": len(players)}
         })
 

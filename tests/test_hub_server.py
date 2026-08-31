@@ -113,9 +113,21 @@ def test_hub_server_meta_and_roster_enrichment(hub_server_url):
             for field in [
                 "market_season_points", "model_points", "auction", "marketAuction",
                 "deltaAuction", "edge", "fp_ecr", "fp_ecr_pos", "fp_adp", "fp_tier",
-                "statsguy_rank", "statsguy_value", "season_stat_deltas", "market_season_stats"
+                "statsguy_rank", "statsguy_value", "season_stat_deltas", "market_season_stats",
+                "pass_yds", "pass_tds", "rush_yds", "rush_tds", "receptions", "rec_yds", "rec_tds", "touches", "targets"
             ]:
                 assert field in p
+
+        # Test new team_analytics & league_leaderboard
+        assert "team_analytics" in body
+        ta = body["team_analytics"]
+        for key in ["gridiron_value", "market_value", "projected_weekly_starter_pts", "total_season_projected_pts", "position_group_scores", "bye_week_matrix", "weakest_position", "start_sit_tossups"]:
+            assert key in ta
+
+        assert "league_leaderboard" in body
+        ll = body["league_leaderboard"]
+        assert isinstance(ll, list)
+        assert len(ll) >= 1
 
 
 @pytest.mark.parametrize("endpoint,expected_key", [
