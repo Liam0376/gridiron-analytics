@@ -94,10 +94,9 @@ button { font: inherit; }
 .kicker { font: 600 11px 'Instrument Sans', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
 
 /* Tables — dense: row height 36px, font 12-13px, sticky header + sticky first col per ui-ux-pro-max */
-.table-wrap { display: block; max-width: 100%; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); scroll-margin-top: var(--header-height); }
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); scroll-margin-top: var(--header-height); }
 table { width: 100%; border-collapse: collapse; min-width: 760px; }
-html { max-width: 100%; overflow-x: hidden; }
-thead th { font: 600 11px 'Fira Sans', 'Instrument Sans', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); background: var(--surface); position: -webkit-sticky; position: sticky; top: 0; z-index: 2; white-space: nowrap; height: var(--table-row-height); }
+thead th { font: 600 11px 'Fira Sans', 'Instrument Sans', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 2; white-space: nowrap; height: var(--table-row-height); }
 tbody td { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); font: 400 12px 'Fira Sans', 'Instrument Sans', sans-serif; color: var(--text); white-space: nowrap; height: var(--table-row-height); }
 tbody tr:hover td {
   background-color: var(--surface-hover);
@@ -469,9 +468,6 @@ tbody tr[data-team] { border-left: 3px solid var(--team-accent, transparent); }
 @media (min-width: 641px) {
   .responsive-view .player-cards-grid { display: none; }
 }
-/* Auction draft — Safari table 1600px was zooming tab: force card grid on all widths for draft night */
-.auction-board .table-wrap { display: none !important; }
-.auction-board .player-cards-grid { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
 
 /* ═══════════════════════════════════════════════════════
    Better touch targets (mobile)
