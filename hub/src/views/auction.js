@@ -194,6 +194,19 @@ export async function renderAuction(root) {
   starters.forEach(p => { p.auction = Math.max(1, Math.round((p.vor / totalVor) * totalStarterBudget)); });
   const benchPlayers = rosPlayers.filter(p => !starters.includes(p));
   benchPlayers.forEach(p => p.auction = 1);
+  // Market Auction $ (FP season 596) — same VOR $200/12 for 1:1 Gridiron $ vs Market $ (covers every draftable, not just 98 Sleeper starters)
+  const marketByPos = { QB:[], RB:[], WR:[], TE:[], K:[], DEF:[] };
+  rosPlayers.forEach(pp=>{ const pos=(pp.position||'').toUpperCase(); if(marketByPos[pos]) marketByPos[pos].push(pp); });
+  Object.values(marketByPos).forEach(arr=> arr.sort((a,b)=> (b.marketRos||0)-(a.marketRos||0)));
+  const marketReplPts={}; for(const pos of Object.keys(marketByPos)){ const arr=marketByPos[pos]; const idx=replIdx[pos]??0; marketReplPts[pos]=arr[idx]?.marketRos ?? (arr[arr.length-1]?.marketRos ?? 0); }
+  const marketFlexPool=[...(marketByPos.RB.slice(24)), ...(marketByPos.WR.slice(24)), ...(marketByPos.TE.slice(12))].sort((a,b)=> (b.marketRos||0)-(a.marketRos||0));
+  const marketFlexRepl=marketFlexPool[24-1]?.marketRos ?? 0;
+  rosPlayers.forEach(pp=>{ const pos=(pp.position||'').toUpperCase(); let base=marketReplPts[pos]??0; if(['RB','WR','TE'].includes(pos)) base=Math.max(base, marketFlexRepl); pp.marketRepl=base; pp.marketVor=Math.max(0, (pp.marketRos||0)-base); });
+  const marketStarters = rosPlayers.filter(pp=>pp.marketVor>0).sort((a,b)=>b.marketVor-a.marketVor).slice(0, TEAMS*10);
+  const totalMarketVor = marketStarters.reduce((s,pp)=>s+pp.marketVor,0)||1;
+  marketStarters.forEach(pp=>{ pp.marketAuction=Math.max(1, Math.round((pp.marketVor/totalMarketVor)*totalStarterBudget)); });
+  rosPlayers.filter(pp=>!marketStarters.includes(pp)).forEach(pp=> pp.marketAuction=1);
+  rosPlayers.forEach(pp=>{ pp.deltaAuction = pp.auction - (pp.marketAuction||1); });
   const allRanked = [...starters, ...benchPlayers].sort((a, b) => b.auction - a.auction || b.ros - a.ros);
 
   // Assign tiers
@@ -260,7 +273,7 @@ export async function renderAuction(root) {
   const activePos = params.get('pos') || 'ALL';
   const auctionEdge = params.get('edge') || 'ALL';
   // Sorting: ?sort=auction&dir=-1  (default auction descending = highest to lowest)
-  const allowedSort = new Set(['player_name','position','weekly','ros','marketRos','deltaRos','fp_ecr','fp_adp','statsguy_rank','vor','auction','edge_score','tier']);
+  const allowedSort = new Set(['player_name','position','weekly','ros','marketRos','deltaRos','fp_ecr','fp_adp','statsguy_rank','vor','auction','marketAuction','deltaAuction','edge_score','tier']);
   const auctionSortKey = allowedSort.has(params.get('sort')) ? params.get('sort') : 'auction';
   const auctionSortDir = params.get('dir') === '1' ? 1 : -1;
 
@@ -450,7 +463,7 @@ export async function renderAuction(root) {
       <div class="card-body" style="display:flex; flex-direction:column; gap:12px">
         ${focusedPlayer ? `
         <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:center">
-          <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:260px">${playerAvatar(focusedPlayer, 56)}<div><div style="font:700 16px 'Fira Sans',sans-serif; display:flex; gap:8px; align-items:center; flex-wrap:wrap">${escapeHtml(focusedPlayer.player_name)} ${posBadge(focusedPlayer.position)} ${teamLogo(focusedPlayer.team,20)} <span class="mono" style="font-size:11px; color:var(--text-muted)">T${focusedPlayer.fp_tier ?? focusedPlayer.tier} · ECR #${focusedPlayer.fp_ecr ?? '—'} · ADP #${focusedPlayer.fp_adp ?? '—'}${focusedPlayer.statsguy_value!=null ? ` · <span style="color:var(--violet)">SG ${focusedPlayer.statsguy_value.toFixed(0)} (#${focusedPlayer.statsguy_rank})</span>` : ''}</span></div><div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:2px">Gridiron ${focusedPlayer.weekly.toFixed(1)} wk → <span style="color:var(--amber); font-weight:700">${focusedPlayer.ros.toFixed(0)} season</span> · Market <span style="color:var(--sky); font-weight:700">${focusedPlayer.marketRos!=null?focusedPlayer.marketRos.toFixed(0):'—'}</span> · Δ ${focusedPlayer.deltaRos!=null?(Number(focusedPlayer.deltaRos)>0?'+':'')+Number(focusedPlayer.deltaRos).toFixed(0):'—'} · VOR +${focusedPlayer.vor.toFixed(0)} · <span style="color:var(--amber)">$${focusedPlayer.auction} val</span></div></div></div>
+          <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:260px">${playerAvatar(focusedPlayer, 56)}<div><div style="font:700 16px 'Fira Sans',sans-serif; display:flex; gap:8px; align-items:center; flex-wrap:wrap">${escapeHtml(focusedPlayer.player_name)} ${posBadge(focusedPlayer.position)} ${teamLogo(focusedPlayer.team,20)} <span class="mono" style="font-size:11px; color:var(--text-muted)">T${focusedPlayer.fp_tier ?? focusedPlayer.tier} · ECR #${focusedPlayer.fp_ecr ?? '—'} · ADP #${focusedPlayer.fp_adp ?? '—'}${focusedPlayer.statsguy_value!=null ? ` · <span style="color:var(--violet)">SG ${focusedPlayer.statsguy_value.toFixed(0)} (#${focusedPlayer.statsguy_rank})</span>` : ''}</span></div>          <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:2px">Gridiron ${focusedPlayer.weekly.toFixed(1)} wk → <span style="color:var(--amber); font-weight:700">${focusedPlayer.ros.toFixed(0)} season</span> · Market <span style="color:var(--sky); font-weight:700">${focusedPlayer.marketRos!=null?focusedPlayer.marketRos.toFixed(0):'—'}</span> (<span style="color:var(--sky)">$${focusedPlayer.marketAuction} mkt $</span>) · Δ ${focusedPlayer.deltaRos!=null?(Number(focusedPlayer.deltaRos)>0?'+':'')+Number(focusedPlayer.deltaRos).toFixed(0):'—'} · VOR +${focusedPlayer.vor.toFixed(0)} · <span style="color:var(--amber)">$${focusedPlayer.auction} val</span> <span style="color:${focusedPlayer.deltaAuction>4?'var(--emerald)':focusedPlayer.deltaAuction<-4?'var(--crimson)':'var(--text-muted)'}">(Δ $${focusedPlayer.deltaAuction>0?'+':''}${focusedPlayer.deltaAuction})</span></div></div></div>
           <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end">
             <span class="badge" style="background:${focusedPlayer.edge==='BUY'?'var(--emerald-dim)':'var(--crimson-dim)'}; color:${focusedPlayer.edge==='BUY'?'var(--emerald)':'var(--crimson)'}; font-size:12px; padding:6px 10px">${focusedPlayer.edge} ${deltaSeasonBadge(focusedPlayer.deltaRos)}</span>
             ${focusedPlayer.statsguy_value!=null ? `<span class="mono" style="font-size:11px; color:var(--violet)">StatsGuy market #${focusedPlayer.statsguy_rank} · ${focusedPlayer.statsguy_value.toFixed(0)}/10000</span>` : '<span class="mono" style="font-size:11px; color:var(--text-faint)">StatsGuy — no rank</span>'}
@@ -508,7 +521,7 @@ export async function renderAuction(root) {
         <span class="mono" style="font-size:11px; color:var(--text-faint); margin-left:auto">Tip: click headers to sort any column both ways</span>
       </div>
       <div class="table-wrap" style="border:0; border-radius:0; overflow-x:auto; margin-top:10px">
-        <table style="min-width:${compareAuctionEnabled && hasComparison ? '1260px' : '720px'}">
+        <table style="min-width:${compareAuctionEnabled && hasComparison ? '1340px' : '720px'}">
           <thead>
             <tr>
               <th style="width:32px">#</th>
@@ -524,7 +537,8 @@ export async function renderAuction(root) {
               ${compareAuctionEnabled && hasComparison ? `<th data-sort="statsguy_rank" tabindex="0" role="button" aria-label="Sort by StatsGuy rank" style="cursor:pointer; color:var(--violet)" title="StatsGuy real-trade value 0-10000 (211 ranked, top 211 only)">SG ${auctionSortKey==='statsguy_rank' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>` : ''}
               ` : `<th data-sort="weekly" tabindex="0" role="button" style="cursor:pointer">Model Wk ${auctionSortKey==='weekly' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th><th data-sort="ros" tabindex="0" role="button" style="cursor:pointer">Season (17g) ${auctionSortKey==='ros' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>`}
               <th data-sort="vor" tabindex="0" role="button" aria-label="Sort by VOR" style="cursor:pointer">VOR ${auctionSortKey==='vor' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
-              <th data-sort="auction" tabindex="0" role="button" aria-label="Sort by Auction $" style="cursor:pointer">Auction $ ${auctionSortKey==='auction' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
+              <th data-sort="auction" tabindex="0" role="button" aria-label="Sort by Gridiron $" style="cursor:pointer; color:var(--amber)" title="Gridiron $ — VOR $200/12">Gridiron $ ${auctionSortKey==='auction' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
+              ${compareAuctionEnabled && hasComparison ? '<th data-sort="marketAuction" tabindex="0" role="button" aria-label="Sort by Market $" style="cursor:pointer; color:var(--sky)" title="Market $ — FP season VOR $200/12, 1:1 vs Gridiron $">Market $ ${auctionSortKey===\'marketAuction\' ? (auctionSortDir===-1 ? \'▼\' : \'▲\') : \'↕\'}</th><th data-sort="deltaAuction" tabindex="0" role="button" aria-label="Sort by $ Delta" style="cursor:pointer" title="Δ $ = Gridiron $ − Market $">Δ $ ${auctionSortKey===\'deltaAuction\' ? (auctionSortDir===-1 ? \'▼\' : \'▲\') : \'↕\'}</th>' : ''}
               ${compareAuctionEnabled && hasComparison ? '<th data-sort="edge_score" tabindex="0" role="button" aria-label="Sort by Edge" style="cursor:pointer">Edge ↕</th>' : ''}
               <th>Interval</th><th data-sort="tier" tabindex="0" role="button" style="cursor:pointer">T ${auctionSortKey==='tier' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th><th>Draft</th>
             </tr>
@@ -553,6 +567,7 @@ export async function renderAuction(root) {
                 ` : ''}
                 <td class="mono" style="color:${p.vor > 30 ? '#10B981' : p.vor > 15 ? 'var(--amber)' : 'var(--text-muted)'}">+${p.vor.toFixed(0)}</td>
                 <td><span class="badge" style="background:${p.auction >= 15 ? '#16A34A' : p.auction >= 5 ? 'var(--amber-dim)' : 'var(--surface-raised)'}; color:${p.auction >= 15 ? 'white' : p.auction >= 5 ? 'var(--amber)' : 'var(--text-muted)'}; border:1px solid ${p.auction >= 15 ? '#16A34A' : 'var(--border)'}">$${p.auction}</span></td>
+                ${compareAuctionEnabled && hasComparison ? `<td class="mono" style="color:var(--sky)"><span class="badge" style="background:var(--sky-dim); color:var(--sky); border:1px solid rgba(56,189,248,0.2)">$${p.marketAuction}</span></td><td class="mono" style="font-weight:700; color:${p.deltaAuction>4?'var(--emerald)':p.deltaAuction<-4?'var(--crimson)':'var(--text-muted)'}">${p.deltaAuction>0?'+':''}$${p.deltaAuction}</td>` : ''}
                 ${compareAuctionEnabled && hasComparison ? `<td>${edgeBadgeAuction(p.edge)}</td>` : ''}
                 <td class="mono-muted" style="font-size:11px">${(p.ros - p.widthRos).toFixed(0)}–${(p.ros + p.widthRos).toFixed(0)}</td>
                 <td class="faint" style="font:600 11px 'Fira Sans',sans-serif">T${p.tier}</td>
