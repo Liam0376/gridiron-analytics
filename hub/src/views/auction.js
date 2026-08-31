@@ -275,6 +275,19 @@ export async function renderAuction(root) {
     </div>
     ` : `<div class="alert alert-info reveal in" style="margin-top:12px">Market comparison warming up — run refresh to populate Sleeper season (wk×17) + FP ECR/ADP. Auction currently shows Model only. Free sources: Sleeper <code class="inline">/projections</code> + FantasyPros limited (DST-only free) — Market_pts primary for season edges.</div>`}
 
+    <!-- Draft Live Bar — 1h countdown + fullscreen/print for draft night -->
+    <div class="card reveal in" style="margin-top:12px; border-left:3px solid var(--crimson); background: linear-gradient(90deg, rgba(239,68,68,0.08), transparent)">
+      <div class="card-body" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 12px">
+        <span class="kicker" style="color:var(--crimson)">● Draft Live</span>
+        <span id="draftCountdown" class="mono" style="font-size:18px; font-weight:700; color:var(--crimson)">60:00</span>
+        <span class="micro faint">until draft — board frozen to FP season 596 + Gridiron Wk10 • <span class="mono" style="color:var(--text-muted)">VOR $200/12</span></span>
+        <span style="flex:1"></span>
+        <button class="chip" id="fullscreenAuction" title="Fullscreen draft board (F)">⛶ Fullscreen</button>
+        <button class="chip" id="printAuction" title="Print board (⌘P)">⎙ Print</button>
+        <button class="chip" id="resetCountdown" title="Reset 60-min timer">↺ Reset 60m</button>
+      </div>
+    </div>
+
     <!-- My Draft Tracker -->
     <div class="kpi-row reveal in" style="margin-top:12px">
       <div class="kpi-card">
@@ -520,6 +533,42 @@ export async function renderAuction(root) {
     const b = root.querySelector('#copyModelVsMarketCsv');
     if (b) { const t=b.textContent; b.textContent='Copied ✓'; setTimeout(()=>b.textContent=t,1200); }
   });
+
+  // Draft countdown (60 min, persists in localStorage so reloads keep time)
+  const countdownEl = root.querySelector('#draftCountdown');
+  if (countdownEl) {
+    const STORAGE_KEY = 'ffba-draft-target';
+    let target = Number(localStorage.getItem(STORAGE_KEY) || 0);
+    if (!target || target < Date.now()) {
+      target = Date.now() + 60*60*1000;
+      try { localStorage.setItem(STORAGE_KEY, String(target)); } catch {}
+    }
+    const tick = () => {
+      const remain = Math.max(0, target - Date.now());
+      const m = Math.floor(remain / 60000);
+      const s = Math.floor((remain % 60000) / 1000);
+      countdownEl.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      countdownEl.style.color = remain < 5*60*1000 ? 'var(--crimson)' : remain < 15*60*1000 ? 'var(--amber)' : 'var(--crimson)';
+      if (remain === 0) countdownEl.textContent = '00:00 — Draft now!';
+    };
+    tick();
+    const iv = setInterval(tick, 1000);
+    // store interval on root so re-render clears prior
+    if (root._draftInterval) clearInterval(root._draftInterval);
+    root._draftInterval = iv;
+    root.querySelector('#resetCountdown')?.addEventListener('click', ()=>{
+      const nt = Date.now() + 60*60*1000;
+      try { localStorage.setItem(STORAGE_KEY, String(nt)); } catch {}
+      target = nt;
+      tick();
+    });
+  }
+  root.querySelector('#fullscreenAuction')?.addEventListener('click', ()=>{
+    const el = root.querySelector('.table-wrap');
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else el?.requestFullscreen?.();
+  });
+  root.querySelector('#printAuction')?.addEventListener('click', ()=> window.print());
 
   // Position filter buttons
   root.querySelectorAll('.posFilter').forEach(btn => {

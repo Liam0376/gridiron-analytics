@@ -477,3 +477,17 @@ tbody tr[data-team] { border-left: 3px solid var(--team-accent, transparent); }
   .chip { min-height: 44px; padding: 8px 12px; }
   .nav-tab { min-height: 44px; }
 }
+
+/* ═══════════════════════════════════════════════════════
+   Draft Live — print & fullscreen polish (1h to draft)
+   ═══════════════════════════════════════════════════════ */
+@media print {
+  .nav, .mobile-nav, .more-drawer, .kpi-row, .hero { display: none !important; }
+  .page { padding: 8px !important; max-width: none !important; }
+  .card { break-inside: avoid; }
+  .table-wrap { border: none !important; box-shadow: none !important; }
+  table { min-width: 100% !important; font-size: 10px !important; }
+  .player-cell .player-avatar { display: none; }
+}
+:fullscreen .table-wrap { background: var(--bg); padding: 12px; }
+:fullscreen table { min-width: 100% !important; }
