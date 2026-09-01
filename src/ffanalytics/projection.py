@@ -146,10 +146,10 @@ def calculate_projection(
 
     point_estimate = base_points + feature_adjustment
 
-    # Weather adjustment: high wind penalizes passing/kicking positions
-    if weather and position_group.upper() in ("QB", "WR", "K"):
+    # Weather adjustment: high wind penalizes passing/kicking positions (audit I6: include TE)
+    if weather and position_group.upper() in ("QB", "WR", "TE", "K"):
         wind_mph = weather.get("wind_mph", 0)
-        if wind_mph > 15:
+        if wind_mph and wind_mph > 15:
             point_estimate -= (wind_mph - 15) * config.WEATHER_WIND_PENALTY_PER_MPH
 
     # Flex scarcity: 2+ flex slots make RB/WR/TE more valuable
@@ -191,7 +191,7 @@ def calculate_projection(
     width = base_width * _pos_width_factor(pos) * _point_factor(point_estimate)
     # Clamp to avoid degenerate intervals: min 3.0 (K still readable), max 14.0 (QB ceiling)
     width = max(3.0, min(14.0, width))
-    lower_bound = point_estimate - width
+    lower_bound = max(0.0, point_estimate - width)
     upper_bound = point_estimate + width
 
     return {

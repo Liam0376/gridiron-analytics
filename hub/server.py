@@ -14,10 +14,14 @@ Run: .venv/bin/python hub/server.py
 import argparse
 import json
 import sqlite3
+import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timedelta
+
+# Audit: thread safety for global caches (if moved to ThreadingHTTPServer)
+_CACHE_LOCK = threading.Lock()
 
 # --- Vendored scoring logic (mirror of src/ffanalytics/scoring.py @ 2026-08-28 Sleeper Bahamas) ---
 DEFAULT_SCORING = {
@@ -48,11 +52,16 @@ def _calc_points_from_raw(p: dict, scoring: dict) -> float:
     # Always score from raw stats using league settings — nflreadpy's fantasy_points
     # uses standard scoring (4pt pass TD), not our league (5pt pass TD + 40+ bonuses).
     # map raw keys (nflverse / stat_projector) to Sleeper scoring keys
+    # Audit: guard NaN/inf from CSV (float('nan') truthy but should be 0)
     def g(*keys):
         for k in keys:
             v=p.get(k)
             if v is not None:
-                try: return float(v)
+                try:
+                    fv=float(v)
+                    if fv!=fv or fv==float("inf") or fv==float("-inf"):
+                        continue
+                    return fv
                 except: return 0.0
         return 0.0
     # if any raw stat present, score via Sleeper settings
@@ -96,20 +105,52 @@ def _calc_points_from_raw(p: dict, scoring: dict) -> float:
     }
     pts=0.0
     for sk, s_key in stat_to_key.items():
-        pts+= raw.get(sk,0) * scoring.get(s_key,0)
+        raw_v=raw.get(sk,0)
+        # Guard NaN raw (audit edge-case 13)
+        try:
+            if isinstance(raw_v,float) and (raw_v!=raw_v or raw_v==float("inf") or raw_v==float("-inf")):
+                raw_v=0
+        except Exception:
+            raw_v=0
+        mult=scoring.get(s_key,0)
+        try:
+            if isinstance(mult,float) and (mult!=mult or mult==float("inf") or mult==float("-inf")):
+                mult=0
+        except Exception:
+            mult=0
+        pts+= raw_v * float(mult)
     # 40+ TD bonuses if present as separate keys (rare)
     for k in ("passing_td_40","rushing_td_40","receiving_td_40"):
         if p.get(k):
-            try: pts+= float(p.get(k)) * scoring.get(k.replace("_td_40","_td_40p").replace("passing","pass").replace("rushing","rush").replace("receiving","rec"),0)
+            try:
+                fv=float(p.get(k))
+                if fv!=fv or fv==float("inf") or fv==float("-inf"):
+                    continue
+                pts+= fv * scoring.get(k.replace("_td_40","_td_40p").replace("passing","pass").replace("rushing","rush").replace("receiving","rec"),0)
             except: pass
+    if pts!=pts or pts==float("inf") or pts==float("-inf"):
+        return 0.0
     return pts
 
 # --- Vendored conformal (minimal) ---
 def qhat(residuals, alpha=0.2):
     import math
+    # Audit: fallback to WR residuals if empty (mirrors stat_projector POS_RESIDUALS default)
     if not residuals:
-        raise ValueError("residuals empty")
-    a = sorted(abs(r) for r in residuals)
+        residuals=[0.7,1.8,3.0,4.4,5.8,7.2,8.8,10.2,11.9]
+    # Filter NaN/inf
+    clean=[]
+    for r in residuals:
+        try:
+            fv=float(r)
+            if fv!=fv or fv==float("inf") or fv==float("-inf"):
+                continue
+            clean.append(abs(fv))
+        except Exception:
+            continue
+    if not clean:
+        return 5.0
+    a = sorted(clean)
     n = len(a)
     rank = math.ceil((n + 1) * (1 - alpha))
     rank = min(rank, n)
@@ -124,7 +165,7 @@ def compute_nfl_week(now=None):
     labor_day = sept1 + timedelta(days=offset)
     season_start = labor_day + timedelta(days=7)
     if now < season_start:
-        return 0
+        return 1
     days = (now - season_start).days
     w = days // 7 + 1
     return max(1, min(18, w))
@@ -147,6 +188,29 @@ def get_conn(db_path: Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     return conn
 
+def get_nfl_opponent_map(target_wk: int = 1) -> dict[str, str]:
+    here = Path(__file__).resolve()
+    repo_root = here.parent.parent
+    sched_file = repo_root / "data" / "nfl_cache" / "schedule_2026.json"
+    if not sched_file.exists():
+        sched_file = repo_root / "data" / "nfl_cache" / "schedule_2025.json"
+    if not sched_file.exists():
+        return {}
+    try:
+        with open(sched_file) as f:
+            games = json.load(f)
+        opp_map = {}
+        for g in games:
+            if g.get("week") == target_wk:
+                home = g.get("home_team")
+                away = g.get("away_team")
+                if home and away:
+                    opp_map[home] = away
+                    opp_map[away] = home
+        return opp_map
+    except Exception:
+        return {}
+
 def try_fetch_one(conn, sql, params=()):
     try:
         row = conn.execute(sql, params).fetchone()
@@ -168,7 +232,9 @@ SLEEPER_USERS_CACHE = {}
 
 def get_sleeper_users(conn=None):
     global SLEEPER_USERS_CACHE
-    if not SLEEPER_USERS_CACHE:
+    with _CACHE_LOCK:
+        if SLEEPER_USERS_CACHE:
+            return SLEEPER_USERS_CACHE
         if conn:
             try:
                 row = try_fetch_one(conn, "SELECT data FROM league_settings ORDER BY season DESC LIMIT 1")
@@ -187,39 +253,50 @@ def get_sleeper_users(conn=None):
                                 "avatar": avatar,
                                 "avatar_url": avatar_url,
                             }
+                if SLEEPER_USERS_CACHE:
+                    return SLEEPER_USERS_CACHE
             except Exception:
                 pass
-        if not SLEEPER_USERS_CACHE:
-            try:
-                import urllib.request
-                req = urllib.request.urlopen("https://api.sleeper.app/v1/league/1397736035240173568/users", timeout=5)
-                users_list = json.loads(req.read().decode())
-                for u in users_list:
-                    uid = str(u.get("user_id"))
-                    meta = u.get("metadata") or {}
-                    avatar = u.get("avatar")
-                    avatar_url = f"https://sleepercdn.com/avatars/thumbs/{avatar}" if avatar else None
-                    SLEEPER_USERS_CACHE[uid] = {
-                        "user_id": uid,
-                        "display_name": u.get("display_name") or uid,
-                        "team_name": meta.get("team_name") or u.get("display_name") or f"Team {uid[:4]}",
-                        "avatar": avatar,
-                        "avatar_url": avatar_url,
-                    }
-            except Exception:
-                SLEEPER_USERS_CACHE = {}
-    return SLEEPER_USERS_CACHE
+        try:
+            import urllib.request
+            req = urllib.request.urlopen("https://api.sleeper.app/v1/league/1397736035240173568/users", timeout=5)
+            users_list = json.loads(req.read().decode())
+            for u in users_list:
+                uid = str(u.get("user_id"))
+                meta = u.get("metadata") or {}
+                avatar = u.get("avatar")
+                avatar_url = f"https://sleepercdn.com/avatars/thumbs/{avatar}" if avatar else None
+                SLEEPER_USERS_CACHE[uid] = {
+                    "user_id": uid,
+                    "display_name": u.get("display_name") or uid,
+                    "team_name": meta.get("team_name") or u.get("display_name") or f"Team {uid[:4]}",
+                    "avatar": avatar,
+                    "avatar_url": avatar_url,
+                }
+        except Exception:
+            SLEEPER_USERS_CACHE = {}
+        return SLEEPER_USERS_CACHE
 
 def get_sleeper_player_name(player_id: str) -> str:
     global SLEEPER_PLAYERS_CACHE
-    if not SLEEPER_PLAYERS_CACHE:
-        try:
-            import urllib.request
-            req = urllib.request.urlopen("https://api.sleeper.app/v1/players/nfl", timeout=5)
-            SLEEPER_PLAYERS_CACHE = json.loads(req.read().decode())
-        except Exception:
-            SLEEPER_PLAYERS_CACHE = {}
-    p = SLEEPER_PLAYERS_CACHE.get(player_id, {})
+    with _CACHE_LOCK:
+        if SLEEPER_PLAYERS_CACHE:
+            p = SLEEPER_PLAYERS_CACHE.get(player_id, {})
+            if p:
+                nm = p.get("full_name") or f"{p.get('first_name', '')} {p.get('last_name', '')}".strip()
+                pos = (p.get("position") or ("DEF" if player_id.isalpha() else "")).upper()
+                if nm:
+                    return f"{nm} ({pos})" if pos else nm
+                return player_id
+    with _CACHE_LOCK:
+        if not SLEEPER_PLAYERS_CACHE:
+            try:
+                import urllib.request
+                req = urllib.request.urlopen("https://api.sleeper.app/v1/players/nfl", timeout=5)
+                SLEEPER_PLAYERS_CACHE = json.loads(req.read().decode())
+            except Exception:
+                SLEEPER_PLAYERS_CACHE = {}
+        p = SLEEPER_PLAYERS_CACHE.get(player_id, {})
     nm = p.get("full_name") or f"{p.get('first_name', '')} {p.get('last_name', '')}".strip()
     pos = (p.get("position") or ("DEF" if player_id.isalpha() else "")).upper()
     if nm:
@@ -230,8 +307,9 @@ NFL_TEAM_BYES_CACHE = {}
 
 def get_nfl_team_byes() -> dict[str, int]:
     global NFL_TEAM_BYES_CACHE
-    if NFL_TEAM_BYES_CACHE:
-        return NFL_TEAM_BYES_CACHE
+    with _CACHE_LOCK:
+        if NFL_TEAM_BYES_CACHE:
+            return NFL_TEAM_BYES_CACHE
     repo_root = Path(__file__).resolve().parent.parent
     for fname in ["schedule_2026.json", "schedule_2025.json"]:
         sched_file = repo_root / "data" / "nfl_cache" / fname
@@ -328,6 +406,15 @@ def build_league_analytics(conn):
     users_map = get_sleeper_users(conn)
     byes_map = get_nfl_team_byes()
 
+    draft_prices = {}
+    try:
+        r_rows = conn.execute("SELECT player_id, amount FROM draft_picks").fetchall()
+        for r in r_rows:
+            if r["player_id"] and r["amount"] is not None:
+                draft_prices[str(r["player_id"])] = float(r["amount"])
+    except Exception:
+        pass
+
     pmap = {}
     for p in (players if isinstance(players, list) else []):
         if isinstance(p, dict):
@@ -383,19 +470,21 @@ def build_league_analytics(conn):
 
             # Universal League-Wide Projection Engine for ALL 12 Teams:
             raw_pts = float(st.get("projected_points") or st.get("fantasy_points") or 0)
-            pts = raw_pts
-            
-            # Market consensus per-game baseline (FantasyPros 17-game FPTS / 17)
+            m_pts = comp.get("model_points")
             mk_s = comp.get("market_season_points")
             mk_per_game = round(float(mk_s) / 17.0, 2) if (mk_s is not None and float(mk_s) > 0) else None
-            m_pts = comp.get("model_points")
-            
-            # Universal Rule: If raw model points are 0.0, or suppressed by >25% vs consensus market per-game (e.g. injury exits / small sample), use market consensus
-            if pts == 0.0 or (mk_per_game and mk_per_game > 0 and pts < (mk_per_game * 0.75)):
-                if mk_per_game and mk_per_game > 0:
-                    pts = mk_per_game
-                elif m_pts is not None and float(m_pts) > 0:
-                    pts = float(m_pts)
+
+            # Always prefer Gridiron model projection first:
+            if m_pts is not None and float(m_pts) > 0:
+                gridiron_pts = float(m_pts)
+            elif raw_pts > 0:
+                gridiron_pts = raw_pts
+            elif mk_per_game and mk_per_game > 0:
+                gridiron_pts = mk_per_game
+            else:
+                gridiron_pts = 0.0
+
+            pts = gridiron_pts
 
             # Conformal interval logic
             width = float(comp.get("interval_width") or comp.get("width") or 5.0)
@@ -462,7 +551,7 @@ def build_league_analytics(conn):
                 "projection_upper": proj_upper,
                 "width": round(width, 2),
                 "injury_status": injuries.get(str(pid)) or sp.get("injury_status"),
-                "opponent_team": st.get("opponent_team") or "",
+                "opponent_team": get_nfl_opponent_map(compute_nfl_week()).get(team) or st.get("opponent_team") or "",
                 "slot": slot_label,
                 "pass_yds": pass_yds,
                 "pass_tds": pass_tds,
@@ -475,11 +564,13 @@ def build_league_analytics(conn):
                 "targets": targets,
                 # Comparison enrichment
                 "market_season_points": comp.get("market_season_points"),
+                "gridiron_points": round(pts, 2),
                 "model_points": comp.get("model_points") if comp.get("model_points") is not None else round(pts, 2),
                 "model_season_points": comp.get("model_season_points") if comp.get("model_season_points") is not None else round(pts * 17.0, 1),
-                "auction": comp.get("auction") or 0,
-                "marketAuction": comp.get("marketAuction") or 0,
-                "deltaAuction": comp.get("deltaAuction"),
+                "auction": draft_prices.get(str(pid)) if draft_prices.get(str(pid)) is not None else (comp.get("auction") or 0),
+                "auction_price_paid": draft_prices.get(str(pid)),
+                "marketAuction": draft_prices.get(str(pid)) if draft_prices.get(str(pid)) is not None else (comp.get("marketAuction") or 0),
+                "deltaAuction": round((comp.get("model_season_points", pts * 17.0) / 20.0) - draft_prices[str(pid)], 1) if str(pid) in draft_prices else comp.get("deltaAuction"),
                 "edge": comp.get("edge") or "NEUTRAL",
                 "fp_ecr": comp.get("fp_ecr"),
                 "fp_ecr_pos": comp.get("fp_ecr_pos"),
@@ -862,24 +953,51 @@ class Handler(BaseHTTPRequestHandler):
         def _point_factor(pts):
             return min(1.60, 1.0 + max(0, pts - 12) * 0.022) if pts > 12 else 1.0
 
+        comp_row = try_fetch_one(conn, "SELECT data FROM market_consensus ORDER BY fetched_at DESC LIMIT 1")
+        comp_list = load_json_blob(comp_row, key="data") or []
+        comp_by_id = {}
+        for c in (comp_list if isinstance(comp_list, list) else []):
+            if isinstance(c, dict) and c.get("player_id"):
+                comp_by_id[str(c["player_id"])] = c
+
+        gsis_to_sleeper = {}
+        if SLEEPER_PLAYERS_CACHE:
+            for sid, sp in SLEEPER_PLAYERS_CACHE.items():
+                g = sp.get("gsis_id")
+                if g: gsis_to_sleeper[str(g)] = str(sid)
+
         out = []
         for pid, a in agg.items():
             if a["games"] == 0:
                 continue
-            avg_pts = a["total_pts"] / a["games"]
             pos = a["position"]
-            pts = apply_flex_adjustment(avg_pts, pos, num_flex)
-            width = 5.0 * _pos_factor(pos) * _point_factor(pts)
+            raw_pts = apply_flex_adjustment(a["total_pts"] / a["games"], pos, num_flex)
+            comp = comp_by_id.get(pid) or comp_by_id.get(gsis_to_sleeper.get(pid, "")) or {}
+            m_pts = comp.get("model_points")
+            mk_s = comp.get("market_season_points")
+            mk_per_game = round(float(mk_s) / 17.0, 2) if (mk_s is not None and float(mk_s) > 0) else None
+
+            if m_pts is not None and float(m_pts) > 0:
+                pts = float(m_pts)
+            elif raw_pts > 0:
+                pts = raw_pts
+            elif mk_per_game and mk_per_game > 0:
+                pts = mk_per_game
+            else:
+                pts = 0.0
+
+            width = float(comp.get("interval_width") or comp.get("width") or (5.0 * _pos_factor(pos) * _point_factor(pts)))
             width = max(3.0, min(14.0, width))
-            low = pts - width
-            high = pts + width
+            low = pts - (width / 2.0)
+            high = pts + (width / 2.0)
             out.append({
                 "player_id": pid,
+                "sleeper_id": gsis_to_sleeper.get(pid, pid if pid.isdigit() else None),
                 "player_name": a["player_name"],
                 "position": pos,
                 "position_group": pos,
                 "team": a["team"],
-                "opponent_team": a["opponent_team"],
+                "opponent_team": get_nfl_opponent_map(compute_nfl_week()).get(a["team"]) or a["opponent_team"] or "",
                 "projected_points": round(pts, 2),
                 "point_estimate": round(pts, 2),
                 "projection_lower": round(low, 2),
@@ -895,7 +1013,7 @@ class Handler(BaseHTTPRequestHandler):
                 "games": a["games"],
             })
         out.sort(key=lambda x: x["projected_points"], reverse=True)
-        out = out[:800]
+        out = out[:2000]
         self.json({"players": out, "count": len(out), "meta": {"source": "db:player_stats:averaged", "num_flex": num_flex}})
 
     def handle_matchups(self, conn, qs):
@@ -922,7 +1040,7 @@ class Handler(BaseHTTPRequestHandler):
 
         # Load real NFL slate for the target week
         nfl_slate = []
-        target_wk = week if (week and week > 0) else 10
+        target_wk = week if (week and week > 0) else 1
         repo_root = Path(__file__).resolve().parent.parent
         sched_file = repo_root / "data" / "nfl_cache" / "schedule_2026.json"
         if not sched_file.exists():
@@ -1092,10 +1210,10 @@ class Handler(BaseHTTPRequestHandler):
         if edge_filter in ("BUY", "SELL", "NEUTRAL"):
             players = [p for p in players if (p.get("edge") or "").upper() == edge_filter]
         # cap
-        limit = 300
+        limit = 2000
         try:
             if qs.get("limit", [None])[0]:
-                limit = max(10, min(800, int(qs.get("limit")[0])))
+                limit = max(10, min(2000, int(qs.get("limit")[0])))
         except Exception:
             pass
         self.json({"players": players[:limit], "count": len(players), "fetched_at": fetched_at, "meta": {"source": "market_consensus", "preseason_note": "Market pts empty until Week 1 publish; rank comparison (ECR/ADP) works now."}})

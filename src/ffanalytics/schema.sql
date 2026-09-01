@@ -36,20 +36,23 @@ CREATE TABLE IF NOT EXISTS rosters (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     season INTEGER NOT NULL,
     week INTEGER NOT NULL,
-    data JSON NOT NULL
+    data JSON NOT NULL,
+    UNIQUE(season, week)
 );
 
 CREATE TABLE IF NOT EXISTS player_stats (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     season INTEGER NOT NULL,
     week INTEGER NOT NULL,
-    data JSON NOT NULL
+    data JSON NOT NULL,
+    UNIQUE(season, week)
 );
 
 CREATE TABLE IF NOT EXISTS injury_status (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     season INTEGER NOT NULL,
-    data JSON NOT NULL
+    data JSON NOT NULL,
+    UNIQUE(season)
 );
 
 CREATE TABLE IF NOT EXISTS sleeper_matchups (
@@ -68,7 +71,8 @@ CREATE TABLE IF NOT EXISTS news_data (
     week INTEGER NOT NULL,
     kind TEXT NOT NULL,  -- 'trending' or 'injuries'
     data JSON NOT NULL,
-    fetched_at TEXT NOT NULL
+    fetched_at TEXT NOT NULL,
+    UNIQUE(season, week, kind)
 );
 
 CREATE TABLE IF NOT EXISTS weather (
@@ -79,12 +83,34 @@ CREATE TABLE IF NOT EXISTS weather (
     temp_f REAL,
     wind_mph REAL,
     precip_prob REAL,
-    fetched_at TEXT NOT NULL
+    fetched_at TEXT NOT NULL,
+    UNIQUE(lat, lon, game_time_iso)
 );
 
 CREATE TABLE IF NOT EXISTS market_consensus (
     season INTEGER NOT NULL,
     week INTEGER NOT NULL,
     data JSON NOT NULL,
-    fetched_at TEXT NOT NULL
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (season, week)
+);
+
+CREATE TABLE IF NOT EXISTS draft_picks (
+    season INTEGER NOT NULL,
+    player_id TEXT NOT NULL,
+    roster_id INTEGER NOT NULL,
+    picked_by TEXT,
+    amount REAL,
+    metadata JSON,
+    PRIMARY KEY (season, player_id)
+);
+
+CREATE TABLE IF NOT EXISTS league_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    transaction_id TEXT UNIQUE NOT NULL,
+    kind TEXT NOT NULL,
+    data JSON NOT NULL,
+    created_at TEXT NOT NULL
 );

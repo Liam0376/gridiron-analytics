@@ -2,6 +2,7 @@ import { fetchWaiver, fetchNews } from '../api.js';
 import { posBadge } from '../components/badges.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
+import { getTeamColor } from '../components/teamColors.js';
 
 export async function renderWaiver(root) {
   const [waiver, news] = await Promise.all([fetchWaiver(), fetchNews()]);
@@ -50,7 +51,7 @@ export async function renderWaiver(root) {
               <thead><tr><th>#</th><th>Player</th><th>Pos</th><th>Proj</th><th>Δ roster</th><th>Replaces</th><th>Conf</th></tr></thead>
               <tbody>
                 ${recs.map(r=>`
-                  <tr>
+                  <tr data-team="${r.team || ''}" style="--team-accent:${getTeamColor((r.team||'').toUpperCase())}">
                     <td class="mono">${r.waiver_priority ?? '—'}</td>
                     <td><div class="player-cell">${playerAvatar(r, 28)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(r.player_name || r.player_id)}</div><div class="player-cell-sub">${teamLogo(r.team, 14)} ${escapeHtml(r.team || '')}</div></div></div></td>
                     <td>${posBadge(r.position)}</td>

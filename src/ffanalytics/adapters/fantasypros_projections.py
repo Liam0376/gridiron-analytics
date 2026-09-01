@@ -365,7 +365,8 @@ def load_all_projections() -> dict[tuple, dict]:
                     continue
                 player = row[0].strip()
                 team = row[1].strip().upper()
-                fpts = _safe_float(row[4]) if len(row) > 4 else None
+                # K CSV: Player,Team,FG,FGA,XPT,FPTS → FPTS is row[5], not XPT row[4]
+                fpts = _safe_float(row[5]) if len(row) > 5 else _safe_float(row[4]) if len(row) > 4 else None
                 key = (_norm_name(player), team, "K")
                 merged[key] = {
                     "player_name": player,

@@ -5,7 +5,9 @@ import { posBadge, injuryBadge } from '../components/badges.js';
 import { intervalBar } from '../components/intervalBar.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
+import { getTeamColor } from '../components/teamColors.js';
 import { openPlayerModal } from '../components/playerModal.js';
+import { computeVbdParams, vbdAuction, vbdAuctionUncapped } from '../components/vbdAuction.js';
 
 export async function renderTeam(root) {
   const selectedId = getSelectedTeamId();
@@ -25,6 +27,8 @@ export async function renderTeam(root) {
     if (c.player_id) compMap.set(String(c.player_id), c);
     if (c.player_name) compMap.set(c.player_name.toLowerCase(), c);
   });
+  // Compute dynamic VBD auction params from comparison data (mirrors comparison.py + auction.js)
+  const vbdParams = computeVbdParams(compData.players || []);
 
   // Helper to enrich player objects with rich data
   const enrichPlayer = (p, defaultSlot = 'BENCH') => {
@@ -38,9 +42,17 @@ export async function renderTeam(root) {
     const lower = Number(p.projection_lower ?? p.lower ?? (weekly - width / 2));
     const upper = Number(p.projection_upper ?? p.upper ?? (weekly + width / 2));
 
-    const vor = Number(c.vor ?? Math.max(0, season - 100));
-    const gridironAuction = Number(p.gridironAuction ?? p.auction ?? c.auction ?? Math.max(1, Math.round(vor * 0.25)));
-    const marketAuction = Number(p.marketAuction ?? p.market_auction ?? c.market_auction ?? c.marketAuction ?? Math.max(1, Math.round(gridironAuction * 0.9)));
+    const pos = (p.position || p.position_group || 'UNK').toUpperCase();
+    const modelSeason = Number(p.model_season_points ?? c.model_season_points ?? (p._neutral_points != null ? p._neutral_points * 17 : weekly * 17));
+    // Dynamic VBD: capped $1 bench, plus uncapped true VOR $ for tooltip
+    const gridironAuction = Number(p.gridironAuction ?? c.auction ?? (c.model_season_points != null ? vbdAuction(Number(c.model_season_points), pos, vbdParams) : vbdAuction(modelSeason, pos, vbdParams)) ?? 1);
+    const gridironUncapped = Number(c.auctionUncapped ?? (c.model_season_points != null ? vbdAuctionUncapped(Number(c.model_season_points), pos, vbdParams) : vbdAuctionUncapped(modelSeason, pos, vbdParams)) ?? gridironAuction);
+    // Market $ = VBD market auction or actual paid price (paid takes precedence for drafted players)
+    const marketVbd = c.market_season_points != null ? vbdAuction(Number(c.market_season_points), pos, vbdParams) : null;
+    const marketUncapped = c.marketAuctionUncapped ?? (c.market_season_points != null ? vbdAuctionUncapped(Number(c.market_season_points), pos, vbdParams) : null);
+    const marketAuction = Number(p.auction_price_paid ?? p.marketAuction ?? c.marketAuction ?? marketVbd ?? Math.max(1, Math.round(gridironAuction * 0.9)));
+    const replPts = vbdParams.replPts[pos] ?? 0;
+    const vor = Math.max(0, modelSeason - replPts);
     const deltaAuction = gridironAuction - marketAuction;
 
     const slot = p.slot || defaultSlot;
@@ -58,7 +70,6 @@ export async function renderTeam(root) {
       rec = width > 7.0 ? 'TOSS-UP' : weekly >= 10.0 ? 'CONFIDENT' : 'RISK';
     }
 
-    const pos = (p.position || p.position_group || 'UNK').toUpperCase();
     const passYd = Math.round(c.market_season_stats?.passing_yards ?? (p.pass_yd ? p.pass_yd * 17 : (pos === 'QB' ? weekly * 16.5 * 17 : 0)));
     const rushYd = Math.round(c.market_season_stats?.rushing_yards ?? (p.rush_yd ? p.rush_yd * 17 : (pos === 'RB' ? weekly * 5.2 * 17 : pos === 'QB' ? weekly * 1.4 * 17 : 0)));
     const recYd = Math.round(c.market_season_stats?.receiving_yards ?? (p.rec_yd ? p.rec_yd * 17 : ((pos === 'WR' || pos === 'TE') ? weekly * 5.6 * 17 : pos === 'RB' ? weekly * 2.1 * 17 : 0)));
@@ -79,7 +90,9 @@ export async function renderTeam(root) {
       upper,
       vor,
       gridironAuction,
+      gridironUncapped,
       marketAuction,
+      marketUncapped,
       deltaAuction,
       ecr,
       ecrPos,
@@ -504,7 +517,7 @@ function renderPlayerRow(p, isReserve = false) {
   else statText = `${p.season_tds} TD`;
 
   return `
-    <tr data-player-id="${escapeHtml(p.player_id)}" class="clickable-row" style="cursor:pointer">
+    <tr data-player-id="${escapeHtml(p.player_id)}" data-team="${p.team || ''}" class="clickable-row" style="cursor:pointer; --team-accent:${getTeamColor((p.team||'').toUpperCase())}">
       <td class="micro faint mono" style="font-weight:700">${escapeHtml(p.slot)}</td>
       <td>
         <div class="player-cell">
@@ -520,8 +533,8 @@ function renderPlayerRow(p, isReserve = false) {
         <span style="color:var(--amber); font-weight:700">${p.weekly.toFixed(1)}</span>
         <span class="micro faint"> / ${p.season.toFixed(0)}</span>
       </td>
-      <td class="mono"><span class="badge badge-amber">$${p.gridironAuction}</span></td>
-      <td class="mono"><span class="badge badge-sky">$${p.marketAuction}</span></td>
+      <td class="mono"><span class="badge badge-amber" title="${p.gridironUncapped!=null && p.gridironUncapped!==p.gridironAuction ? `True VOR $${p.gridironUncapped}` : ''}">$${p.gridironAuction}${p.gridironUncapped!=null && p.gridironUncapped!==p.gridironAuction ? ` <span class="micro faint">($${p.gridironUncapped})</span>` : ''}</span></td>
+      <td class="mono"><span class="badge badge-sky" title="${p.marketUncapped!=null && p.marketUncapped!==p.marketAuction ? `True $${p.marketUncapped}` : ''}">$${p.marketAuction}${p.marketUncapped!=null && p.marketUncapped!==p.marketAuction ? ` <span class="micro faint">($${p.marketUncapped})</span>` : ''}</span></td>
       <td class="mono ${deltaCls}">${deltaSign}$${p.deltaAuction}</td>
       <td><span class="badge ${edgeCls}">${p.edge}</span></td>
       <td class="mono micro">${p.ecr ? `#${p.ecr}${p.ecrPos ? ` (${p.ecrPos})` : ''}` : '—'}</td>
@@ -549,11 +562,11 @@ function renderPlayerCardItem(p) {
             </div>
           </div>
         </div>
-        <span class="badge badge-amber mono" style="font-size:13px">$${p.gridironAuction}</span>
+        <span class="badge badge-amber mono" style="font-size:13px" title="${p.gridironUncapped!==p.gridironAuction ? `True $${p.gridironUncapped}`:''}">$${p.gridironAuction}${p.gridironUncapped!==p.gridironAuction ? `<span style="font-size:10px; color:var(--text-faint)"> ($${p.gridironUncapped})</span>`:''}</span>
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; margin-bottom:8px" class="mono">
         <div><span class="faint">Gridiron:</span> <strong style="color:var(--amber)">${p.weekly.toFixed(1)} wk</strong></div>
-        <div><span class="faint">Market:</span> <span style="color:var(--sky)">$${p.marketAuction}</span></div>
+        <div><span class="faint">Market:</span> <span style="color:var(--sky)">$${p.marketAuction}${p.marketUncapped!==p.marketAuction ? `<span style="font-size:10px; color:var(--text-faint)"> ($${p.marketUncapped})</span>`:''}</span></div>
         <div><span class="faint">ECR:</span> ${p.ecr ? `#${p.ecr}` : '—'}</div>
         <div><span class="faint">Edge:</span> <strong style="color:${p.edge==='BUY'?'var(--emerald)':p.edge==='SELL'?'var(--crimson)':'var(--text-muted)'}">${p.edge}</strong></div>
       </div>

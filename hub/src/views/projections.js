@@ -6,6 +6,7 @@ import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
 import { playerCard } from '../components/playerCard.js';
 import { getTeamColor } from '../components/teamColors.js';
+import { openPlayerModal } from '../components/playerModal.js';
 
 let allPlayers = [];
 let compById = new Map();
@@ -19,7 +20,7 @@ const PAGE_SIZE = 50;
 function edgeBadge(edge) {
   if (edge === 'BUY') return `<span class="badge" style="background:var(--emerald-dim); color:var(--emerald); border:1px solid rgba(16,185,129,0.22)">▲ BUY</span>`;
   if (edge === 'SELL') return `<span class="badge" style="background:var(--crimson-dim); color:var(--crimson); border:1px solid rgba(239,68,68,0.22)">▼ SELL</span>`;
-  return `<span class="badge" style="background:rgba(255,255,255,0.06); color:var(--text-faint); border:1px solid var(--border)">—</span>`;
+  return `<span class="badge" style="background:rgba(0,0,0,0.05); color:var(--text-faint); border:1px solid var(--border)">—</span>`;
 }
 function deltaPtsBadge(d) {
   if (d == null) return `<span class="mono" style="color:var(--text-faint)">—</span>`;
@@ -43,7 +44,7 @@ function statDeltaBar(model, market, delta) {
   const pctM = Math.round((Math.abs(model) / maxAbs) * 100);
   const pctK = Math.round((Math.abs(market) / maxAbs) * 100);
   const dColor = delta > 0 ? 'var(--emerald)' : delta < 0 ? 'var(--crimson)' : 'var(--text-faint)';
-  return `<div style="display:flex; align-items:center; gap:6px; min-width:160px"><span class="mono" style="font-size:11px; min-width:44px; text-align:right">${model.toFixed(1)}</span><div style="flex:1; height:4px; background:rgba(255,255,255,0.08); border-radius:999px; position:relative; overflow:hidden"><div style="position:absolute; left:0; top:0; bottom:0; width:${pctM}%; background:var(--amber); opacity:0.9; border-radius:999px"></div><div style="position:absolute; left:0; top:0; bottom:0; width:${pctK}%; background:var(--sky); opacity:0.35; border-radius:999px"></div></div><span class="mono" style="font-size:11px; color:var(--text-muted); min-width:36px">${market.toFixed(1)}</span><span class="mono" style="font-size:11px; color:${dColor}; font-weight:700; min-width:36px; text-align:right">${delta > 0 ? '+' : ''}${delta.toFixed(1)}</span></div>`;
+  return `<div style="display:flex; align-items:center; gap:6px; min-width:160px"><span class="mono" style="font-size:11px; min-width:44px; text-align:right">${model.toFixed(1)}</span><div style="flex:1; height:4px; background:rgba(0,0,0,0.06); border-radius:999px; position:relative; overflow:hidden"><div style="position:absolute; left:0; top:0; bottom:0; width:${pctM}%; background:var(--amber); opacity:0.9; border-radius:999px"></div><div style="position:absolute; left:0; top:0; bottom:0; width:${pctK}%; background:var(--sky); opacity:0.35; border-radius:999px"></div></div><span class="mono" style="font-size:11px; color:var(--text-muted); min-width:36px">${market.toFixed(1)}</span><span class="mono" style="font-size:11px; color:${dColor}; font-weight:700; min-width:36px; text-align:right">${delta > 0 ? '+' : ''}${delta.toFixed(1)}</span></div>`;
 }
 
 export async function renderProjections(root) {
@@ -57,37 +58,86 @@ export async function renderProjections(root) {
 
   // Fetch market comparison in parallel (free, $0; graceful degrade if no DB table yet)
   let compRaw = { players: [], count: 0, meta: {}, fetched_at: null };
-  try { compRaw = await fetchComparison({ limit: 800 }); } catch { compRaw = { players: [], count: 0, meta: {}, fetched_at: null }; }
+  try { compRaw = await fetchComparison({ limit: 2000 }); } catch { compRaw = { players: [], count: 0, meta: {}, fetched_at: null }; }
   compById = new Map((compRaw.players || []).map(c => [String(c.player_id), c]));
   comparisonMeta = compRaw;
 
+  // Ensure all market players are included so no player is missing
+  const seenIds = new Set(allPlayers.map(p => String(p.player_id)));
+  for (const c of (compRaw.players || [])) {
+    const pid = String(c.player_id || '');
+    if (pid && !seenIds.has(pid)) {
+      seenIds.add(pid);
+      allPlayers.push({
+        player_id: pid,
+        sleeper_id: c.sleeper_id || (/^\d+$/.test(pid) ? pid : null),
+        player_name: c.player_name || c.full_name || pid,
+        position: (c.position || 'UNK').toUpperCase(),
+        team: (c.team || '').toUpperCase(),
+        projected_points: c.model_points ?? c.projected_points ?? 0,
+        point_estimate: c.model_points ?? c.projected_points ?? 0,
+        projection_lower: c.projection_lower ?? ((c.model_points ?? 0) - 2.5),
+        projection_upper: c.projection_upper ?? ((c.model_points ?? 0) + 2.5),
+        width: c.width ?? 5.0,
+        injury_status: c.injury_status || null,
+        market_points: c.market_points,
+        delta_points: c.delta_points,
+        model_overall_rank: c.model_overall_rank,
+        model_pos_rank: c.model_pos_rank,
+        fp_ecr: c.fp_ecr,
+        fp_ecr_pos: c.fp_ecr_pos,
+        fp_adp: c.fp_adp,
+        fp_tier: c.fp_tier,
+        delta_rank: c.delta_rank,
+        delta_pos_rank: c.delta_pos_rank,
+        edge: c.edge || 'NEUTRAL',
+        edge_score: c.edge_score || 0,
+        stat_deltas: c.stat_deltas || [],
+      });
+    }
+  }
+
   // Enrich allPlayers with comparison fields (model vs market + ECR/ADP)
   const hasComparison = compById.size > 0;
-  if (hasComparison) {
-    for (const p of allPlayers) {
-      const c = compById.get(String(p.player_id));
-      if (c) {
-        p.market_points = c.market_points;
-        p.delta_points = c.delta_points;
-        p.model_overall_rank = c.model_overall_rank;
-        p.model_pos_rank = c.model_pos_rank;
-        p.fp_ecr = c.fp_ecr;
-        p.fp_ecr_pos = c.fp_ecr_pos;
-        p.fp_adp = c.fp_adp;
-        p.delta_rank = c.delta_rank;
-        p.delta_pos_rank = c.delta_pos_rank;
-        p.edge = c.edge;
-        p.edge_score = c.edge_score;
-        p.stat_deltas = c.stat_deltas;
-        // prefer model_points from comparison (weekly projection) if present
-        if (c.model_points != null) {
-          p.projected_points = c.model_points;
-          p.point_estimate = c.model_points;
-        }
-      } else {
-        p.market_points = null; p.delta_points = null; p.edge = 'NEUTRAL'; p.stat_deltas = [];
-      }
+  for (const p of allPlayers) {
+    if (p.player_id && /^\d+$/.test(String(p.player_id))) p.sleeper_id = p.player_id;
+    const c = compById.get(String(p.player_id));
+    if (c) {
+      if (c.sleeper_id) p.sleeper_id = c.sleeper_id;
+      p.market_points = c.market_points;
+      p.delta_points = c.delta_points;
+      p.model_overall_rank = c.model_overall_rank;
+      p.model_pos_rank = c.model_pos_rank;
+      p.fp_ecr = c.fp_ecr;
+      p.fp_ecr_pos = c.fp_ecr_pos;
+      p.fp_adp = c.fp_adp;
+      p.fp_tier = c.fp_tier;
+      p.delta_rank = c.delta_rank;
+      p.delta_pos_rank = c.delta_pos_rank;
+      p.edge = c.edge;
+      p.edge_score = c.edge_score;
+      p.stat_deltas = c.stat_deltas;
+    } else {
+      p.market_points = null; p.delta_points = null; p.edge = 'NEUTRAL'; p.stat_deltas = [];
     }
+    const m_pts = c && c.model_points != null && Number(c.model_points) > 0 ? Number(c.model_points) : null;
+    const raw_pts = p.projected_points != null && Number(p.projected_points) > 0 ? Number(p.projected_points) : null;
+    const mk_s = (c && c.market_season_points != null && Number(c.market_season_points) > 0) ? Number(c.market_season_points) / 17.0 : null;
+    const weekly = m_pts ?? raw_pts ?? mk_s ?? 0;
+
+    p.projected_points = Number(weekly.toFixed(2));
+    p.point_estimate = Number(weekly.toFixed(2));
+    p.weekly = Number(weekly.toFixed(2));
+
+    const width = Number(c?.interval_width ?? c?.width ?? p.width ?? 5.0);
+    p.width = Number(width.toFixed(2));
+    p.projection_lower = Number((weekly - width / 2).toFixed(2));
+    p.projection_upper = Number((weekly + width / 2).toFixed(2));
+    p.lower = p.projection_lower;
+    p.upper = p.projection_upper;
+    p.ecr = p.fp_ecr;
+    p.adp = p.fp_adp;
+    p.tier = p.fp_tier;
   }
 
   // sync global search
@@ -132,7 +182,7 @@ export async function renderProjections(root) {
       </div>
       <div class="kpi-card" style="border-left:3px solid var(--amber)">
         <div class="kpi-label">Comparison source</div>
-        <div class="kpi-value" style="font-size:14px; line-height:1.3">Model vs Market<br><span style="font:600 11px 'Fira Sans',sans-serif; color:var(--text-muted); letter-spacing:0.04em; text-transform:uppercase">${compRaw.fetched_at ? new Date(compRaw.fetched_at).toLocaleString() : 'DB snapshot'} · ${compById.size} ranked</span></div>
+        <div class="kpi-value" style="font-size:14px; line-height:1.3">Model vs Market<br><span style="font:600 11px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-muted); letter-spacing:0.04em; text-transform:uppercase">${compRaw.fetched_at ? new Date(compRaw.fetched_at).toLocaleString() : 'DB snapshot'} · ${compById.size} ranked</span></div>
         <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:6px">Free, local — Sleeper projections + FP free ECR/ADP</div>
       </div>
     </div>
@@ -179,7 +229,7 @@ export async function renderProjections(root) {
 
     <div class="responsive-view">
     ${compareEnabled && hasComparison ? `
-    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; padding:8px 12px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; margin-bottom:10px; font:500 11px 'Fira Sans',sans-serif; line-height:1.4">
+    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; padding:8px 12px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; margin-bottom:10px; font:500 11px "Helvetica Neue", Helvetica,sans-serif; line-height:1.4">
       <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--amber); border-radius:2px; display:inline-block"></span> <strong style="color:var(--amber)">Gridiron</strong> Model · weekly PPR (×17 for Auction)</span>
       <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--sky); border-radius:2px; display:inline-block"></span> <strong style="color:var(--sky)">Sleeper</strong> Market · free Sleeper projections</span>
       <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--emerald); border-radius:2px; display:inline-block"></span> BUY = Model ≥ +3 pts / ≥12 ranks better</span>
@@ -194,10 +244,10 @@ export async function renderProjections(root) {
             <th data-sort="player_name" tabindex="0" role="button" aria-label="Sort by Player">Player</th>
             <th data-sort="position" tabindex="0" role="button" aria-label="Sort by Position">Pos</th>
             <th data-sort="team" tabindex="0" role="button" aria-label="Sort by Team">Team</th>
-            <th data-sort="projected_points" tabindex="0" role="button" aria-label="Sort by Gridiron Model Points" style="${compareEnabled && hasComparison ? 'color:var(--amber); border-bottom:2px solid var(--amber)' : ''}">Gridiron<br><span style="font:600 10px 'Fira Sans',sans-serif; color:${compareEnabled && hasComparison ? 'var(--amber)' : 'var(--text-faint)'}; opacity:0.7">Model</span></th>
+            <th data-sort="projected_points" tabindex="0" role="button" aria-label="Sort by Gridiron Model Points" style="${compareEnabled && hasComparison ? 'color:var(--amber); border-bottom:2px solid var(--amber)' : ''}">Gridiron<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:${compareEnabled && hasComparison ? 'var(--amber)' : 'var(--text-faint)'}; opacity:0.7">Model</span></th>
             ${compareEnabled && hasComparison ? `
-            <th data-sort="market_points" tabindex="0" role="button" aria-label="Sort by Sleeper Market Points" style="color:var(--sky); border-bottom:2px solid var(--sky)">Market<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--sky); opacity:0.7">Sleeper</span></th>
-            <th data-sort="delta_points" tabindex="0" role="button" aria-label="Sort by Points Delta" style="border-bottom:2px solid var(--border)">Δ<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--text-faint)">Grid−Mkt</span></th>
+            <th data-sort="market_points" tabindex="0" role="button" aria-label="Sort by Sleeper Market Points" style="color:var(--sky); border-bottom:2px solid var(--sky)">Market<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--sky); opacity:0.7">Sleeper</span></th>
+            <th data-sort="delta_points" tabindex="0" role="button" aria-label="Sort by Points Delta" style="border-bottom:2px solid var(--border)">Δ<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-faint)">Grid−Mkt</span></th>
             <th data-sort="fp_ecr" tabindex="0" role="button" aria-label="Sort by FantasyPros ECR">ECR</th>
             <th data-sort="delta_rank" tabindex="0" role="button" aria-label="Sort by Rank Delta">Δ Rk</th>
             <th data-sort="fp_adp" tabindex="0" role="button" aria-label="Sort by ADP">ADP</th>
@@ -290,16 +340,29 @@ export async function renderProjections(root) {
     return rows;
   }
 
+  function getSortVal(p, key) {
+    let v = p[key];
+    if ((v == null || v === '' || v === '—') && key === 'projected_points') v = p.point_estimate;
+    if (v == null || v === '' || v === '—' || v === '–' || v === '-') return null;
+    if (typeof v === 'number') return isNaN(v) ? null : v;
+    const str = String(v).trim();
+    const num = Number(str);
+    if (!isNaN(num) && str !== '') return num;
+    return str.toLowerCase();
+  }
+
   function updateTable() {
     let rows = filteredWithEdge(allPlayers);
     // sort
     rows = [...rows].sort((a,b)=>{
-      const av = a[sortKey] ?? a.point_estimate ?? (a[sortKey]==='market_points' ? -1 : '');
-      const bv = b[sortKey] ?? b.point_estimate ?? (b[sortKey]==='market_points' ? -1 : '');
-      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * sortDir;
-      if (av == null && bv == null) return 0;
-      if (av == null) return 1;
-      if (bv == null) return -1;
+      const av = getSortVal(a, sortKey);
+      const bv = getSortVal(b, sortKey);
+      if (av === null && bv === null) return 0;
+      if (av === null) return 1;
+      if (bv === null) return -1;
+      if (typeof av === 'number' && typeof bv === 'number') {
+        return (av - bv) * sortDir;
+      }
       return String(av).localeCompare(String(bv)) * sortDir;
     });
 
@@ -342,16 +405,18 @@ export async function renderProjections(root) {
         const high = Number(p.projection_upper ?? p.upper_bound ?? proj + (p.width ?? 5)/2);
         const width = Number(p.width ?? p.projection_width ?? (high - low));
         const market = p.market_points != null ? Number(p.market_points).toFixed(1) : '—';
-        const ecr = p.fp_ecr != null ? `#${p.fp_ecr}${p.fp_ecr_pos ? ` (#${p.fp_ecr_pos} ${pos})` : ''}${p.fp_tier ? ` <span style="background:var(--violet-dim); color:var(--violet); border:1px solid rgba(168,85,247,0.18); border-radius:999px; padding:1px 5px; font:700 10px 'JetBrains Mono',monospace">T${p.fp_tier}</span>` : ''}` : '—';
+        const ecr = p.fp_ecr != null ? `#${p.fp_ecr}${p.fp_ecr_pos ? ` (#${p.fp_ecr_pos} ${pos})` : ''}${p.fp_tier ? ` <span style="background:var(--violet-dim); color:var(--violet); border:1px solid rgba(168,85,247,0.18); border-radius:999px; padding:1px 5px; font:700 10px ui-monospace, SFMono-Regular,monospace">T${p.fp_tier}</span>` : ''}` : '—';
         const adp = p.fp_adp != null ? `#${p.fp_adp}` : '—';
         const edgeCell = compareEnabled && hasComparison ? edgeBadge(p.edge) : '';
-        const rowAccent = p.edge === 'BUY' ? 'var(--emerald)' : p.edge === 'SELL' ? 'var(--crimson)' : getTeamColor(p.team);
+        const tColor = getTeamColor(p.team);
+        const teamPill = p.team ? `<span class="badge" style="background:${tColor}1f; color:${tColor}; border:1px solid ${tColor}3d; font-weight:700">${teamLogo(p.team, 14)} ${escapeHtml(p.team)}</span>` : '—';
+        const rowAccent = p.edge === 'BUY' ? 'var(--emerald)' : p.edge === 'SELL' ? 'var(--crimson)' : tColor;
         const expandBtn = compareEnabled && hasComparison ? `<button class="chip" data-expand="${p.player_id}" aria-label="Show stat deltas for ${escapeHtml(p.player_name)}" style="padding:4px 8px; font-size:11px">▶</button>` : '';
         const mainRow = `
-          <tr data-team="${p.team || ''}" data-pid="${p.player_id}" style="--team-accent:${rowAccent}; ${p.edge==='BUY' ? 'background:rgba(16,185,129,0.04)' : p.edge==='SELL' ? 'background:rgba(239,68,68,0.04)' : ''}">
+          <tr data-team="${p.team || ''}" data-pid="${p.player_id}" class="clickable-row" style="cursor:pointer; --team-accent:${rowAccent}; ${p.edge==='BUY' ? 'background:rgba(16,185,129,0.04)' : p.edge==='SELL' ? 'background:rgba(239,68,68,0.04)' : ''}">
             <td><div class="player-cell">${playerAvatar(p, 32)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(p.player_name || p.player_id)}</div><div class="player-cell-sub">${teamLogo(p.team, 14)} ${escapeHtml(p.team || '—')} ${p.model_pos_rank ? `<span style="color:var(--text-faint)">· #${p.model_pos_rank} ${pos}</span>` : ''}</div></div></div></td>
             <td>${posBadge(pos)}</td>
-            <td class="mono" style="font-size:12px">${escapeHtml(p.team || '—')}</td>
+            <td>${teamPill}</td>
             <td class="mono" style="font-weight:700; color:var(--amber)">${proj.toFixed(1)}</td>
             ${compareEnabled && hasComparison ? `
             <td class="mono" style="color:var(--sky)">${market}</td>
@@ -371,7 +436,7 @@ export async function renderProjections(root) {
         // stat deltas hidden row
         if (compareEnabled && hasComparison && p.stat_deltas && p.stat_deltas.length) {
           const statRows = p.stat_deltas.filter(s => s.market != null || s.model != null).slice(0,7).map(s=>`
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.04)">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:4px 0; border-bottom:1px solid rgba(0,0,0,0.06)">
               <span class="mono" style="font-size:11px; color:var(--text-muted); min-width:64px">${s.label}</span>
               ${statDeltaBar(s.model, s.market, s.delta)}
             </div>
@@ -383,7 +448,8 @@ export async function renderProjections(root) {
       }).join('');
       // bind expand toggles
       tbody.querySelectorAll('[data-expand]').forEach(btn=>{
-        btn.addEventListener('click', ()=>{
+        btn.addEventListener('click', (e)=>{
+          e.stopPropagation();
           const pid = btn.getAttribute('data-expand');
           const panel = tbody.querySelector(`[data-expand-panel="${pid}"]`);
           if (!panel) return;
@@ -408,6 +474,19 @@ export async function renderProjections(root) {
       }).join('');
     }
 
+    root.querySelectorAll('[data-pid]').forEach(el => {
+      if (el.classList.contains('expand-panel')) return;
+      el.style.cursor = 'pointer';
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('[data-expand]')) return;
+        const pid = el.getAttribute('data-pid');
+        const targetPlayer = allPlayers.find(p => String(p.player_id) === String(pid));
+        if (targetPlayer) {
+          openPlayerModal(targetPlayer, root);
+        }
+      });
+    });
+
     // Render pagination controls
     const pag = root.querySelector('#paginationControls');
     if (pag) {
@@ -415,7 +494,7 @@ export async function renderProjections(root) {
         pag.innerHTML = '';
       } else {
         pag.innerHTML = `
-          <div style="font:400 13px 'Fira Sans',sans-serif; color:var(--text-muted)">
+          <div style="font:400 13px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-muted)">
             Page <strong>${currentPage}</strong> of <strong>${totalPages}</strong>
           </div>
           <div style="display:flex; gap:6px">

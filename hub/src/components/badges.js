@@ -19,5 +19,5 @@ export function confBadge(width) {
   const w = Number(width ?? 5);
   const label = w < 3 ? 'HIGH' : w < 6 ? 'MED' : 'WIDE';
   const cls = w < 3 ? 'high' : w < 6 ? 'medium' : 'low';
-  return `<span class="badge" style="background:${cls==='high'?'var(--emerald-dim)':cls==='medium'?'var(--amber-dim)':'rgba(255,255,255,0.06)'}; color:${cls==='high'?'var(--emerald)':cls==='medium'?'var(--amber)':'var(--text-muted)'}; border:1px solid ${cls==='high'?'rgba(16,185,129,0.2)':cls==='medium'?'rgba(245,158,11,0.2)':'var(--border)'}">${label} · ±${w.toFixed(1)}</span>`;
+  return `<span class="badge" style="background:${cls==='high'?'var(--emerald-dim)':cls==='medium'?'var(--amber-dim)':'rgba(0,0,0,0.05)'}; color:${cls==='high'?'var(--emerald)':cls==='medium'?'var(--amber)':'var(--text-muted)'}; border:1px solid ${cls==='high'?'rgba(16,185,129,0.2)':cls==='medium'?'rgba(245,158,11,0.2)':'var(--border)'}">${label} · ±${w.toFixed(1)}</span>`;
 }

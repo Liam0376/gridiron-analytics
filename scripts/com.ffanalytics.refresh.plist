@@ -20,5 +20,7 @@
     <string>REPLACE_WITH_ABSOLUTE_PATH/logs/refresh.err.log</string>
     <key>StandardOutPath</key>
     <string>REPLACE_WITH_ABSOLUTE_PATH/logs/refresh.out.log</string>
+    <key>ThrottleInterval</key>
+    <integer>3600</integer>
 </dict>
 </plist>

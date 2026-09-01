@@ -1,77 +1,88 @@
 :root {
-  --bg: #0A0E14;
-  --bg-rgb: 10, 14, 20;
-  --surface: #111720;
-  --surface-rgb: 17, 23, 32;
-  --surface-raised: #1A2332;
-  --surface-hover: #1E2B3E;
-  --border: rgba(255,255,255,0.07);
-  --border-strong: rgba(255,255,255,0.12);
-  --border-active: rgba(245,158,11,0.35);
+  /* Base — clean light background (FantasyPros-inspired) */
+  --bg: #F3F4F6;
+  --bg-rgb: 243, 244, 246;
+  --surface: #FFFFFF;
+  --surface-rgb: 255, 255, 255;
+  --surface-raised: #F8FAFC;
+  --surface-hover: #EFF6FF;
+  --border: #E2E8F0;
+  --border-strong: #CBD5E1;
+  --border-active: #1E40AF;
 
-  --text: #F8FAFC;
-  --text-rgb: 248, 250, 252;
-  --text-muted: #94A3B8;
-  --text-faint: #64748B;
-  --text-inverse: #0A0E14;
+  /* Text — dark on light */
+  --text: #0F172A;
+  --text-rgb: 15, 23, 42;
+  --text-muted: #475569;
+  --text-faint: #94A3B8;
+  --text-inverse: #FFFFFF;
 
-  --amber: #F59E0B;
-  --amber-rgb: 245, 158, 11;
-  --amber-dim: rgba(245,158,11,0.14);
-  --amber-glow: rgba(245,158,11,0.25);
-  --amber-strong: #D97706;
+  /* Primary — FantasyPros navy blue */
+  --primary: #1E40AF;
+  --primary-rgb: 30, 64, 175;
+  --primary-light: #3B82F6;
+  --primary-dim: rgba(30, 64, 175, 0.08);
+  --primary-hover: #1E3A8A;
 
-  --emerald: #10B981;
-  --emerald-rgb: 16, 185, 129;
-  --emerald-dim: rgba(16,185,129,0.14);
-  --crimson: #EF4444;
-  --crimson-rgb: 239, 68, 68;
-  --crimson-dim: rgba(239,68,68,0.14);
-  --sky: #38BDF8;
-  --sky-rgb: 56, 189, 248;
-  --sky-dim: rgba(56,189,248,0.14);
-  --violet: #A855F7;
-  --violet-dim: rgba(168,85,247,0.14);
+  /* Accent — warm gold (FantasyPros-style) */
+  --amber: #D97706;
+  --amber-rgb: 217, 119, 6;
+  --amber-dim: rgba(217, 119, 6, 0.10);
+  --amber-glow: rgba(217, 119, 6, 0.20);
+  --amber-strong: #B45309;
 
-  --pos-qb: #38BDF8;
-  --pos-rb: #10B981;
-  --pos-wr: #F59E0B;
-  --pos-te: #A855F7;
-  --pos-k: #EC4899;
-  --pos-def: #94A3B8;
+  /* Semantic Data Indicators (adjusted for light bg) */
+  --emerald: #059669;
+  --emerald-rgb: 5, 150, 105;
+  --emerald-dim: rgba(5, 150, 105, 0.08);
+  --crimson: #DC2626;
+  --crimson-rgb: 220, 38, 38;
+  --crimson-dim: rgba(220, 38, 38, 0.08);
+  --sky: #0284C7;
+  --sky-rgb: 2, 132, 199;
+  --sky-dim: rgba(2, 132, 199, 0.08);
+  --violet: #7C3AED;
+  --violet-dim: rgba(124, 58, 237, 0.08);
 
-  --conf-high: #10B981;
-  --conf-medium: #F59E0B;
-  --conf-low: #6B7280;
+  /* Position Badges (richer for light bg) */
+  --pos-qb: #0369A1;
+  --pos-rb: #059669;
+  --pos-wr: #D97706;
+  --pos-te: #7C3AED;
+  --pos-k: #DB2777;
+  --pos-def: #64748B;
 
-  --weather-ok: #10B981;
-  --weather-warn: #F59E0B;
-  --weather-bad: #EF4444;
+  /* Confidence & Weather */
+  --conf-high: #059669;
+  --conf-medium: #D97706;
+  --conf-low: #94A3B8;
+  --weather-ok: #059669;
+  --weather-warn: #D97706;
+  --weather-bad: #DC2626;
 
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
-  --shadow-md: 0 4px 16px rgba(0,0,0,0.5);
-  --shadow-lg: 0 12px 32px rgba(0,0,0,0.6);
-  --shadow-glow: 0 0 20px rgba(245,158,11,0.15);
+  /* Elevation Shadows (light theme) */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 10px 24px rgba(0,0,0,0.12);
+  --shadow-glow: 0 0 0 3px rgba(30,64,175,0.15);
 
-  /* ui-ux-pro-max: Data-Dense Dashboard (192 reasoning rules, Fira Sans/Code) */
+  /* Layout tokens */
   --color-primary: #1E40AF;
   --color-on-primary: #FFFFFF;
-  --color-secondary: #3B82F6;
+  --color-secondary: #0284C7;
   --color-accent: #D97706;
-  --grid-gap: 8px;
-  --card-padding: 12px;
+  --grid-gap: 10px;
+  --card-padding: 14px;
   --font-size-small: 12px;
-  --table-row-height: 36px;
+  --table-row-height: 40px;
   --sidebar-width: 240px;
   --header-height: 56px;
-  --kpi-good: #10B981;
-  --kpi-ok: #F59E0B;
-  --kpi-bad: #EF4444;
+  --kpi-good: #059669;
+  --kpi-ok: #D97706;
+  --kpi-bad: #DC2626;
 
-  /* Mobile */
   --mobile-nav-height: 64px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
-  /* Team accent (set dynamically via JS) */
-  --team-accent: var(--amber);
+  --team-accent: var(--primary);
 }

@@ -1,6 +1,41 @@
 // hub/src/search.js — zero-token client-side search. No embeddings, no LLM.
 // Supports text substring + structured chips: pos:WR team:BUF opp:MIA proj>12 wind>15 healthy:true trending:true interval<3
 
+const TEAM_NAMES = {
+  BUF: 'Buffalo Bills',
+  MIA: 'Miami Dolphins',
+  NE: 'New England Patriots',
+  NYJ: 'New York Jets',
+  BAL: 'Baltimore Ravens',
+  CIN: 'Cincinnati Bengals',
+  CLE: 'Cleveland Browns',
+  PIT: 'Pittsburgh Steelers',
+  HOU: 'Houston Texans',
+  IND: 'Indianapolis Colts',
+  JAX: 'Jacksonville Jaguars',
+  TEN: 'Tennessee Titans',
+  DEN: 'Denver Broncos',
+  KC: 'Kansas City Chiefs',
+  LV: 'Las Vegas Raiders',
+  LAC: 'Los Angeles Chargers',
+  DAL: 'Dallas Cowboys',
+  NYG: 'New York Giants',
+  PHI: 'Philadelphia Eagles',
+  WAS: 'Washington Commanders',
+  CHI: 'Chicago Bears',
+  DET: 'Detroit Lions',
+  GB: 'Green Bay Packers',
+  MIN: 'Minnesota Vikings',
+  ATL: 'Atlanta Falcons',
+  CAR: 'Carolina Panthers',
+  NO: 'New Orleans Saints',
+  TB: 'Tampa Bay Buccaneers',
+  ARI: 'Arizona Cardinals',
+  LAR: 'Los Angeles Rams',
+  SEA: 'Seattle Seahawks',
+  SF: 'San Francisco 49ers',
+};
+
 export function parseQuery(raw) {
   const q = (raw || '').trim();
   if (!q) return { text: '', chips: {} };
@@ -29,14 +64,24 @@ export function parseQuery(raw) {
 export function matchesPlayer(p, parsed) {
   const { text, chips } = parsed;
   if (text) {
-    const hay = `${p.player_name || ''} ${p.team || ''} ${p.opponent_team || ''} ${p.player_id || ''}`.toLowerCase();
+    const pTeamAbbr = (p.team || '').toLowerCase();
+    const pTeamFullName = (TEAM_NAMES[p.team] || '').toLowerCase();
+    const pName = `${p.player_name || ''} ${p.full_name || ''} ${p.short_name || ''} ${p.name || ''}`.toLowerCase();
+    const pOwner = `${p.owner_name || ''} ${p.team_name || ''} ${p.display_name || ''}`.toLowerCase();
+    const pPos = (p.position || p.position_group || '').toLowerCase();
+
+    // Plain text search matches Player Name, Player Team, Team Full Name, Owner/Fantasy Team, Position ID
+    const hay = `${pName} ${pTeamAbbr} ${pTeamFullName} ${pOwner} ${pPos} ${p.player_id || ''}`;
     if (!hay.includes(text)) return false;
   }
   for (const [k, { op, value }] of Object.entries(chips)) {
     if (k === 'pos' || k === 'position') {
       if ((p.position || p.position_group || '').toLowerCase() !== value.toLowerCase()) return false;
     } else if (k === 'team') {
-      if ((p.team || '').toLowerCase() !== value.toLowerCase()) return false;
+      const pTeamAbbr = (p.team || '').toLowerCase();
+      const pTeamFullName = (TEAM_NAMES[p.team] || '').toLowerCase();
+      const want = value.toLowerCase();
+      if (pTeamAbbr !== want && !pTeamFullName.includes(want)) return false;
     } else if (k === 'opp' || k === 'opponent') {
       if ((p.opponent_team || '').toLowerCase() !== value.toLowerCase()) return false;
     } else if (k === 'proj' || k === 'points') {

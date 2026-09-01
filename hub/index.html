@@ -3,9 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="light" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Gridiron" />
     <link rel="manifest" href="/manifest.json" />
     <title>Gridiron Hub — Fantasy Analytics</title>
@@ -15,28 +15,36 @@
   </head>
   <body>
     <a href="#app" class="skip-link">Skip to main content</a>
-    <nav class="nav" id="nav">
-      <div class="nav-inner">
-        <div class="nav-brand">
+    <div class="layout">
+      <aside class="sidebar" id="sidebar" aria-label="Primary">
+        <div class="sidebar-brand">
           <div class="nav-logo">GH</div>
           <div>
             <div class="nav-title">GRIDIRON HUB</div>
             <div class="nav-sub">12-Team PPR · 2 FLEX</div>
           </div>
         </div>
-        <div class="nav-tabs" id="navTabs" role="tablist"></div>
-        <div class="nav-right">
-          <label class="search-mini" aria-label="Global search">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <nav class="sidebar-nav" id="navTabs" role="tablist" aria-label="Sections"></nav>
+        <div class="sidebar-foot">
+          <div class="staleness" id="stalenessTop" style="display:none"></div>
+        </div>
+      </aside>
+      <div class="main">
+        <header class="topbar" id="topbar">
+          <label class="search-top" aria-label="Global search">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
             <input id="globalSearch" placeholder="Search players, teams…  ( / )" autocomplete="off" />
           </label>
-          <div class="staleness" id="staleness" title="Data freshness"><span class="dot cold" id="staleDot"></span><span id="staleText">checking…</span></div>
-        </div>
+          <div class="topbar-right">
+            <div class="staleness" id="staleness" title="Data freshness"><span class="dot cold" id="staleDot"></span><span id="staleText">checking…</span></div>
+          </div>
+          <div id="searchDropdown" class="search-dropdown" style="display:none; position:absolute; top:calc(100% + 8px); left:50%; transform:translateX(-50%); width:min(640px, 92vw); max-height:420px; overflow-y:auto; background:var(--surface); border:1px solid var(--border-strong); border-radius:12px; box-shadow:0 16px 36px rgba(0,0,0,0.12); z-index:1000; padding:6px"></div>
+        </header>
+        <main class="page" id="app">
+          <div class="empty">Loading… if this hangs, check that <code class="inline">http://127.0.0.1:8000/health</code> is up or run <code class="inline">curl -X POST http://127.0.0.1:8000/refresh</code></div>
+        </main>
       </div>
-    </nav>
-    <main class="page" id="app">
-      <div class="empty">Loading… if this hangs, check that <code class="inline">http://127.0.0.1:8000/health</code> is up or run <code class="inline">curl -X POST http://127.0.0.1:8000/refresh</code></div>
-    </main>
+    </div>
     <div id="mobileNav"></div>
     <script type="module" src="/src/main.js"></script>
   </body>

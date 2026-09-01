@@ -119,6 +119,8 @@ def build_comparison(
     sleeper_players: dict | None = None,
     fp_projections: dict[tuple, dict] | None = None,
     statsguy_rows: list[dict] | None = None,
+    actual_by_gsis: dict[str, dict] | None = None,
+    draft_prices: dict[str, float] | None = None,
 ) -> list[dict]:
     """Build enriched comparison rows.
 
@@ -198,6 +200,28 @@ def build_comparison(
                     except Exception:
                         pass
 
+        # Actual points / stats (if available)
+        actual = actual_by_gsis.get(pid) if actual_by_gsis else None
+        actual_pts = None
+        actual_stats: dict[str, float] = {}
+        if actual:
+            if "pts_ppr" in actual or "pts_half_ppr" in actual:
+                try:
+                    raw_act = actual.get("pts_ppr")
+                    if raw_act is None:
+                        raw_act = actual.get("pts_half_ppr")
+                    if raw_act is not None:
+                        actual_pts = float(raw_act)
+                except Exception:
+                    actual_pts = None
+            for mdl_k, slp_k in MODEL_TO_SLEEPER.items():
+                v = actual.get(slp_k)
+                if v is not None:
+                    try:
+                        actual_stats[mdl_k] = float(v)
+                    except Exception:
+                        pass
+
         # FPros ranks
         fpros = _best_fpros_match(p.get("player_display_name") or p.get("player_name") or "", team, pos, fpros_lut)
         fp_ecr = None
@@ -267,6 +291,17 @@ def build_comparison(
                 try:
                     if _fp_season_entry.get("fpts") is not None:
                         market_season_points = float(_fp_season_entry["fpts"])
+                        # FantasyPros QB FPTS uses 4pt pass TD; Sleeper Bahamas uses 5pt.
+                        # Align to Sleeper scoring for Apples-to-Apples delta: +1 per pass TD.
+                        if pos == "QB" and market_season_points is not None:
+                            try:
+                                pass_tds_fp = float(_fp_season_entry.get("passing_tds") or 0)
+                                market_season_points += pass_tds_fp * 1.0
+                                # Also add rough 40+ bonus estimate if not in FP: ~0.15 per pass TD at 1pt
+                                # (empirical: ~15% of pass TDs are 40+; Sleeper gives +1)
+                                market_season_points += pass_tds_fp * 0.15
+                            except Exception:
+                                pass
                 except Exception:
                     market_season_points = None
                 for mk in ["passing_yards", "passing_tds", "passing_interceptions", "rushing_yards", "rushing_tds", "receiving_yards", "receiving_tds", "receptions", "fumbles_lost_total"]:
@@ -355,18 +390,35 @@ def build_comparison(
                 except Exception:
                     pass
 
-        # Model season stats = weekly stat ×17 — only keep meaningful for position (yards >10 or TD/rec >0.1)
+        # Model season stats = neutral weekly stat ×17 (not Vegas-boosted)
+        _neutral_stats_for_season = p.get("_neutral_stats") or {}
         model_season_stats: dict[str, float] = {}
         for mk in ["passing_yards", "passing_tds", "passing_interceptions", "rushing_yards", "rushing_tds", "receiving_yards", "receiving_tds", "receptions", "fumbles_lost_total"]:
-            if p.get(mk) is not None:
+            # Prefer neutral stat for season; fallback to Vegas weekly stat
+            src_val = _neutral_stats_for_season.get(mk) if _neutral_stats_for_season.get(mk) is not None else p.get(mk)
+            if src_val is not None:
                 try:
-                    model_season_stats[mk] = round(float(p[mk]) * 17.0, 1)
+                    model_season_stats[mk] = round(float(src_val) * 17.0, 1)
                 except Exception:
                     pass
         if not model_season_stats and market_season_stats:
             model_season_stats = dict(market_season_stats)
 
-        model_season_points = round(model_pts * 17, 1) if model_pts > 0 else (round(market_season_points, 1) if market_season_points is not None else 0.0)
+        # Season total uses Vegas-neutral weekly (avoid extrapolating Week-1 shootout to 17 games)
+        neutral_pts = p.get("_neutral_points") if p.get("_neutral_points") is not None else model_pts
+        _raw_model_season = round(neutral_pts * 17, 1) if neutral_pts > 0 else (round(market_season_points, 1) if market_season_points is not None else 0.0)
+        # Shrink extreme deltas toward market to avoid overconfidence (model MAE ~4.5 ≈ 76/season)
+        # Empirical: delta >51 is >3 pts/wk ~0.7σ; shrink 20% toward market for stability
+        model_season_points = _raw_model_season
+        if market_season_points is not None and _raw_model_season is not None:
+            raw_delta = _raw_model_season - market_season_points
+            if abs(raw_delta) >= 51:
+                # Pull 20% toward market (conservative) — preserves direction but moderates $ impact
+                model_season_points = round(0.80 * _raw_model_season + 0.20 * market_season_points, 1)
+                # Recompute neutral stats proportionally
+                _shrink_factor = model_season_points / _raw_model_season if _raw_model_season else 1.0
+                for _k in list(model_season_stats.keys()):
+                    model_season_stats[_k] = round(model_season_stats[_k] * _shrink_factor, 1)
         delta_season = round(model_season_points - market_season_points, 1) if market_season_points is not None else None
         # also consider season delta for edge when weekly is missing but season present
         if delta_season is not None:
@@ -377,10 +429,11 @@ def build_comparison(
                 edge = "SELL"
                 edge_score = min(edge_score, delta_season / 4)
         season_stat_deltas: list[dict] = []
-        # Model season stats = weekly stat ×17 — only keep meaningful for position (yards >10 or TD/rec >0.1)
+        # Model season stats = neutral weekly stat ×17 (not Vegas-boosted weekly)
         for mdl_k, _slp_k, label in COMPARE_STATS:
             market_s = market_season_stats.get(mdl_k)
-            model_w = p.get(mdl_k)
+            # Prefer neutral stat for season; fallback to Vegas weekly stat
+            model_w = _neutral_stats_for_season.get(mdl_k) if _neutral_stats_for_season.get(mdl_k) is not None else p.get(mdl_k)
             if model_w is not None or market_s is not None:
                 try:
                     mv_s = float(model_w) * 17 if model_w is not None else 0.0
@@ -406,7 +459,12 @@ def build_comparison(
             "opponent_team": p.get("opponent_team") or "",
             "model_points": round(model_pts, 2),
             "market_points": round(market_pts, 2) if market_pts is not None else None,
+            "actual_points": round(actual_pts, 2) if actual_pts is not None else None,
             "delta_points": delta_pts,
+            "actual_delta_model": round(actual_pts - model_pts, 2) if actual_pts is not None else None,
+            "actual_delta_market": round(actual_pts - market_pts, 2) if (actual_pts is not None and market_pts is not None) else None,
+            "model_error": round(abs(model_pts - actual_pts), 2) if actual_pts is not None else None,
+            "market_error": round(abs(market_pts - actual_pts), 2) if (actual_pts is not None and market_pts is not None) else None,
             "model_overall_rank": model_rk,
             "model_pos_rank": pos_rank.get(pid),
             "fp_ecr": int(fp_ecr) if fp_ecr is not None else None,
@@ -417,6 +475,12 @@ def build_comparison(
             "statsguy_value": round(statsguy_value, 1) if statsguy_value is not None else None,
             "statsguy_rank": statsguy_rank,
             "statsguy_pos_rank": statsguy_pos_rank,
+            "auction_price_paid": draft_prices.get(pid) if draft_prices else None,
+            # Auction $ is VOR-derived (computed in VOR loop below), not paid amount.
+            # Keep paid separately; do not conflate draft price with market value.
+            "marketAuction": None,
+            "auction": 0,
+            "deltaAuction": None,
             "delta_rank": delta_rank,
             "delta_pos_rank": delta_pos_rank,
             "edge": edge,
@@ -527,7 +591,14 @@ def build_comparison(
         })
 
     # Calculate Auction ($ Gridiron VOR) & Market Auction ($ FP/SG consensus)
-    starter_budget_pool = 2040.0
+    # 12 teams × $200 = $2400 pool; 48 bench at $1 → $2352 starter budget (10 starters ×12)
+    # (legacy 2040 was incorrect — assumed 5 bench? Now aligned with auction.js and vbdAuction.js)
+    # Note: K/DEF are devalued to $1 in practice but VBD still allocates proportional; we clamp
+    # K/DEF later to $1 to match real draft behavior where they are streamed.
+    starter_budget_pool = 2352.0
+    # Replacement counts: positional starters for 12-team 2-FLEX: QB12, RB24+? Actually 2 RB +2 WR +2 FLEX
+    # RB28/WR32 reflect realistic starters after flex (24 RB/WR base + 4/8 flex share). Keep RB28/WR32
+    # TE12 stable (only 12 TE starters). K12/DEF12 included but will be clamped to $1 post-VBD.
     pos_repl_counts = {"QB": 12, "RB": 28, "WR": 32, "TE": 12, "K": 12, "DEF": 12}
 
     model_repl_pts = {}
@@ -552,8 +623,42 @@ def build_comparison(
         else:
             market_repl_pts[pos_k] = 100.0
 
-    total_model_vor = sum(max(0.0, float(r.get("model_season_points") or 0) - model_repl_pts.get(r.get("position"), 100.0)) for r in rows) or 1.0
-    total_market_vor = sum(max(0.0, float(r.get("market_season_points") or 0) - market_repl_pts.get(r.get("position"), 100.0)) for r in rows) or 1.0
+    # Positional scarcity adjustment: dynamic from market vs model share (audit 2026-09-01 follow-on)
+    # Pure VOR overvalues QB/TE in 1QB (QB 11% vs market 6%). Derive weight = market_share / model_share per pos,
+    # clamped to [0.5, 1.5] to avoid overcorrection when a position has thin market data.
+    # K/DEF streamed $1 → weight 0 (excluded from pool, already accounted via 2352=2400-48).
+    def _raw_vor(season_pts, pos, repl_map):
+        return max(0.0, float(season_pts or 0) - repl_map.get(pos, 100.0))
+
+    # Raw totals per position for share calculation
+    _raw_model_per_pos = {pos: 0.0 for pos in pos_repl_counts}
+    _raw_market_per_pos = {pos: 0.0 for pos in pos_repl_counts}
+    for r in rows:
+        pos = r.get("position")
+        if pos in _raw_model_per_pos:
+            _raw_model_per_pos[pos] += _raw_vor(r.get("model_season_points"), pos, model_repl_pts)
+            _raw_market_per_pos[pos] += _raw_vor(r.get("market_season_points"), pos, market_repl_pts)
+    _raw_model_total = sum(_raw_model_per_pos.values()) or 1.0
+    _raw_market_total = sum(_raw_market_per_pos.values()) or 1.0
+    POS_WEIGHT = {}
+    for pos in pos_repl_counts:
+        if pos in ("K", "DEF", "DST"):
+            POS_WEIGHT[pos] = 0.0
+        else:
+            model_share = _raw_model_per_pos[pos] / _raw_model_total if _raw_model_total else 0
+            market_share = _raw_market_per_pos[pos] / _raw_market_total if _raw_market_total else 0
+            if model_share > 0 and market_share > 0:
+                w = market_share / model_share
+                POS_WEIGHT[pos] = max(0.5, min(1.5, w))
+            else:
+                # Fallback to previous empirical if insufficient data
+                POS_WEIGHT[pos] = {"QB": 0.65, "RB": 1.10, "WR": 0.92, "TE": 0.78}.get(pos, 1.0)
+    def _weighted_vor(season_pts, pos, repl_map):
+        raw = _raw_vor(season_pts, pos, repl_map)
+        return raw * POS_WEIGHT.get(pos, 1.0)
+
+    total_model_vor = sum(_weighted_vor(r.get("model_season_points"), r.get("position"), model_repl_pts) for r in rows) or 1.0
+    total_market_vor = sum(_weighted_vor(r.get("market_season_points"), r.get("position"), market_repl_pts) for r in rows) or 1.0
 
     for r in rows:
         pos_k = r.get("position")
@@ -561,27 +666,81 @@ def build_comparison(
         mk_sp = r.get("market_season_points")
         sg_val = r.get("statsguy_value")
 
-        m_vor = max(0.0, float(msp) - model_repl_pts.get(pos_k, 100.0)) if msp is not None else 0.0
+        # K/DEF are streamed at $1 in real 12-team drafts — cap VOR-derived auction to $1
+        # even if VOR technically positive due to model overprojection (K daily noise MAE 4.09)
+        # Also compute uncapped true value for display ($1 bench still shows true bench value)
+        is_streamer_pos = pos_k in ("K", "DEF", "DST")
+        m_vor = _weighted_vor(msp, pos_k, model_repl_pts)
+        # Uncapped true VOR $ (no floor) — for bench VOR 0, show points-based bench value so $1 ($0) not empty
         if m_vor > 0:
-            auction_val = max(1, int(round((m_vor / total_model_vor) * starter_budget_pool)))
+            m_uncapped = int(round((m_vor / total_model_vor) * starter_budget_pool)) if total_model_vor else 0
         elif msp and msp > 50:
-            auction_val = 1
+            # Bench true value: linear bench scale so Godwin 10.5→$3, Dowdle 11.6→$4 (regardless of VOR 0)
+            # Uses weekly proxy: model season /17 *0.35 ≈ $2-5 for WR3/RB3
+            _weekly_proxy = (msp or 0) / 17.0
+            m_uncapped = max(1, int(round(_weekly_proxy * 0.35)))
+            # Clamp to $1-5 bench range to avoid inflating
+            m_uncapped = max(1, min(5, m_uncapped))
         else:
-            auction_val = 0
+            m_uncapped = 0
+        r["auctionUncapped"] = m_uncapped
+        r["vor"] = round(m_vor, 1)
+        if is_streamer_pos:
+            # K/DEF: $1 always except top-3 kickers at $2-3 if truly elite
+            if m_vor > 40:
+                auction_val = 2
+            elif m_vor > 0 and (msp or 0) > 130:
+                auction_val = 1
+            else:
+                auction_val = 1 if (msp and msp > 50) else 0
+        else:
+            if m_vor > 0:
+                auction_val = max(1, int(round((m_vor / total_model_vor) * starter_budget_pool)))
+            elif msp and msp > 50:
+                auction_val = 1
+            else:
+                auction_val = 0
         r["auction"] = auction_val
 
-        mk_vor = max(0.0, float(mk_sp) - market_repl_pts.get(pos_k, 100.0)) if mk_sp is not None else 0.0
+        mk_vor = _weighted_vor(mk_sp, pos_k, market_repl_pts)
         if mk_vor > 0:
-            mk_auction_val = max(1, int(round((mk_vor / total_market_vor) * starter_budget_pool)))
-        elif sg_val is not None and sg_val > 0:
-            mk_auction_val = max(1, int(round((sg_val / 9500.0) ** 1.2 * 65.0)))
+            mk_uncapped = int(round((mk_vor / total_market_vor) * starter_budget_pool)) if total_market_vor else 0
         elif mk_sp and mk_sp > 50:
-            mk_auction_val = 1
+            _weekly_proxy = (mk_sp or 0) / 17.0
+            mk_uncapped = max(1, int(round(_weekly_proxy * 0.35)))
+            mk_uncapped = max(1, min(5, mk_uncapped))
         else:
-            mk_auction_val = None
+            mk_uncapped = 0
+        r["marketAuctionUncapped"] = mk_uncapped
+        r["marketVor"] = round(mk_vor, 1)
+        if is_streamer_pos:
+            if mk_vor > 40:
+                mk_auction_val = 2
+            elif mk_vor > 0 and (mk_sp or 0) > 110:
+                mk_auction_val = 1
+            elif sg_val is not None and sg_val > 0:
+                mk_auction_val = 1
+            elif mk_sp and mk_sp > 50:
+                mk_auction_val = 1
+            else:
+                mk_auction_val = None
+        else:
+            if mk_vor > 0:
+                mk_auction_val = max(1, int(round((mk_vor / total_market_vor) * starter_budget_pool)))
+            elif sg_val is not None and sg_val > 0:
+                mk_auction_val = max(1, int(round((sg_val / 9500.0) ** 1.2 * 65.0)))
+            elif mk_sp and mk_sp > 50:
+                mk_auction_val = 1
+            else:
+                mk_auction_val = None
         r["marketAuction"] = mk_auction_val
 
-        if auction_val is not None and mk_auction_val is not None:
+        # Delta vs paid takes precedence if this player was drafted (real $ edge),
+        # otherwise vs market consensus VOR.
+        _paid = draft_prices.get(r.get("player_id")) if draft_prices else None
+        if _paid is not None:
+            r["deltaAuction"] = int(auction_val - _paid)
+        elif auction_val is not None and mk_auction_val is not None:
             r["deltaAuction"] = int(auction_val - mk_auction_val)
         else:
             r["deltaAuction"] = None

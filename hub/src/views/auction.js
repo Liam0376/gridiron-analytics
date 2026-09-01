@@ -26,7 +26,7 @@ function saveDraftState(state) {
 function edgeBadgeAuction(edge) {
   if (edge === 'BUY') return `<span class="badge" style="background:var(--emerald-dim); color:var(--emerald); border:1px solid rgba(16,185,129,0.22); font-size:10px">▲ BUY</span>`;
   if (edge === 'SELL') return `<span class="badge" style="background:var(--crimson-dim); color:var(--crimson); border:1px solid rgba(239,68,68,0.22); font-size:10px">▼ SELL</span>`;
-  return `<span class="badge" style="background:rgba(255,255,255,0.06); color:var(--text-faint); border:1px solid var(--border); font-size:10px">—</span>`;
+  return `<span class="badge" style="background:rgba(0,0,0,0.05); color:var(--text-faint); border:1px solid var(--border); font-size:10px">—</span>`;
 }
 function deltaSeasonBadge(d) {
   if (d == null) return `<span class="mono" style="color:var(--text-faint)">—</span>`;
@@ -134,10 +134,12 @@ export async function renderAuction(root) {
   const rosPlayers = players.map(p => {
     const nkey = `${(p.player_name||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim()}|${(p.position||'').toUpperCase()}`;
     const c = compByNamePos.get(nkey) || compById.get(String(p.player_id));
-    // Always prefer comparison data (has FP season, ECR, ADP, StatsGuy) over raw projection stats
+    // Prefer backend's neutral, shrunk, weighted season totals (model_season_points) over weekly*17
+    // to avoid Vegas-extrapolation and scoring-alias bias (audit 2026-09-01)
+    const seasonFromBackend = c && c.model_season_points != null ? Number(c.model_season_points) : null;
     const weeklyModel = c && c.model_points != null ? Number(c.model_points) : Number(p.projected_points ?? p.point_estimate ?? 0);
     const weeklyMarket = c && c.market_points != null ? Number(c.market_points) : null;
-    const ros = weeklyModel * remaining;
+    const ros = seasonFromBackend != null ? seasonFromBackend : weeklyModel * remaining;
     // Prefer FantasyPros season total (596 full stat season) over Sleeper weekly×17 (98 starters only)
     const seasonMarketFromFP = c && c.market_season_points != null ? Number(c.market_season_points) : null;
     const marketRos = seasonMarketFromFP != null ? seasonMarketFromFP : (weeklyMarket != null ? weeklyMarket * remaining : null);
@@ -186,9 +188,9 @@ export async function renderAuction(root) {
   });
   Object.values(byPos).forEach(arr => arr.sort((a, b) => b.ros - a.ros));
 
-  // Replacement levels (last starter per position, 12 teams)
-  // Roster: 1 QB, 2 RB, 2 WR, 1 TE, 2 FLEX, 1 K, 1 DEF
-  const replIdx = { QB: 12-1, RB: 24-1, WR: 24-1, TE: 12-1, K: 12-1, DEF: 12-1 };
+  // Replacement levels — aligned with comparison.py/vbdAuction.js: QB12 RB28 WR32 TE12 (12-team 2-FLEX =72 starters)
+  // Audit: previous RB24/WR24 understated RB/WR scarcity; now 28/32 per 2026-09-01 audit
+  const replIdx = { QB: 12-1, RB: 28-1, WR: 32-1, TE: 12-1, K: 12-1, DEF: 12-1 };
   const replPts = {};
   for (const pos of Object.keys(byPos)) {
     const arr = byPos[pos];
@@ -196,42 +198,52 @@ export async function renderAuction(root) {
     replPts[pos] = arr[idx]?.ros ?? (arr[arr.length - 1]?.ros ?? 0);
   }
 
-  // FLEX pool: remaining RB/WR/TE after positional starters
+  // FLEX pool: remaining RB/WR/TE after positional starters (12*2=24 flex slots)
   const flexPool = [
-    ...(byPos.RB.slice(24)),
-    ...(byPos.WR.slice(24)),
+    ...(byPos.RB.slice(28)),
+    ...(byPos.WR.slice(32)),
     ...(byPos.TE.slice(12)),
   ].sort((a, b) => b.ros - a.ros);
-  const flexRepl = flexPool[24 - 1]?.ros ?? 0; // 2 FLEX * 12 teams
+  const flexRepl = flexPool[24 - 1]?.ros ?? 0;
 
-  // Compute VOR
+  // Positional weights to match backend (QB 0.65 overvalued pure VOR in 1QB)
+  const POS_WEIGHT = { QB: 0.65, RB: 1.10, WR: 0.92, TE: 0.78, K: 0, DEF: 0 };
+
+  // Compute VOR (weighted)
   rosPlayers.forEach(p => {
     const pos = (p.position || '').toUpperCase();
     let baseRepl = replPts[pos] ?? 0;
     if (['RB', 'WR', 'TE'].includes(pos)) baseRepl = Math.max(baseRepl, flexRepl);
     p.repl = baseRepl;
-    p.vor = Math.max(0, p.ros - baseRepl);
+    const rawVor = Math.max(0, p.ros - baseRepl);
+    const w = POS_WEIGHT[pos] ?? 1;
+    p.vor = rawVor * w;
+    // K/DEF streamed $1 — cap
+    if (pos === 'K' || pos === 'DEF') p.vor = 0;
   });
 
-  // Auction pricing
+  // Auction pricing — $2352 starter pool (12*200 -48 bench $1)
   const benchSlots = TEAMS * 4;
   const totalStarterBudget = TEAMS * budget - benchSlots * 1;
   const starters = rosPlayers.filter(p => p.vor > 0).sort((a, b) => b.vor - a.vor).slice(0, TEAMS * 10);
   const totalVor = starters.reduce((s, p) => s + p.vor, 0) || 1;
-  starters.forEach(p => { p.auction = Math.max(1, Math.round((p.vor / totalVor) * totalStarterBudget)); });
+  starters.forEach(p => {
+    if (p.position === 'K' || p.position === 'DEF') p.auction = 1;
+    else p.auction = Math.max(1, Math.round((p.vor / totalVor) * totalStarterBudget));
+  });
   const benchPlayers = rosPlayers.filter(p => !starters.includes(p));
   benchPlayers.forEach(p => p.auction = 1);
-  // Market $ (FP season 596 VOR) — same $200/12 for 1:1 $ vs $ (covers every draftable)
+  // Market $ — same weighted VOR on marketRos
   const marketByPos = { QB:[], RB:[], WR:[], TE:[], K:[], DEF:[] };
   rosPlayers.forEach(pp=>{ const pos=(pp.position||'').toUpperCase(); if(marketByPos[pos]) marketByPos[pos].push(pp); });
   Object.values(marketByPos).forEach(arr=> arr.sort((a,b)=> (b.marketRos||0)-(a.marketRos||0)));
   const marketReplPts={}; for(const pos of Object.keys(marketByPos)){ const arr=marketByPos[pos]; const idx=replIdx[pos]??0; marketReplPts[pos]=arr[idx]?.marketRos ?? (arr[arr.length-1]?.marketRos ?? 0); }
-  const marketFlexPool=[...(marketByPos.RB.slice(24)), ...(marketByPos.WR.slice(24)), ...(marketByPos.TE.slice(12))].sort((a,b)=> (b.marketRos||0)-(a.marketRos||0));
+  const marketFlexPool=[...(marketByPos.RB.slice(28)), ...(marketByPos.WR.slice(32)), ...(marketByPos.TE.slice(12))].sort((a,b)=> (b.marketRos||0)-(a.marketRos||0));
   const marketFlexRepl=marketFlexPool[24-1]?.marketRos ?? 0;
-  rosPlayers.forEach(pp=>{ const pos=(pp.position||'').toUpperCase(); let base=marketReplPts[pos]??0; if(['RB','WR','TE'].includes(pos)) base=Math.max(base, marketFlexRepl); pp.marketRepl=base; pp.marketVor=Math.max(0, (pp.marketRos||0)-base); });
+  rosPlayers.forEach(pp=>{ const pos=(pp.position||'').toUpperCase(); let base=marketReplPts[pos]??0; if(['RB','WR','TE'].includes(pos)) base=Math.max(base, marketFlexRepl); pp.marketRepl=base; const raw=Math.max(0, (pp.marketRos||0)-base); const w=POS_WEIGHT[pos]??1; pp.marketVor = (pos==='K'||pos==='DEF') ? 0 : raw*w; });
   const marketStarters = rosPlayers.filter(pp=>pp.marketVor>0).sort((a,b)=>b.marketVor-a.marketVor).slice(0, TEAMS*10);
   const totalMarketVor = marketStarters.reduce((s,pp)=>s+pp.marketVor,0)||1;
-  marketStarters.forEach(pp=>{ pp.marketAuction=Math.max(1, Math.round((pp.marketVor/totalMarketVor)*totalStarterBudget)); });
+  marketStarters.forEach(pp=>{ if(pp.position==='K'||pp.position==='DEF') pp.marketAuction=1; else pp.marketAuction=Math.max(1, Math.round((pp.marketVor/totalMarketVor)*totalStarterBudget)); });
   rosPlayers.filter(pp=>!marketStarters.includes(pp)).forEach(pp=> pp.marketAuction=1);
   // Blend with StatsGuy 60/40 where available
   const topFpAuction = Math.max(...rosPlayers.map(x=> x.marketAuction||0)) || 45;
@@ -367,7 +379,7 @@ export async function renderAuction(root) {
       </div>
       <div class="kpi-card" style="border-left:3px solid var(--amber)">
         <div class="kpi-label">Auction vs Market</div>
-        <div class="kpi-value" style="font-size:14px; line-height:1.2">VOR $ from Model<br><span style="font:600 11px 'Fira Sans',sans-serif; color:var(--text-muted); letter-spacing:0.04em; text-transform:uppercase">$${budget} × ${TEAMS} teams · ${compareAuctionEnabled ? 'Market Δ shown' : 'toggle Market to see Δ'}</span></div>
+        <div class="kpi-value" style="font-size:14px; line-height:1.2">VOR $ from Model<br><span style="font:600 11px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-muted); letter-spacing:0.04em; text-transform:uppercase">$${budget} × ${TEAMS} teams · ${compareAuctionEnabled ? 'Market Δ shown' : 'toggle Market to see Δ'}</span></div>
         <div style="display:flex; gap:6px; margin-top:8px"><button class="chip ${compareAuctionEnabled ? 'active' : ''}" id="toggleAuctionCompare" style="font-size:11px">${compareAuctionEnabled ? '✓ Market + ECR on' : 'Show Market + ECR'}</button><button class="chip" id="copyModelVsMarketCsv" style="font-size:11px">Copy Model vs Market CSV</button></div>
       </div>
     </div>
@@ -437,14 +449,14 @@ export async function renderAuction(root) {
     <!-- Nomination Strategy -->
     <div class="card reveal in" style="margin-top:16px">
       <div class="card-header"><h3>Nomination Strategy</h3><span class="kicker">nominate these to drain opponents</span></div>
-      <div class="card-body" style="font:400 13px 'Fira Sans',sans-serif; color:var(--text-muted); line-height:1.6">
+      <div class="card-body" style="font:400 13px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-muted); line-height:1.6">
         <div class="alert alert-ok" style="margin-bottom:12px">Nominate players at positions you've filled (or don't need yet). Force opponents to spend early while you save budget for YOUR targets. <strong>Prefer high Market $ but lower Model $</strong> — let others overpay where Market is hot but Gridiron is cool (SELL).</div>
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           ${nominationTargets.map(p => `
             <div style="padding:6px 10px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; display:flex; align-items:center; gap:6px; ${p.edge==='BUY' ? 'border-left:3px solid var(--emerald)' : p.edge==='SELL' ? 'border-left:3px solid var(--crimson)' : ''}">
               ${playerAvatar(p, 24)}
               ${posBadge(p.position)}
-              <strong style="font:600 12px 'Fira Sans',sans-serif">${escapeHtml(p.player_name)}</strong>
+              <strong style="font:600 12px "Helvetica Neue", Helvetica,sans-serif">${escapeHtml(p.player_name)}</strong>
               ${teamLogo(p.team, 14)}
               <span class="badge" style="background:var(--amber-dim); color:var(--amber)">$${p.auction}</span>
               ${compareAuctionEnabled && hasComparison ? edgeBadgeAuction(p.edge) : ''}
@@ -459,7 +471,7 @@ export async function renderAuction(root) {
     <!-- Draft Strategy -->
     <div class="card reveal in" style="margin-top:16px">
       <div class="card-header"><h3>Draft Strategy</h3><span class="kicker">Fantasy Bahamas $200 auction</span></div>
-      <div class="card-body" style="font:400 13px 'Fira Sans',sans-serif; color:var(--text-muted); line-height:1.6">
+      <div class="card-body" style="font:400 13px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-muted); line-height:1.6">
         <ol style="margin:0; padding-left:18px">
           <li><strong>Stars & Scrubs:</strong> Spend 60-70% ($150-175) on 4-5 elite starters. Your 2-FLEX league means 7 RB/WR/TE start — premium on volume backs and target hogs.</li>
           <li><strong>Gridiron > Market = value:</strong> Filter <code class="inline">BUY</code> in Auction to see where Model season total beats Market season by ≥51 pts — bid up to Model $ there.</li>
@@ -483,7 +495,7 @@ export async function renderAuction(root) {
             ${myRosterPlayers.map(p => {
               const paid = state.drafted[p.player_id]?.price || 0;
               const diff = p.auction - paid;
-              return `<tr style="--team-accent:${getTeamColor((p.team||'').toUpperCase())}; ${p.edge==='BUY' ? 'background:rgba(16,185,129,0.06)' : p.edge==='SELL' ? 'background:rgba(239,68,68,0.06)' : ''}">
+              return `<tr data-team="${p.team || ''}" style="--team-accent:${getTeamColor((p.team||'').toUpperCase())}; ${p.edge==='BUY' ? 'background:rgba(16,185,129,0.06)' : p.edge==='SELL' ? 'background:rgba(239,68,68,0.06)' : ''}">
                 <td><div class="player-cell">${playerAvatar(p, 28)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(p.player_name)}</div><div class="player-cell-sub">${teamLogo(p.team, 14)} ${escapeHtml(p.team || '')}</div></div></div></td>
                 <td>${posBadge(p.position)}</td>
                 <td class="mono">$${paid}</td>
@@ -503,22 +515,22 @@ export async function renderAuction(root) {
       <div class="card-body" style="display:flex; flex-direction:column; gap:12px">
         ${focusedPlayer ? `
         <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:center">
-          <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:260px">${playerAvatar(focusedPlayer, 56)}<div><div style="font:700 16px 'Fira Sans',sans-serif; display:flex; gap:8px; align-items:center; flex-wrap:wrap">${escapeHtml(focusedPlayer.player_name)} ${posBadge(focusedPlayer.position)} ${teamLogo(focusedPlayer.team,20)} <span class="mono" style="font-size:11px; color:var(--text-muted)">T${focusedPlayer.fp_tier ?? focusedPlayer.tier} · ECR #${focusedPlayer.fp_ecr ?? '—'} · ADP #${focusedPlayer.fp_adp ?? '—'}${focusedPlayer.statsguy_value!=null ? ` · <span style="color:var(--violet)">SG ${focusedPlayer.statsguy_value.toFixed(0)} (#${focusedPlayer.statsguy_rank})</span>` : ''}</span></div><div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:2px">Gridiron ${focusedPlayer.weekly.toFixed(1)} wk → <span style="color:var(--amber); font-weight:700">${focusedPlayer.ros.toFixed(0)} season</span> · Market <span style="color:var(--sky); font-weight:700">${focusedPlayer.marketRos!=null?focusedPlayer.marketRos.toFixed(0):'—'}</span> · Δ ${focusedPlayer.deltaRos!=null?(Number(focusedPlayer.deltaRos)>0?'+':'')+Number(focusedPlayer.deltaRos).toFixed(0):'—'} · VOR +${focusedPlayer.vor.toFixed(0)} · <span style="color:var(--amber)">$${focusedPlayer.auction} val</span></div></div></div>
+          <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:260px">${playerAvatar(focusedPlayer, 56)}<div><div style="font:700 16px "Helvetica Neue", Helvetica,sans-serif; display:flex; gap:8px; align-items:center; flex-wrap:wrap">${escapeHtml(focusedPlayer.player_name)} ${posBadge(focusedPlayer.position)} ${teamLogo(focusedPlayer.team,20)} <span class="mono" style="font-size:11px; color:var(--text-muted)">T${focusedPlayer.fp_tier ?? focusedPlayer.tier} · ECR #${focusedPlayer.fp_ecr ?? '—'} · ADP #${focusedPlayer.fp_adp ?? '—'}${focusedPlayer.statsguy_value!=null ? ` · <span style="color:var(--violet)">SG ${focusedPlayer.statsguy_value.toFixed(0)} (#${focusedPlayer.statsguy_rank})</span>` : ''}</span></div><div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:2px">Gridiron ${focusedPlayer.weekly.toFixed(1)} wk → <span style="color:var(--amber); font-weight:700">${focusedPlayer.ros.toFixed(0)} season</span> · Market <span style="color:var(--sky); font-weight:700">${focusedPlayer.marketRos!=null?focusedPlayer.marketRos.toFixed(0):'—'}</span> · Δ ${focusedPlayer.deltaRos!=null?(Number(focusedPlayer.deltaRos)>0?'+':'')+Number(focusedPlayer.deltaRos).toFixed(0):'—'} · VOR +${focusedPlayer.vor.toFixed(0)} · <span style="color:var(--amber)">$${focusedPlayer.auction} val</span></div></div></div>
           <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end">
             <span class="badge" style="background:${focusedPlayer.edge==='BUY'?'var(--emerald-dim)':'var(--crimson-dim)'}; color:${focusedPlayer.edge==='BUY'?'var(--emerald)':'var(--crimson)'}; font-size:12px; padding:6px 10px">${focusedPlayer.edge} ${deltaSeasonBadge(focusedPlayer.deltaRos)}</span>
             ${focusedPlayer.statsguy_value!=null ? `<span class="mono" style="font-size:11px; color:var(--violet)">StatsGuy market #${focusedPlayer.statsguy_rank} · ${focusedPlayer.statsguy_value.toFixed(0)}/10000</span>` : '<span class="mono" style="font-size:11px; color:var(--text-faint)">StatsGuy — no rank</span>'}
           </div>
         </div>
         <div class="alert" style="background:${liveAdvice.color}14; border:1px solid ${liveAdvice.color}33; color:var(--text)"><strong style="color:${liveAdvice.color}">${liveAdvice.title}</strong> — ${liveAdvice.text}</div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; font:500 11px 'Fira Sans',sans-serif">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; font:500 11px "Helvetica Neue", Helvetica,sans-serif">
           <span class="kicker">Cap</span> <span class="mono" style="font-size:18px; font-weight:700; color:${liveAdvice.color}">$${liveAdvice.cap}</span> <span class="micro faint">(max $${maxBid} · $${myRemaining} left · ${slotsLeft} slots)</span>
           <span style="flex:1"></span>
           <button class="btn btn-primary btn-sm" data-pid="${focusedPlayer.player_id}" id="liveDraftBtn">Draft ${escapeHtml(focusedPlayer.player_name)} for $${liveAdvice.cap}</button>
           <button class="btn btn-ghost btn-sm" data-pid="${focusedPlayer.player_id}" id="livePassBtn">Pass — nominate next</button>
         </div>
-        ${(()=>{ const stats = focusedPlayer.seasonStatDeltas && focusedPlayer.seasonStatDeltas.length ? focusedPlayer.seasonStatDeltas : []; if(!stats.length) return ''; const maxAbs = Math.max(...stats.map(s=> Math.max(Math.abs(s.model), Math.abs(s.market||0), 10))); return `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:8px; margin-top:4px; padding-top:10px; border-top:1px solid var(--border)">${stats.slice(0,6).map(s=>{ const pctM = Math.min(100, Math.round(Math.abs(s.model)/maxAbs*100)); const pctK = s.market!=null ? Math.min(100, Math.round(Math.abs(s.market)/maxAbs*100)) : 0; const dColor = s.delta!=null ? (s.delta>0?'var(--emerald)': s.delta<0?'var(--crimson)':'var(--text-faint)') : 'var(--text-faint)'; return `<div style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:8px"><div style="display:flex; justify-content:space-between; align-items:center"><span class="mono" style="font-size:10px; color:var(--text-faint)">${s.label} season</span><span class="mono" style="font-size:11px; color:${dColor}; font-weight:700">${s.delta!=null?(s.delta>0?'+':'')+s.delta.toFixed(0):''}</span></div><div style="display:flex; gap:6px; align-items:center; margin-top:6px"><span class="mono" style="font-size:11px; min-width:36px; text-align:right; color:var(--amber)">${s.model.toFixed(0)}</span><div style="flex:1; height:6px; background:rgba(255,255,255,0.08); border-radius:999px; position:relative; overflow:hidden"><div style="position:absolute; left:0; top:0; bottom:0; width:${pctM}%; background:var(--amber); opacity:0.95; border-radius:999px"></div><div style="position:absolute; left:0; top:0; bottom:0; width:${pctK}%; background:var(--sky); opacity:0.45; border-radius:999px"></div></div><span class="mono" style="font-size:11px; min-width:36px; color:var(--text-muted)">${s.market!=null?s.market.toFixed(0):'—'}</span></div><div class="mono" style="font-size:10px; color:var(--text-faint); margin-top:4px"><span style="color:var(--amber)">● Gridiron</span> <span style="color:var(--sky)">● Market</span> (FP season)</div></div>`}).join('')}</div>`; })()}
+        ${(()=>{ const stats = focusedPlayer.seasonStatDeltas && focusedPlayer.seasonStatDeltas.length ? focusedPlayer.seasonStatDeltas : []; if(!stats.length) return ''; const maxAbs = Math.max(...stats.map(s=> Math.max(Math.abs(s.model), Math.abs(s.market||0), 10))); return `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:8px; margin-top:4px; padding-top:10px; border-top:1px solid var(--border)">${stats.slice(0,6).map(s=>{ const pctM = Math.min(100, Math.round(Math.abs(s.model)/maxAbs*100)); const pctK = s.market!=null ? Math.min(100, Math.round(Math.abs(s.market)/maxAbs*100)) : 0; const dColor = s.delta!=null ? (s.delta>0?'var(--emerald)': s.delta<0?'var(--crimson)':'var(--text-faint)') : 'var(--text-faint)'; return `<div style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:8px"><div style="display:flex; justify-content:space-between; align-items:center"><span class="mono" style="font-size:10px; color:var(--text-faint)">${s.label} season</span><span class="mono" style="font-size:11px; color:${dColor}; font-weight:700">${s.delta!=null?(s.delta>0?'+':'')+s.delta.toFixed(0):''}</span></div><div style="display:flex; gap:6px; align-items:center; margin-top:6px"><span class="mono" style="font-size:11px; min-width:36px; text-align:right; color:var(--amber)">${s.model.toFixed(0)}</span><div style="flex:1; height:6px; background:rgba(0,0,0,0.06); border-radius:999px; position:relative; overflow:hidden"><div style="position:absolute; left:0; top:0; bottom:0; width:${pctM}%; background:var(--amber); opacity:0.95; border-radius:999px"></div><div style="position:absolute; left:0; top:0; bottom:0; width:${pctK}%; background:var(--sky); opacity:0.45; border-radius:999px"></div></div><span class="mono" style="font-size:11px; min-width:36px; color:var(--text-muted)">${s.market!=null?s.market.toFixed(0):'—'}</span></div><div class="mono" style="font-size:10px; color:var(--text-faint); margin-top:4px"><span style="color:var(--amber)">● Gridiron</span> <span style="color:var(--sky)">● Market</span> (FP season)</div></div>`}).join('')}</div>`; })()}
         ` : `<div class="micro faint">Type a name in the search box (e.g. “Gibbs”) then click <span class="mono" style="background:var(--surface-raised); padding:2px 6px; border-radius:6px">👁 Focus</span> on the row being auctioned. Board sorting Highest↔Lowest stays — use the “↕ Highest → Lowest” toggle.</div>
-          <div style="display:flex; gap:8px; margin-top:4px"><input id="liveSearch" placeholder="Quick focus: type player name… (Enter to focus first match)" style="flex:1; background:var(--surface-raised); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px; font:400 13px 'Fira Sans',sans-serif" /></div>
+          <div style="display:flex; gap:8px; margin-top:4px"><input id="liveSearch" placeholder="Quick focus: type player name… (Enter to focus first match)" style="flex:1; background:var(--surface-raised); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px; font:400 13px "Helvetica Neue", Helvetica,sans-serif" /></div>
         `}
       </div>
     </div>
@@ -537,13 +549,13 @@ export async function renderAuction(root) {
           ` : ''}
           <span style="border-left:1px solid var(--border); margin:0 4px"></span>
           <button class="btn btn-ghost btn-sm" id="copyAuction">Copy CSV</button>
-          <label class="faint" style="font:500 12px 'Fira Sans',sans-serif">
+          <label class="faint" style="font:500 12px "Helvetica Neue", Helvetica,sans-serif">
             <input type="checkbox" id="hideDrafted" ${params.get('hide') === '1' ? 'checked' : ''}> hide drafted
           </label>
         </div>
       </div>
       ${compareAuctionEnabled && hasComparison ? `
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; padding:8px 12px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; margin-bottom:10px; font:500 11px 'Fira Sans',sans-serif; line-height:1.4">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; padding:8px 12px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; margin-bottom:10px; font:500 11px "Helvetica Neue", Helvetica,sans-serif; line-height:1.4">
         <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--amber); border-radius:2px; display:inline-block"></span> <strong style="color:var(--amber)">Gridiron</strong> Model · Wk ×17 = season</span>
         <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--sky); border-radius:2px; display:inline-block"></span> <strong style="color:var(--sky)">Market</strong> · FantasyPros season projections (596, full YDS/TDS) + Sleeper weekly fallback</span>
         <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--emerald); border-radius:2px; display:inline-block"></span> BUY = Model ≥ +51 pts vs Market (3/wk)</span>
@@ -568,10 +580,10 @@ export async function renderAuction(root) {
               <th data-sort="player_name" tabindex="0" role="button" aria-label="Sort by Player" style="cursor:pointer">Player ${auctionSortKey==='player_name' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
               <th data-sort="position" tabindex="0" role="button" aria-label="Sort by Pos" style="cursor:pointer">Pos ${auctionSortKey==='position' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
               ${compareAuctionEnabled && hasComparison ? `
-              <th data-sort="weekly" tabindex="0" role="button" aria-label="Sort by Gridiron Wk" style="color:var(--amber); border-bottom:2px solid var(--amber); cursor:pointer" title="Gridiron weekly projection (stat_projector)">Gridiron Wk ${auctionSortKey==='weekly' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--amber); opacity:0.7">Season 17g</span></th>
-              <th data-sort="ros" tabindex="0" role="button" aria-label="Sort by Gridiron Season" style="color:var(--amber); border-bottom:2px solid var(--amber); cursor:pointer" title="Gridiron season = weekly ×17">Gridiron<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--amber); opacity:0.7">Season 17g ${auctionSortKey==='ros' ? (auctionSortDir===-1 ? '▼' : '▲') : ''}</span></th>
-              <th data-sort="marketRos" tabindex="0" role="button" aria-label="Sort by Market Season" style="color:var(--sky); border-bottom:2px solid var(--sky); cursor:pointer" title="Market season — FantasyPros season projections (596, full YDS/TDS) — fallback Sleeper weekly ×17">Market<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--sky); opacity:0.7">Season 17g ${auctionSortKey==='marketRos' ? (auctionSortDir===-1 ? '▼' : '▲') : ''}</span></th>
-              <th data-sort="deltaRos" tabindex="0" role="button" aria-label="Sort by Season Δ" style="border-bottom:2px solid var(--border); cursor:pointer" title="Season Δ = Gridiron Season − Market Season">Season Δ<br><span style="font:600 10px 'Fira Sans',sans-serif; color:var(--text-faint)">Grid−Mkt ${auctionSortKey==='deltaRos' ? (auctionSortDir===-1 ? '▼' : '▲') : ''}</span></th>
+              <th data-sort="weekly" tabindex="0" role="button" aria-label="Sort by Gridiron Wk" style="color:var(--amber); border-bottom:2px solid var(--amber); cursor:pointer" title="Gridiron weekly projection (stat_projector)">Gridiron Wk ${auctionSortKey==='weekly' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--amber); opacity:0.7">Season 17g</span></th>
+              <th data-sort="ros" tabindex="0" role="button" aria-label="Sort by Gridiron Season" style="color:var(--amber); border-bottom:2px solid var(--amber); cursor:pointer" title="Gridiron season = weekly ×17">Gridiron<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--amber); opacity:0.7">Season 17g ${auctionSortKey==='ros' ? (auctionSortDir===-1 ? '▼' : '▲') : ''}</span></th>
+              <th data-sort="marketRos" tabindex="0" role="button" aria-label="Sort by Market Season" style="color:var(--sky); border-bottom:2px solid var(--sky); cursor:pointer" title="Market season — FantasyPros season projections (596, full YDS/TDS) — fallback Sleeper weekly ×17">Market<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--sky); opacity:0.7">Season 17g ${auctionSortKey==='marketRos' ? (auctionSortDir===-1 ? '▼' : '▲') : ''}</span></th>
+              <th data-sort="deltaRos" tabindex="0" role="button" aria-label="Sort by Season Δ" style="border-bottom:2px solid var(--border); cursor:pointer" title="Season Δ = Gridiron Season − Market Season">Season Δ<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-faint)">Grid−Mkt ${auctionSortKey==='deltaRos' ? (auctionSortDir===-1 ? '▼' : '▲') : ''}</span></th>
               <th data-sort="fp_ecr" tabindex="0" role="button" aria-label="Sort by ECR" style="cursor:pointer" title="FantasyPros ECR 519 + Tiers via CSV">ECR ${auctionSortKey==='fp_ecr' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
               <th data-sort="fp_adp" tabindex="0" role="button" aria-label="Sort by ADP" style="cursor:pointer" title="FantasyPros ADP 695 via CSV">ADP ${auctionSortKey==='fp_adp' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
               <th data-sort="statsguy_rank" tabindex="0" role="button" aria-label="Sort by StatsGuy rank" style="cursor:pointer; color:var(--violet)" title="StatsGuy real-trade value 0-10000 (211 ranked)">SG ${auctionSortKey==='statsguy_rank' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
@@ -601,7 +613,7 @@ export async function renderAuction(root) {
                 ${compareAuctionEnabled && hasComparison ? `
                 <td class="mono" style="color:var(--sky)">${p.marketRos != null ? p.marketRos.toFixed(0) : '—'}</td>
                 <td>${deltaSeasonBadge(p.deltaRos)}</td>
-                <td class="mono" style="font-size:11px; color:var(--text-muted)">${p.fp_ecr != null ? `#${p.fp_ecr}${p.fp_tier ? ` <span style="background:var(--violet-dim); color:var(--violet); border:1px solid rgba(168,85,247,0.18); border-radius:999px; padding:1px 5px; font:700 10px 'JetBrains Mono',monospace">T${p.fp_tier}</span>` : ''}` : '—'}</td>
+                <td class="mono" style="font-size:11px; color:var(--text-muted)">${p.fp_ecr != null ? `#${p.fp_ecr}${p.fp_tier ? ` <span style="background:var(--violet-dim); color:var(--violet); border:1px solid rgba(168,85,247,0.18); border-radius:999px; padding:1px 5px; font:700 10px ui-monospace, SFMono-Regular,monospace">T${p.fp_tier}</span>` : ''}` : '—'}</td>
                 <td class="mono" style="font-size:11px; color:var(--text-muted)">${p.fp_adp != null ? '#'+p.fp_adp : '—'}</td>
                 <td class="mono" style="font-size:11px; color:var(--violet)">${p.statsguy_rank!=null ? `#${p.statsguy_rank} <span style="color:var(--text-faint)">(${p.statsguy_value.toFixed(0)})</span>` : '—'}</td>
                 ` : ''}
@@ -610,7 +622,7 @@ export async function renderAuction(root) {
                 ${compareAuctionEnabled && hasComparison ? `<td class="mono" style="color:var(--sky)"><span class="badge" style="background:var(--sky-dim); color:var(--sky); border:1px solid rgba(56,189,248,0.2)">$${p.marketAuction}</span></td><td class="mono" style="font-weight:700; color:${p.deltaAuction>4?'var(--emerald)':p.deltaAuction<-4?'var(--crimson)':'var(--text-muted)'}">${p.deltaAuction>0?'+':''}$${p.deltaAuction}</td>` : ''}
                 ${compareAuctionEnabled && hasComparison ? `<td>${edgeBadgeAuction(p.edge)}</td>` : ''}
                 <td class="mono-muted" style="font-size:11px">${(p.ros - p.widthRos).toFixed(0)}–${(p.ros + p.widthRos).toFixed(0)}</td>
-                <td class="faint" style="font:600 11px 'Fira Sans',sans-serif">T${p.tier}</td>
+                <td class="faint" style="font:600 11px "Helvetica Neue", Helvetica,sans-serif">T${p.tier}</td>
                 <td>
                   <div style="display:flex; gap:4px; align-items:center">
                     <button class="btn btn-ghost btn-sm focusBtn" data-pid="${p.player_id}" title="Focus for live advice" style="font-size:11px; padding:2px 6px">👁</button>
@@ -784,7 +796,7 @@ export async function renderAuction(root) {
       <div style="padding:16px; display:flex; gap:16px; align-items:center; border-bottom:1px solid var(--border)">
         ${playerAvatar(pl, 72)}
         <div style="flex:1">
-          <div style="font:700 18px 'Fira Sans',sans-serif; display:flex; gap:8px; align-items:center; flex-wrap:wrap">${escapeHtml(pl.player_name)} ${posBadge(pl.position)} ${teamLogo(pl.team,20)}</div>
+          <div style="font:700 18px "Helvetica Neue", Helvetica,sans-serif; display:flex; gap:8px; align-items:center; flex-wrap:wrap">${escapeHtml(pl.player_name)} ${posBadge(pl.position)} ${teamLogo(pl.team,20)}</div>
           <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:4px">T${pl.fp_tier ?? pl.tier} · ECR #${pl.fp_ecr ?? '—'} · ADP #${pl.fp_adp ?? '—'} · <span style="color:var(--violet)">${pl.statsguy_value!=null?`SG ${pl.statsguy_value.toFixed(0)} (#${pl.statsguy_rank})`:'SG — outside top 211'}</span> · VOR +${pl.vor.toFixed(0)} · $${pl.auction} val · ${pl.edge}</div>
           <div class="mono" style="font-size:11px; color:var(--text-muted)">Gridiron ${pl.weekly.toFixed(1)} wk → ${pl.ros.toFixed(0)} season · Market ${pl.marketRos!=null?pl.marketRos.toFixed(0):'—'} season</div>
         </div>
@@ -795,7 +807,7 @@ export async function renderAuction(root) {
           <div style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:10px; text-align:center"><div class="kicker">Gridiron $</div><div class="mono" style="font-size:20px; font-weight:700; color:var(--amber)">$${pl.auction}</div><div class="micro faint">VOR ${pl.vor.toFixed(0)} · ${pl.edge}</div></div>
           <div style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:10px; text-align:center"><div class="kicker">StatsGuy Market</div><div class="mono" style="font-size:20px; font-weight:700; color:var(--violet)">${pl.statsguy_value!=null?pl.statsguy_value.toFixed(0):'—'}</div><div class="micro faint">${pl.statsguy_rank?`#${pl.statsguy_rank} real trades`:'outside top 211'}</div></div>
         </div>
-        ${(()=>{ const stats = pl.seasonStatDeltas && pl.seasonStatDeltas.length ? pl.seasonStatDeltas : []; if(!stats.length) return '<div class="micro faint">No season stat deltas for this player.</div>'; const maxAbs = Math.max(...stats.map(s=> Math.max(Math.abs(s.model), Math.abs(s.market||0), 10))); return `<div style="display:flex; flex-direction:column; gap:8px">${stats.slice(0,6).map(s=>{ const pctM=Math.min(100, Math.round(Math.abs(s.model)/maxAbs*100)); const pctK=s.market!=null?Math.min(100, Math.round(Math.abs(s.market)/maxAbs*100)):0; const dColor=s.delta!=null?(s.delta>0?'var(--emerald)':'var(--crimson)'):'var(--text-faint)'; return `<div style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:8px"><div style="display:flex; justify-content:space-between"><span class="mono" style="font-size:11px; color:var(--text-faint)">${s.label} season</span><span class="mono" style="font-size:11px; color:${dColor}; font-weight:700">${s.delta!=null?(s.delta>0?'+':'')+s.delta.toFixed(0):''}</span></div><div style="display:flex; gap:8px; align-items:center; margin-top:6px"><span class="mono" style="font-size:11px; min-width:40px; text-align:right; color:var(--amber)">${s.model.toFixed(0)}</span><div style="flex:1; height:8px; background:rgba(255,255,255,0.08); border-radius:999px; position:relative; overflow:hidden"><div style="position:absolute; left:0; top:0; bottom:0; width:${pctM}%; background:var(--amber); border-radius:999px"></div><div style="position:absolute; left:0; top:0; bottom:0; width:${pctK}%; background:var(--sky); opacity:0.6; border-radius:999px"></div></div><span class="mono" style="font-size:11px; min-width:40px; color:var(--text-muted)">${s.market!=null?s.market.toFixed(0):'—'}</span></div><div class="mono" style="font-size:10px; color:var(--text-faint); margin-top:4px"><span style="color:var(--amber)">● Gridiron</span> <span style="color:var(--sky)">● Market (FP season)</span></div></div>`}).join('')}</div>`; })()}
+        ${(()=>{ const stats = pl.seasonStatDeltas && pl.seasonStatDeltas.length ? pl.seasonStatDeltas : []; if(!stats.length) return '<div class="micro faint">No season stat deltas for this player.</div>'; const maxAbs = Math.max(...stats.map(s=> Math.max(Math.abs(s.model), Math.abs(s.market||0), 10))); return `<div style="display:flex; flex-direction:column; gap:8px">${stats.slice(0,6).map(s=>{ const pctM=Math.min(100, Math.round(Math.abs(s.model)/maxAbs*100)); const pctK=s.market!=null?Math.min(100, Math.round(Math.abs(s.market)/maxAbs*100)):0; const dColor=s.delta!=null?(s.delta>0?'var(--emerald)':'var(--crimson)'):'var(--text-faint)'; return `<div style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:8px"><div style="display:flex; justify-content:space-between"><span class="mono" style="font-size:11px; color:var(--text-faint)">${s.label} season</span><span class="mono" style="font-size:11px; color:${dColor}; font-weight:700">${s.delta!=null?(s.delta>0?'+':'')+s.delta.toFixed(0):''}</span></div><div style="display:flex; gap:8px; align-items:center; margin-top:6px"><span class="mono" style="font-size:11px; min-width:40px; text-align:right; color:var(--amber)">${s.model.toFixed(0)}</span><div style="flex:1; height:8px; background:rgba(0,0,0,0.06); border-radius:999px; position:relative; overflow:hidden"><div style="position:absolute; left:0; top:0; bottom:0; width:${pctM}%; background:var(--amber); border-radius:999px"></div><div style="position:absolute; left:0; top:0; bottom:0; width:${pctK}%; background:var(--sky); opacity:0.6; border-radius:999px"></div></div><span class="mono" style="font-size:11px; min-width:40px; color:var(--text-muted)">${s.market!=null?s.market.toFixed(0):'—'}</span></div><div class="mono" style="font-size:10px; color:var(--text-faint); margin-top:4px"><span style="color:var(--amber)">● Gridiron</span> <span style="color:var(--sky)">● Market (FP season)</span></div></div>`}).join('')}</div>`; })()}
         <div style="display:flex; gap:8px; margin-top:4px"><button class="btn btn-primary btn-sm" style="flex:1" id="modalFocusBtn" data-pid="${pl.player_id}">👁 Focus for live advice</button><button class="btn btn-ghost btn-sm" id="modalCloseBtn2">Close</button></div>
       </div>
     `;
@@ -888,11 +900,11 @@ function showDraftModal(root, pid, name, suggestedVal, state, allRanked) {
     <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; min-width:300px; max-width:400px">
       <h3 style="margin:0 0 16px 0">${name}</h3>
       <div style="margin-bottom:12px">
-        <label style="font:500 13px 'Fira Sans',sans-serif; color:var(--text-muted)">Price paid</label>
+        <label style="font:500 13px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-muted)">Price paid</label>
         <input type="number" id="draftPrice" value="${suggestedVal}" min="1" max="200" style="width:100%; background:var(--surface-raised); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px; font-size:16px; margin-top:4px">
       </div>
       <div style="margin-bottom:16px">
-        <label style="font:500 13px 'Fira Sans',sans-serif; color:var(--text-muted)">Who got them?</label>
+        <label style="font:500 13px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-muted)">Who got them?</label>
         <div style="display:flex; gap:8px; margin-top:8px">
           <button class="btn btn-sm draftWho" data-who="me" style="flex:1; background:var(--color-accent); color:white">ME</button>
           <button class="btn btn-sm btn-ghost draftWho" data-who="other" style="flex:1">Other team</button>

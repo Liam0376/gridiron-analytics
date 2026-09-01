@@ -9,6 +9,8 @@ import json
 from datetime import timedelta
 from typing import Dict, List, Optional, Any
 
+import threading
+
 from ffanalytics import db
 from ffanalytics.refresh import run_refresh_with_data
 from ffanalytics.decision import (
@@ -20,6 +22,9 @@ from ffanalytics.decision import (
 from ffanalytics import shadow
 
 app = FastAPI(title="Fantasy Football Analytics Engine")
+
+# Audit C3: guard concurrent refresh (launchd + hub/start.sh + manual)
+_REFRESH_LOCK = threading.Lock()
 
 def _compute_nfl_week(now: datetime.datetime | None = None) -> int:
     """Compute approximate NFL week number (1-18) given a date.
@@ -74,14 +79,21 @@ def update_cache(
     trending: list[dict] | None = None,
     detailed_injuries: list[dict] | None = None,
 ) -> None:
-    """Update the in-memory cache with fresh data from refresh job."""
-    _CACHE["league_settings"] = league_settings
-    _CACHE["rosters"] = rosters
-    _CACHE["player_stats"] = player_stats
-    _CACHE["injury_status"] = injury_status
-    _CACHE["matchups"] = matchups or []
-    _CACHE["trending"] = trending or []
-    _CACHE["detailed_injuries"] = detailed_injuries or []
+    """Update the in-memory cache with fresh data from refresh job (preserving prior cache on empty refresh)."""
+    if league_settings:
+        _CACHE["league_settings"] = league_settings
+    if rosters:
+        _CACHE["rosters"] = rosters
+    if player_stats:
+        _CACHE["player_stats"] = player_stats
+    if injury_status:
+        _CACHE["injury_status"] = injury_status
+    if matchups:
+        _CACHE["matchups"] = matchups
+    if trending:
+        _CACHE["trending"] = trending
+    if detailed_injuries:
+        _CACHE["detailed_injuries"] = detailed_injuries
     _CACHE["last_updated"] = datetime.datetime.now().isoformat()
     if season is not None:
         _CACHE["season"] = season
@@ -98,7 +110,8 @@ def _process_roster_data(
     rosters: list[dict],
     player_stats: list[dict],
     injury_status: dict[str, str | None],
-    league_settings: dict
+    league_settings: dict,
+    owner_id: str | None = None
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """
     Process raw Sleeper rosters and nflverse stats into roster_players,
@@ -110,87 +123,71 @@ def _process_roster_data(
     if not player_stats:
         return [], [], []
 
-    # Create lookup for player stats
     stats_lookup = _create_player_lookup(player_stats)
-
-    # Get scoring settings and roster positions
     scoring_settings = league_settings.get("scoring_settings", {})
     roster_positions = league_settings.get("roster_positions", [])
 
-    # Count how many starters we need for each position
-    position_counts = {}
-    for pos in roster_positions:
-        position_counts[pos] = position_counts.get(pos, 0) + 1
+    from ffanalytics.decision import _optimal_lineup
 
-    # Process each roster to collect all players with their stats
-    all_players = []  # List of (player_dict, owner_id)
+    target_rosters = rosters
+    if owner_id is not None:
+        target_rosters = [r for r in rosters if str(r.get("owner_id")) == str(owner_id)]
+        if not target_rosters and rosters:
+            target_rosters = [rosters[0]]
 
-    for roster in rosters:
-        owner_id = str(roster.get("owner_id")) if roster.get("owner_id") is not None else None
-        if owner_id is None:
-            continue  # Skip unowned rosters
-
-        player_ids = roster.get("players", [])
-        for player_id in player_ids:
-            player_id_str = str(player_id)
-            base_stats = stats_lookup.get(player_id_str, {})
-
-            if not base_stats:
-                continue  # Skip players we don't have stats for
-
-            player = {
-                "player_id": player_id_str,
-                "player_name": base_stats.get("short_name", f"Player {player_id_str}"),
-                "position_group": base_stats.get("position", "UNK"),
-                "projected_points": float(base_stats.get("fantasy_points", 0) or 0),
-                "injury_status": injury_status.get(player_id_str),
-                "team": base_stats.get("recent_team", ""),
-                "opponent_team": base_stats.get("opponent_team", ""),
-            }
-
-            all_players.append((player, owner_id))
-
-    # Sort all players by projected points descending (simple approximation)
-    all_players.sort(key=lambda x: x[0]["projected_points"], reverse=True)
-
-    # Assign players to roster slots based on position needs
-    # This is a simplified approach - in reality would be more sophisticated
     roster_players = []
     bench_players = []
 
-    # Track how many of each position we've assigned to starters
-    assigned_counts = {pos: 0 for pos in position_counts}
+    for roster in target_rosters:
+        current_owner = str(roster.get("owner_id")) if roster.get("owner_id") is not None else None
+        player_ids = roster.get("players", [])
+        team_players = []
+        for player_id in player_ids:
+            player_id_str = str(player_id)
+            base_stats = stats_lookup.get(player_id_str, {})
+            if not base_stats:
+                continue
 
-    for player, owner_id in all_players:
-        position = player["position_group"]
+            pts = float(base_stats.get("projected_points") or base_stats.get("fantasy_points", 0) or 0)
+            player = {
+                "player_id": player_id_str,
+                "player_name": base_stats.get("short_name", f"Player {player_id_str}"),
+                "position_group": (base_stats.get("position_group") or base_stats.get("position", "UNK")).upper(),
+                "position": (base_stats.get("position") or base_stats.get("position_group", "UNK")).upper(),
+                "projected_points": pts,
+                "projection_lower": base_stats.get("projection_lower"),
+                "projection_upper": base_stats.get("projection_upper"),
+                "width": base_stats.get("width"),
+                "injury_status": injury_status.get(player_id_str),
+                "team": base_stats.get("recent_team", ""),
+                "opponent_team": base_stats.get("opponent_team", ""),
+                "owner_id": current_owner,
+            }
+            team_players.append(player)
 
-        # Check if we still need more of this position for starters
-        needed = position_counts.get(position, 0)
-        currently_assigned = assigned_counts.get(position, 0)
-
-        if currently_assigned < needed:
-            # Assign as starter
-            roster_players.append(player)
-            assigned_counts[position] = currently_assigned + 1
-        else:
-            # Assign to bench
-            bench_players.append(player)
+        starters, bench = _optimal_lineup(team_players, roster_positions)
+        roster_players.extend(starters)
+        bench_players.extend(bench)
 
     # Free agents: players with stats but not on any roster
     rostered_player_ids = set()
     for roster in rosters:
-        player_ids = roster.get("players", [])
-        for player_id in player_ids:
+        for player_id in roster.get("players", []):
             rostered_player_ids.add(str(player_id))
 
     free_agents = []
     for player_id_str, base_stats in stats_lookup.items():
         if player_id_str not in rostered_player_ids:
+            pts = float(base_stats.get("projected_points") or base_stats.get("fantasy_points", 0) or 0)
             player = {
                 "player_id": player_id_str,
                 "player_name": base_stats.get("short_name", f"Player {player_id_str}"),
-                "position_group": base_stats.get("position", "UNK"),
-                "projected_points": float(base_stats.get("fantasy_points", 0) or 0),
+                "position_group": (base_stats.get("position_group") or base_stats.get("position", "UNK")).upper(),
+                "position": (base_stats.get("position") or base_stats.get("position_group", "UNK")).upper(),
+                "projected_points": pts,
+                "projection_lower": base_stats.get("projection_lower"),
+                "projection_upper": base_stats.get("projection_upper"),
+                "width": base_stats.get("width"),
                 "injury_status": injury_status.get(player_id_str),
                 "team": base_stats.get("recent_team", ""),
                 "opponent_team": base_stats.get("opponent_team", ""),
@@ -231,6 +228,8 @@ def health() -> dict:
 @app.post("/refresh")
 def refresh() -> dict:
     """Refresh data from all sources and update the internal cache."""
+    if not _REFRESH_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="Refresh already in progress")
     conn = db.get_connection()
     try:
         # Run refresh and get both status and data
@@ -246,24 +245,44 @@ def refresh() -> dict:
             ran_at_iso=now.isoformat()
         )
 
-        # Update cache with the fetched data
-        update_cache(
-            league_settings=data["league_settings"],
-            rosters=data["rosters"],
-            player_stats=data["player_stats"],
-            injury_status=data["injury_status"],
-            season=season,
-            week=week,
-            matchups=data.get("matchups"),
-            trending=data.get("trending"),
-            detailed_injuries=data.get("detailed_injuries"),
-        )
+        # Update cache atomically (copy-on-write to avoid torn reads, audit C3)
+        # Snapshot current cache and atomically replace global reference
+        new_cache = dict(_CACHE)
+        if data.get("league_settings"):
+            new_cache["league_settings"] = data["league_settings"]
+        if data.get("rosters"):
+            new_cache["rosters"] = data["rosters"]
+        if data.get("player_stats"):
+            new_cache["player_stats"] = data["player_stats"]
+        if data.get("injury_status"):
+            new_cache["injury_status"] = data["injury_status"]
+        if data.get("matchups"):
+            new_cache["matchups"] = data["matchups"]
+        if data.get("trending"):
+            new_cache["trending"] = data["trending"]
+        if data.get("detailed_injuries"):
+            new_cache["detailed_injuries"] = data["detailed_injuries"]
+        new_cache["last_updated"] = datetime.datetime.now().isoformat()
+        if season is not None:
+            new_cache["season"] = season
+        if week is not None:
+            new_cache["week"] = week
+        # Atomic swap
+        _CACHE.clear()
+        _CACHE.update(new_cache)
 
         conn.close()
         return {"status": "accepted", "sources": status}
+    except HTTPException:
+        raise
     except Exception as e:
         conn.close()
         raise HTTPException(status_code=500, detail=f"Refresh failed: {str(e)}")
+    finally:
+        try:
+            _REFRESH_LOCK.release()
+        except Exception:
+            pass
 
 
 @app.get("/news")
@@ -332,8 +351,8 @@ def get_projections() -> dict:
 
 
 @app.get("/recommendations/start-sit")
-def get_start_sit() -> dict:
-    """Get start/sit recommendations for all rostered players."""
+def get_start_sit(owner_id: Optional[str] = None) -> dict:
+    """Get start/sit recommendations for rostered players."""
     if not _CACHE["league_settings"] or not _CACHE["rosters"] or not _CACHE["player_stats"]:
         raise HTTPException(
             status_code=503,
@@ -350,14 +369,13 @@ def get_start_sit() -> dict:
 
     try:
         roster_players, bench_players, _ = _process_roster_data(
-            rosters, player_stats, injury_status, league_settings
+            rosters, player_stats, injury_status, league_settings, owner_id=owner_id
         )
 
         recommendations = get_start_sit_recommendations(
             roster_players, bench_players, scoring_settings, roster_positions
         )
 
-        # Log each recommendation
         for rec in recommendations:
             _log_recommendation("start_sit", rec)
 
@@ -366,12 +384,14 @@ def get_start_sit() -> dict:
             "count": len(recommendations),
             "timestamp": _CACHE["last_updated"]
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating recommendations: {str(e)}")
 
 
 @app.get("/recommendations/waiver")
-def get_waiver() -> dict:
+def get_waiver(owner_id: Optional[str] = None) -> dict:
     """Get waiver priority recommendations for free agents."""
     if not _CACHE["league_settings"] or not _CACHE["rosters"] or not _CACHE["player_stats"]:
         raise HTTPException(
@@ -388,20 +408,14 @@ def get_waiver() -> dict:
     roster_positions = league_settings.get("roster_positions", [])
 
     try:
-        _, _, free_agents = _process_roster_data(
-            rosters, player_stats, injury_status, league_settings
-        )
-
-        # We need roster_players for the waiver function (players currently on rosters)
-        roster_players, _, _ = _process_roster_data(
-            rosters, player_stats, injury_status, league_settings
+        roster_players, _, free_agents = _process_roster_data(
+            rosters, player_stats, injury_status, league_settings, owner_id=owner_id
         )
 
         recommendations = get_waiver_priority(
             roster_players, free_agents, scoring_settings, roster_positions
         )
 
-        # Log each recommendation
         for rec in recommendations:
             _log_recommendation("waiver", rec)
 
@@ -410,6 +424,8 @@ def get_waiver() -> dict:
             "count": len(recommendations),
             "timestamp": _CACHE["last_updated"]
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating waiver recommendations: {str(e)}")
 
@@ -440,10 +456,7 @@ def get_trade_evaluation(
     roster_positions = league_settings.get("roster_positions", [])
 
     try:
-        # Create player stats lookup
         stats_lookup = _create_player_lookup(player_stats)
-
-        # Extract players for each team
         team_a_players = []
         team_b_players = []
 
@@ -457,37 +470,34 @@ def get_trade_evaluation(
             for player_id in player_ids:
                 player_id_str = str(player_id)
                 base_stats = stats_lookup.get(player_id_str, {})
-
                 if not base_stats:
                     continue
 
-            player = {
-                "player_id": player_id_str,
-                "player_name": base_stats.get("short_name", f"Player {player_id_str}"),
-                "position_group": base_stats.get("position", "UNK"),
-                "projected_points": float(base_stats.get("projected_points") or base_stats.get("fantasy_points", 0) or 0),
-                "injury_status": injury_status.get(player_id_str),
-                "team": base_stats.get("recent_team", ""),
-                "opponent_team": base_stats.get("opponent_team", ""),
-            }
+                player = {
+                    "player_id": player_id_str,
+                    "player_name": base_stats.get("short_name", f"Player {player_id_str}"),
+                    "position_group": (base_stats.get("position_group") or base_stats.get("position", "UNK")).upper(),
+                    "position": (base_stats.get("position") or base_stats.get("position_group", "UNK")).upper(),
+                    "projected_points": float(base_stats.get("projected_points") or base_stats.get("fantasy_points", 0) or 0),
+                    "injury_status": injury_status.get(player_id_str),
+                    "team": base_stats.get("recent_team", ""),
+                    "opponent_team": base_stats.get("opponent_team", ""),
+                }
 
-            if owner_id == team_a_id:
-                team_a_players.append(player)
-            elif owner_id == team_b_id:
-                team_b_players.append(player)
+                if owner_id == team_a_id:
+                    team_a_players.append(player)
+                elif owner_id == team_b_id:
+                    team_b_players.append(player)
 
         if not team_a_players:
             raise HTTPException(status_code=404, detail=f"Team A (owner_id={team_a_id}) not found or has no players")
         if not team_b_players:
             raise HTTPException(status_code=404, detail=f"Team B (owner_id={team_b_id}) not found or has no players")
 
-        # For trade evaluation, we might want to use current week/season
-        # For simplicity, using defaults from decision layer function
         result = evaluate_trade(
             team_a_players, team_b_players, scoring_settings, roster_positions
         )
 
-        # Log the trade evaluation
         _log_recommendation("trade", result)
 
         return {
@@ -496,5 +506,7 @@ def get_trade_evaluation(
             "team_b_id": team_b_id,
             "timestamp": _CACHE["last_updated"]
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error evaluating trade: {str(e)}")

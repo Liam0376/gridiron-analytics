@@ -146,6 +146,26 @@ def calculate_roster_value(
     return sum(_vbd(s, replacement) for s in starters)
 
 
+def _ensure_intervals(p: Dict) -> Dict:
+    """Ensure projection interval bounds (lower, upper, width) exist on player dict."""
+    pts = float(p.get("projected_points", 0) or 0)
+    pos = (p.get("position") or p.get("position_group") or "UNK").upper()
+
+    if "projection_lower" in p and "projection_upper" in p and "width" in p:
+        return p
+
+    m = {"QB": 1.45, "RB": 1.07, "WR": 1.12, "TE": 0.88, "K": 0.55, "DEF": 0.75}
+    pos_factor = m.get(pos, 1.0)
+    pt_factor = 1.0 if pts <= 12 else min(1.60, 1.0 + (pts - 12) * 0.022)
+    width = max(3.0, min(14.0, 5.0 * pos_factor * pt_factor))
+
+    p_copy = dict(p)
+    p_copy["projection_lower"] = round(pts - width, 2)
+    p_copy["projection_upper"] = round(pts + width, 2)
+    p_copy["width"] = round(width, 2)
+    return p_copy
+
+
 def get_start_sit_recommendations(
     roster_players: List[Dict],
     bench_players: List[Dict],
@@ -153,7 +173,7 @@ def get_start_sit_recommendations(
     roster_positions: List[str],
 ) -> List[Dict]:
     """Position-constrained start/sit with interval overlap detection."""
-    all_players = roster_players + bench_players
+    all_players = [_ensure_intervals(p) for p in (roster_players + bench_players)]
     starters, bench = _optimal_lineup(all_players, roster_positions)
 
     # Build worst-starter-per-position for toss-up detection
@@ -170,16 +190,16 @@ def get_start_sit_recommendations(
 
     for s in starters:
         pos = (s.get("position") or s.get("position_group") or "UNK").upper()
-        starter_lower = float(s.get("projection_lower", 0) or 0)
+        starter_pts = float(s.get("projected_points", 0) or 0)
 
-        # Check if any bench player at same position has upper bound overlapping
+        # Check if any bench player at same position overlaps starter point estimate
         toss_up = False
         for b in bench:
             b_pos = (b.get("position") or b.get("position_group") or "UNK").upper()
             if b_pos != pos:
                 continue
             bench_upper = float(b.get("projection_upper", 0) or 0)
-            if bench_upper > 0 and starter_lower > 0 and bench_upper >= starter_lower:
+            if bench_upper >= starter_pts:
                 toss_up = True
                 break
 
@@ -204,13 +224,13 @@ def get_start_sit_recommendations(
         pos = (b.get("position") or b.get("position_group") or "UNK").upper()
         pts = float(b.get("projected_points", 0) or 0)
 
-        # Check if bench player's upper overlaps any starter's lower at same pos
+        # Check if bench player's upper overlaps any starter's point estimate at same pos
         toss_up = False
         bench_upper = float(b.get("projection_upper", 0) or 0)
         worst = worst_by_pos.get(pos)
-        if worst and bench_upper > 0:
-            worst_lower = float(worst.get("projection_lower", 0) or 0)
-            if worst_lower > 0 and bench_upper >= worst_lower:
+        if worst:
+            worst_pts = float(worst.get("projected_points", 0) or 0)
+            if bench_upper >= worst_pts:
                 toss_up = True
 
         recommendations.append({
@@ -355,7 +375,7 @@ def evaluate_trade(
     team_b_players: List[Dict],
     scoring_settings: Dict[str, float],
     roster_positions: List[str],
-    current_week: int = 4,
+    current_week: int = 1,
     total_weeks: int = 18,
     all_league_players: List[Dict] | None = None,
 ) -> Dict:

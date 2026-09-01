@@ -3,6 +3,7 @@ import { buildTiers } from '../tierlist.js';
 import { posBadge } from '../components/badges.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
+import { getTeamColor } from '../components/teamColors.js';
 
 const POSITIONS = ['QB','RB','WR','TE','FLEX'];
 
@@ -51,8 +52,8 @@ export async function renderTierlists(root) {
           ${POSITIONS.map(p=>`<button class="chip ${p===pos?'active':''}" data-pos="${p}">${p}</button>`).join('')}
         </div>
         <div class="spacer"></div>
-        <label class="faint" style="font:500 12px 'Instrument Sans', sans-serif">gap <input id="gapInput" type="number" step="0.5" min="0.5" max="6" value="${gap}" style="width:64px; background:var(--surface-raised); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:6px 8px; margin-left:6px"></label>
-        <label class="faint" style="font:500 12px 'Instrument Sans', sans-serif; margin-left:8px">cap <input id="capInput" type="number" step="1" min="3" max="12" value="${cap}" style="width:64px; background:var(--surface-raised); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:6px 8px; margin-left:6px"></label>
+        <label class="faint" style="font:500 12px "Helvetica Neue", Helvetica, sans-serif">gap <input id="gapInput" type="number" step="0.5" min="0.5" max="6" value="${gap}" style="width:64px; background:var(--surface-raised); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:6px 8px; margin-left:6px"></label>
+        <label class="faint" style="font:500 12px "Helvetica Neue", Helvetica, sans-serif; margin-left:8px">cap <input id="capInput" type="number" step="1" min="3" max="12" value="${cap}" style="width:64px; background:var(--surface-raised); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:6px 8px; margin-left:6px"></label>
         <button class="btn btn-ghost btn-sm" id="copyMd">Copy markdown</button>
       </div>
     </div>
@@ -64,9 +65,9 @@ export async function renderTierlists(root) {
             <div class="tier-head"><strong style="color:${tierColor(idx)}">Tier ${idx+1}</strong><span class="micro faint">${tier.length} players · ${tier[0].projected_points?.toFixed(1)} → ${tier[tier.length-1].projected_points?.toFixed(1)} pts</span></div>
             <div class="tier-body">
               ${tier.map(p=>`
-                <div class="player-card">
+                <div class="player-card" style="--team-accent:${getTeamColor((p.team||'').toUpperCase())}; border-left:3px solid var(--team-accent); background:linear-gradient(90deg, color-mix(in srgb, var(--team-accent) 7%, var(--surface-raised)) 0%, var(--surface-raised) 50%)">
                   <div class="row" style="gap:8px">${playerAvatar(p, 28)} <div style="flex:1; min-width:0"><div class="row" style="gap:6px">${posBadge(p.position || p.position_group)} <span class="name">${escapeHtml(p.player_name || p.player_id)}</span></div><div class="meta">${teamLogo(p.team, 14)} ${escapeHtml(p.team||'—')} vs ${escapeHtml(p.opponent_team||'—')} · ${p.wind_mph ? `${Number(p.wind_mph).toFixed(0)} mph` : '—'}</div></div></div>
-                  <div class="pts">${Number(p.projected_points ?? p.point_estimate ?? 0).toFixed(1)} <span style="font:500 11px 'Fragment Mono', monospace; color:var(--text-muted)">±${Number(p.width ?? 5).toFixed(1)}</span></div>
+                  <div class="pts">${Number(p.projected_points ?? p.point_estimate ?? 0).toFixed(1)} <span style="font:500 11px ui-monospace, SFMono-Regular, monospace; color:var(--text-muted)">±${Number(p.width ?? 5).toFixed(1)}</span></div>
                 </div>
               `).join('')}
             </div>

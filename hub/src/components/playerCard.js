@@ -1,6 +1,7 @@
 // Mobile-friendly player card component
 import { playerAvatar } from './playerAvatar.js';
 import { teamLogo } from './teamLogo.js';
+import { getTeamColor } from './teamColors.js';
 import { posBadge, injuryBadge, windBadge } from './badges.js';
 import { intervalBar } from './intervalBar.js';
 
@@ -32,7 +33,7 @@ export function playerCard(player, options = {}) {
     : '';
 
   return `
-    <div class="player-card-v2" data-pid="${escapeHtml(p.player_id || '')}">
+    <div class="player-card-v2" data-pid="${escapeHtml(p.player_id || '')}" style="--team-accent:${getTeamColor(team)}">
       <div class="pc-header">
         ${playerAvatar(p, 44)}
         <div class="pc-info">

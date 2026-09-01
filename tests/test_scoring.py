@@ -43,3 +43,20 @@ def test_flex_adjustment_not_applied_single_flex():
 def test_count_flex_slots():
     roster = ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "FLEX", "K", "DEF"]
     assert count_flex_slots(roster) == 2
+
+
+def test_scoring_alias_interceptions_and_fumbles():
+    # Audit C1: nflverse keys passing_interceptions/fumbles_lost_total must score
+    assert calculate_fantasy_points({"passing_interceptions": 1}, DEFAULT_SCORING) == -1.0
+    assert calculate_fantasy_points({"fumbles_lost_total": 1}, DEFAULT_SCORING) == -2.0
+    assert calculate_fantasy_points({"interceptions": 1}, DEFAULT_SCORING) == -1.0
+    assert calculate_fantasy_points({"fumbles_lost": 1}, DEFAULT_SCORING) == -2.0
+    # Combined
+    stats = {"passing_yards": 250, "passing_tds": 1, "passing_interceptions": 1, "fumbles_lost_total": 1}
+    # 250*0.04=10 +5 -1 -2 =12
+    assert calculate_fantasy_points(stats, DEFAULT_SCORING) == 12.0
+
+
+def test_scoring_nan_guard():
+    assert calculate_fantasy_points({"passing_yards": float("nan")}, DEFAULT_SCORING) == 0.0
+    assert calculate_fantasy_points({"receptions": float("inf")}, DEFAULT_SCORING) == 0.0

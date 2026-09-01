@@ -32,6 +32,13 @@ def _get_with_retry(http, url: str, timeout: int = 10, max_retries: int = 3) -> 
         last_resp.raise_for_status()
     return last_resp
 
+def get_nfl_state(session=None) -> dict:
+    """Fetch current live NFL state from Sleeper API (week, season, season_type)."""
+    http = _session_or_default(session)
+    resp = _get_with_retry(http, f"{BASE_URL}/state/nfl", timeout=10)
+    return resp.json()
+
+
 def get_league_settings(league_id: str, session=None) -> dict:
     http = _session_or_default(session)
     resp = _get_with_retry(http, f"{BASE_URL}/league/{league_id}", timeout=10)
@@ -110,3 +117,54 @@ def get_sleeper_projections(season: int, week: int, season_type: str = "regular"
         return resp.json()
     except Exception:
         return {}
+
+
+def get_sleeper_actual_stats(season: int, week: int, season_type: str = "regular", session=None) -> dict:
+    """Fetch Sleeper actual player stats/scores for a given season/week.
+
+    Returns dict keyed by Sleeper player_id -> {pts_ppr, pass_yd, rush_yd, ...}.
+    """
+    http = _session_or_default(session)
+    url = f"{BASE_URL}/stats/nfl/{season_type}/{season}/{week}"
+    resp = _get_with_retry(http, url, timeout=15)
+    try:
+        return resp.json()
+    except Exception:
+        return {}
+
+
+def get_auction_draft_picks(league_id: str, session=None) -> list[dict]:
+    """Fetch auction draft picks and prices paid for players in the league."""
+    http = _session_or_default(session)
+    try:
+        drafts_resp = _get_with_retry(http, f"{BASE_URL}/league/{league_id}/drafts", timeout=10)
+        drafts = drafts_resp.json()
+        if not drafts or not isinstance(drafts, list):
+            return []
+        draft_id = drafts[0].get("draft_id")
+        if not draft_id:
+            return []
+        picks_resp = _get_with_retry(http, f"{BASE_URL}/draft/{draft_id}/picks", timeout=15)
+        return picks_resp.json()
+    except Exception:
+        return []
+
+
+def get_league_transactions(league_id: str, week: int, session=None) -> list[dict]:
+    """Fetch transactions (trades, waivers, free agents) for a specific week."""
+    http = _session_or_default(session)
+    try:
+        resp = _get_with_retry(http, f"{BASE_URL}/league/{league_id}/transactions/{week}", timeout=10)
+        return resp.json()
+    except Exception:
+        return []
+
+
+def get_traded_picks(league_id: str, session=None) -> list[dict]:
+    """Fetch traded draft picks in the league."""
+    http = _session_or_default(session)
+    try:
+        resp = _get_with_retry(http, f"{BASE_URL}/league/{league_id}/traded_picks", timeout=10)
+        return resp.json()
+    except Exception:
+        return []

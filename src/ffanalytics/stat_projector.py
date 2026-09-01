@@ -141,6 +141,11 @@ PASSING_RECEIVING_STATS = {
     "receiving_yards", "receiving_tds", "receptions",
 }
 
+KICKING_STATS = {
+    "fg_made_0_19", "fg_made_20_29", "fg_made_30_39",
+    "fg_made_40_49", "fg_made_50_59", "fg_made_60_", "fg_missed", "pat_made", "pat_missed",
+}
+
 
 def _get_projection_stats(position: str) -> list:
     if position == "QB":
@@ -179,14 +184,23 @@ def _usage_trend_adjustment(
     history: List[Dict],
     stat_key: str,
 ) -> float:
-    """Adjust volume stats based on recent 3-game trend vs season average."""
+    """Adjust volume stats based on recent 3-game trend vs season average.
+
+    Trend is recent_3 vs *prior* average (excluding recent) to avoid dilution
+    where recent is included in denominator (audit I5: 3/n dampening).
+    """
     if stat_key not in VOLUME_STATS or len(history) < 4:
         return base
 
     recent_3 = [g.get(stat_key, 0) or 0 for g in history[-3:]]
     recent_avg = sum(recent_3) / 3
-    all_vals = [g.get(stat_key, 0) or 0 for g in history]
-    season_avg = sum(all_vals) / len(all_vals)
+    prior_vals = [g.get(stat_key, 0) or 0 for g in history[:-3]]
+    # Use prior-only average for denominator; fallback to full season if insufficient prior
+    if prior_vals:
+        season_avg = sum(prior_vals) / len(prior_vals)
+    else:
+        all_vals = [g.get(stat_key, 0) or 0 for g in history]
+        season_avg = sum(all_vals) / len(all_vals)
 
     if season_avg > 0:
         trend = (recent_avg / season_avg) - 1.0
@@ -241,6 +255,9 @@ def _weather_adjustment(
         for stat in adjusted:
             if stat in PASSING_RECEIVING_STATS:
                 adjusted[stat] *= wind_factor
+            elif position == "K" and stat in KICKING_STATS:
+                # K wind directly penalizes FG/XP (audit F5: K wind was no-op)
+                adjusted[stat] *= wind_factor
 
     if temp_f is not None and temp_f < COLD_THRESHOLD_F and position in ("QB", "WR", "TE"):
         cold_factor = max(
@@ -287,7 +304,7 @@ def project_player_stats(
             prior_vals = [
                 g.get(stat_key, 0) or 0
                 for g in prior_season_stats
-                if g.get("season_type") == "REG"
+                if g.get("season_type", "REG") == "REG"
             ]
             if prior_vals:
                 current_avg = sum(values) / len(values)
@@ -302,9 +319,12 @@ def project_player_stats(
             prior_vals = [
                 g.get(stat_key, 0) or 0
                 for g in prior_season_stats
-                if g.get("season_type") == "REG"
+                if g.get("season_type", "REG") == "REG"
             ]
-            base = sum(prior_vals) / len(prior_vals) if prior_vals else 0.0
+            if prior_vals:
+                base = sum(prior_vals) / len(prior_vals)
+            else:
+                base = 0.0
         else:
             base = 0.0
 
@@ -332,10 +352,42 @@ def build_game_context(schedule: List[Dict]) -> Dict:
 
         home = g.get("home_team", "")
         away = g.get("away_team", "")
-        total_line = g.get("total_line") or 0
-        spread = g.get("spread_line") or 0
+        # Audit I3: nflreadpy spread_line sign = home spread (home favored +). Guard string/NaN.
+        # Use _safe_float pattern (mirror ml/features.py:199) and document contract.
+        def _sf(v):
+            try:
+                if v is None or v == "":
+                    return 0.0
+                fv = float(str(v).strip())
+                if fv != fv:  # NaN
+                    return 0.0
+                if fv == float("inf") or fv == float("-inf"):
+                    return 0.0
+                return fv
+            except Exception:
+                return 0.0
+        total_line = _sf(g.get("total_line"))
+        spread = _sf(g.get("spread_line"))  # home - away per nflreadpy schedule_2025.json sample PHI 8.5 home
         temp = g.get("temp")
-        wind = g.get("wind") or 0
+        # temp may be string or NaN; keep None for dome, else _sf or None
+        try:
+            if temp is not None and temp != "":
+                tf = float(temp)
+                if tf != tf or tf == float("inf") or tf == float("-inf"):
+                    temp = None
+                else:
+                    temp = tf
+            else:
+                temp = None
+        except Exception:
+            temp = None
+        wind_raw = g.get("wind")
+        try:
+            wind = float(wind_raw) if wind_raw is not None and wind_raw != "" else 0.0
+            if wind != wind or wind == float("inf") or wind == float("-inf"):
+                wind = 0.0
+        except Exception:
+            wind = 0.0
         roof = g.get("roof", "")
         is_dome = roof in ("dome", "closed")
 
@@ -383,8 +435,19 @@ def build_weekly_projections(
     Incorporates Vegas lines and weather from schedule data.
     """
     reg = [s for s in season_stats if s.get("season_type") == "REG"]
-    filtered_prior = [s for s in reg if s.get("week", 0) < target_week]
-    prior_data = filtered_prior if filtered_prior else reg
+    # Cross-season guard (audit C2): when data season != schedule season (preseason),
+    # week filter would truncate 17-game history to <target_week games. Bypass in that case.
+    try:
+        stats_seasons = {s.get("season") for s in season_stats if s.get("season") is not None}
+        sched_seasons = {g.get("season") for g in schedule if g.get("season") is not None}
+        cross_season = bool(stats_seasons and sched_seasons and stats_seasons.isdisjoint(sched_seasons))
+    except Exception:
+        cross_season = False
+    if cross_season:
+        prior_data = reg
+    else:
+        filtered_prior = [s for s in reg if s.get("week", 0) < target_week]
+        prior_data = filtered_prior if filtered_prior else reg
 
     game_ctx = build_game_context(schedule)
 
@@ -449,6 +512,18 @@ def build_weekly_projections(
         bounds = compute_conformal_bounds(fpts, position)
         projected_stats.update(bounds)
         projected_stats["projected_points"] = bounds["point_estimate"]
+        # Vegas-neutral points for season totals (avoid extrapolating Week-1 shootout to 17 games)
+        neutral_stats = project_player_stats(
+            player_history=history,
+            position=position,
+            prior_season_stats=prior_player_games.get(pid),
+            implied_total=LEAGUE_AVG_IMPLIED_TOTAL,
+            wind_mph=0,
+            temp_f=None,
+        )
+        neutral_fpts = calculate_fantasy_points(neutral_stats, scoring_settings)
+        projected_stats["_neutral_points"] = round(neutral_fpts, 2)
+        projected_stats["_neutral_stats"] = neutral_stats
 
         projections.append(projected_stats)
 

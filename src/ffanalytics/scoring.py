@@ -39,6 +39,18 @@ def calculate_fantasy_points(stats: dict, scoring_settings: dict | None = None) 
     """
     settings = scoring_settings or DEFAULT_SCORING
 
+    # Normalize nflverse/stat_projector aliases before scoring (audit C1: missing keys)
+    # stat_projector emits passing_interceptions / fumbles_lost_total but legacy keys interceptions/fumbles_lost also occur
+    if "passing_interceptions" in stats and "interceptions" not in stats:
+        stats = {**stats, "interceptions": stats.get("passing_interceptions")}
+    if "fumbles_lost_total" in stats and "fumbles_lost" not in stats:
+        stats = {**stats, "fumbles_lost": stats.get("fumbles_lost_total")}
+    # Sleeper raw aliases (pass_int/fum_lost variants)
+    if "passing_interceptions" not in stats and "pass_int" in stats:
+        stats = {**stats, "interceptions": stats.get("pass_int")}
+    if "fumbles_lost_total" not in stats and "fum_lost" in stats:
+        stats = {**stats, "fumbles_lost": stats.get("fum_lost")}
+
     stat_to_scoring_key = {
         # Core scoring
         "receptions": "rec",
@@ -79,10 +91,28 @@ def calculate_fantasy_points(stats: dict, scoring_settings: dict | None = None) 
 
     points = 0.0
     for stat_key, scoring_key in stat_to_scoring_key.items():
-        stat_value = stats.get(stat_key, 0) or 0
+        raw = stats.get(stat_key, 0)
+        # Guard NaN (e.g., float('nan') from CSV) — treat as 0 for scoring; audit edge-case 12-15
+        try:
+            if raw is None or (isinstance(raw, float) and raw != raw):  # NaN check
+                raw = 0
+            stat_value = float(raw) if raw else 0
+        except Exception:
+            stat_value = 0
         multiplier = settings.get(scoring_key, 0)
-        points += stat_value * multiplier
+        try:
+            if multiplier is None or (isinstance(multiplier, float) and multiplier != multiplier):
+                multiplier = 0
+        except Exception:
+            multiplier = 0
+        # Clamp infinities
+        if stat_value == float("inf") or stat_value == float("-inf"):
+            stat_value = 0
+        points += stat_value * float(multiplier)
 
+    # Final guard: if points is NaN/inf, return 0 rather than propagating
+    if points != points or points == float("inf") or points == float("-inf"):
+        return 0.0
     return points
 
 
