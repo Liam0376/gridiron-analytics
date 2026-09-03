@@ -23,12 +23,11 @@ SRC_DIR = REPO_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-SCRATCH_CACHE = Path("/private/tmp/claude-501/-Users-liam/88d4447f-857f-4e47-88fe-c423d3893260/scratchpad/nfl_cache")
 PERSISTENT_CACHE = REPO_ROOT / "data" / "nfl_cache"
 ALT_CACHE = REPO_ROOT / "nfl_cache"
 OUT_DIR = REPO_ROOT / "data" / "ml"
 
-CACHE_CANDIDATES = [PERSISTENT_CACHE, SCRATCH_CACHE, ALT_CACHE]
+CACHE_CANDIDATES = [PERSISTENT_CACHE, ALT_CACHE]
 
 
 def _load_json_from_caches(filename: str):

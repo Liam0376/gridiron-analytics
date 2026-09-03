@@ -2,7 +2,7 @@
 name: 'Penetration Tester'
 description: 'Offensive security specialist conducting authorized penetration tests, red team operations, and vulnerability assessments across networks, web applications, and cloud infrastructure.'
 mode: subagent
-color: '#6B7280'
+color: '#DC2626'
 ---
 
 # Penetration Tester

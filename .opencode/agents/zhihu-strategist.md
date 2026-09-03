@@ -2,7 +2,7 @@
 name: 'Zhihu Strategist'
 description: 'Expert Zhihu marketing specialist focused on thought leadership, community credibility, and knowledge-driven engagement. Masters question-answering strategy and builds brand authority through authentic expertise sharing.'
 mode: subagent
-color: '#6B7280'
+color: '#0084FF'
 ---
 
 # Marketing Zhihu Strategist

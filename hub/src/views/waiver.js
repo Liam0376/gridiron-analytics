@@ -3,6 +3,8 @@ import { posBadge } from '../components/badges.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
 import { getTeamColor } from '../components/teamColors.js';
+import { escapeHtml, safeUrl } from '../lib/escape.js';
+import { openPlayerModal } from '../components/playerModal.js';
 
 export async function renderWaiver(root) {
   const [waiver, news] = await Promise.all([fetchWaiver(), fetchNews()]);
@@ -12,7 +14,7 @@ export async function renderWaiver(root) {
 
   root.innerHTML = `
     <div class="hero reveal in">
-      <h1>Waiver Wire</h1>
+      <h1>Waivers</h1>
       <p>Ranked by <code class="inline">improvement_over_roster</code> (<code class="inline">decision.py:get_waiver_priority</code>), not raw points. A 12-pt WR who replaces your 4-pt WR is worth more than a 13-pt QB you don't need.</p>
     </div>
 
@@ -26,7 +28,7 @@ export async function renderWaiver(root) {
                 <strong style="font-size:14px; color:var(--text)">${escapeHtml(n.title || '')}</strong>
                 <span class="mono" style="font-size:11px; color:var(--text-muted)">${escapeHtml(n.created_formated || '')}</span>
               </div>
-              ${n.link ? `<a href="${n.link}" target="_blank" rel="noopener" style="font-size:12px; color:var(--sky); text-decoration:none">Read on FantasyPros →</a>` : ''}
+              ${n.link ? (() => { const href = safeUrl(n.link); return href ? `<a href="${href}" target="_blank" rel="noopener" style="font-size:12px; color:var(--sky); text-decoration:none">Read on FantasyPros →</a>` : ''; })() : ''}
             </div>
           `).join('')}
         </div>
@@ -48,10 +50,10 @@ export async function renderWaiver(root) {
         ${recs.length ? `
           <div class="responsive-view">
             <div class="table-wrap" style="border:0; border-radius:0"><table>
-              <thead><tr><th>#</th><th>Player</th><th>Pos</th><th>Proj</th><th>Δ roster</th><th>Replaces</th><th>Conf</th></tr></thead>
+              <thead><tr><th aria-sort="none">#</th><th aria-sort="none">Player</th><th aria-sort="none">Pos</th><th aria-sort="none">Proj</th><th aria-sort="none">Δ roster</th><th aria-sort="none">Replaces</th><th aria-sort="none">Conf</th></tr></thead>
               <tbody>
                 ${recs.map(r=>`
-                  <tr data-team="${r.team || ''}" style="--team-accent:${getTeamColor((r.team||'').toUpperCase())}">
+                  <tr data-pid="${escapeHtml(r.player_id || '')}" data-team="${r.team || ''}" style="--team-accent:${getTeamColor((r.team||'').toUpperCase())}; cursor:pointer">
                     <td class="mono">${r.waiver_priority ?? '—'}</td>
                     <td><div class="player-cell">${playerAvatar(r, 28)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(r.player_name || r.player_id)}</div><div class="player-cell-sub">${teamLogo(r.team, 14)} ${escapeHtml(r.team || '')}</div></div></div></td>
                     <td>${posBadge(r.position)}</td>
@@ -65,7 +67,7 @@ export async function renderWaiver(root) {
             </table></div>
             <div class="player-cards-grid" style="padding:12px">
               ${recs.map(r=>`
-                <div class="player-card">
+                <div class="player-card" data-pid="${escapeHtml(r.player_id || '')}" style="cursor:pointer">
                   <div style="display:flex; justify-content:space-between; align-items:center">
                     <div style="display:flex; align-items:center; gap:8px">
                       ${playerAvatar(r, 32)}
@@ -83,9 +85,16 @@ export async function renderWaiver(root) {
               `).join('')}
             </div>
           </div>
-        ` : `<div class="empty">No waiver recs — needs <code class="inline">/recommendations/waiver</code> (cache warm) or <code class="inline">hub/server.py</code> fallback. Trending above still shows who the league is adding.</div>`}
+        ` : `<div class="empty">No waiver recommendations yet. Trending above shows recent adds.</div>`}
       </div>
     </div>
   `;
+
+  root.querySelectorAll('[data-pid]').forEach(el => {
+    el.addEventListener('click', () => {
+      const pid = el.getAttribute('data-pid');
+      const found = recs.find(r => String(r.player_id) === String(pid));
+      if (found) openPlayerModal(found, root);
+    });
+  });
 }
-function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }

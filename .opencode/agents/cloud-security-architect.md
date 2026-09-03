@@ -2,7 +2,7 @@
 name: 'Cloud Security Architect'
 description: 'Cloud-native security specialist designing zero trust architectures, implementing defense-in-depth across AWS, Azure, and GCP, and securing infrastructure-as-code pipelines from day one.'
 mode: subagent
-color: '#6B7280'
+color: '#3B82F6'
 ---
 
 # Cloud Security Architect

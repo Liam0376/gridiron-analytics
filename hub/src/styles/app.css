@@ -457,6 +457,7 @@ code.inline { background: var(--surface-raised); border: 1px solid var(--border)
   padding: 12px;
   border-left: 3px solid var(--team-accent, var(--border));
   transition: border-color 150ms, background 150ms;
+  cursor: pointer;
 }
 .player-card-v2:hover { background: var(--surface-hover); border-color: var(--border-strong); }
 .pc-header { display: flex; align-items: center; gap: 10px; }
@@ -665,7 +666,7 @@ tbody tr[data-team]:hover td {
 
 /* Draftea-Style Player Detail Modal */
 .player-modal-backdrop {
-  position: fixed; inset: 0; z-index: 1000;
+  position: fixed; inset: 0; z-index: 2000;
   background: rgba(0,0,0,0.4); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   display: flex; align-items: center; justify-content: center; padding: 16px;
 }
@@ -698,4 +699,35 @@ tbody tr[data-team]:hover td {
   max-height: 90vh; overflow-y: auto;
 }
 @media (max-width: 680px) { .matchup-modal-card { padding: 14px; max-width: 100%; } }
+
+/* Keyboard + trust + scroll polish (token-based, no redesign) */
+.clickable-row:focus-visible,
+.clickable-card:focus-visible,
+.matchup-card:focus-visible,
+[data-player-id]:focus-visible,
+[data-matchup-id]:focus-visible,
+.search-item:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+.search-item.active,
+.search-item[aria-selected="true"] {
+  background: var(--surface-raised);
+  outline: 1px solid var(--border-strong);
+}
+.week-picker-scroll {
+  scrollbar-width: thin;
+}
+.week-picker-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.week-picker-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+.matchup-table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
 

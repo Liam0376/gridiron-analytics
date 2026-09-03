@@ -3,13 +3,17 @@ import { playerAvatar } from './playerAvatar.js';
 import { posBadge, injuryBadge } from './badges.js';
 import { teamLogo } from './teamLogo.js';
 import { intervalBar } from './intervalBar.js';
+import { escapeHtml, escapeAttr } from '../lib/escape.js';
+import { trapFocus } from '../lib/focusTrap.js';
 
 export function openPlayerModal(p, root = document.getElementById('app') || document.body) {
-  let container = root.querySelector('#playerModalContainer');
+  // Capture trigger for focus return before DOM mutation.
+  const triggerEl = (document.activeElement instanceof HTMLElement) ? document.activeElement : null;
+  let container = document.getElementById('playerModalContainer');
   if (!container) {
     container = document.createElement('div');
     container.id = 'playerModalContainer';
-    root.appendChild(container);
+    document.body.appendChild(container);
   }
 
   const isPasser = p.position === 'QB';
@@ -26,6 +30,7 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
   const marketAuction = Number(p.marketAuction ?? p.market_auction ?? Math.max(1, Math.round(gridironAuction * 0.9)));
   const deltaAuction = Number(p.deltaAuction ?? (gridironAuction - marketAuction));
   const edge = (p.edge || 'NEUTRAL').toUpperCase();
+  const edgeIcon = edge === 'BUY' ? '▲ ' : edge === 'SELL' ? '▼ ' : '';
 
   // 17-game stat projections
   const passYds = Math.round(p.season_pass_yd ?? (isPasser ? weekly * 16.5 * 17 : 0));
@@ -42,12 +47,12 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
   const slot = String(p.slot || 'BENCH').toUpperCase();
 
   if (slot === 'IR') {
-    adviceTitle = 'INJURED RESERVE';
+    adviceTitle = 'On IR';
     adviceCls = 'alert-bad';
     adviceText = `${p.player_name} is on Injured Reserve. Monitor medical reports prior to activating.`;
   } else if (slot.startsWith('BN') || slot === 'BENCH') {
     if (weekly >= 12.0) {
-      adviceTitle = 'HIGH-UPSIDE BENCH (CONSIDER STARTING)';
+      adviceTitle = 'Strong bench — consider starting';
       adviceCls = 'alert-warn';
       adviceText = `Strong bench projection (${weekly.toFixed(1)} pts/wk, ceiling ${upper.toFixed(1)} pts). Compare floor/ceiling with your starting FLEX slots before kickoff.`;
     } else {
@@ -57,7 +62,7 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
     }
   } else {
     if (width > 7.0) {
-      adviceTitle = 'VOLATILE STARTER (WIDE INTERVAL)';
+      adviceTitle = 'Wide range — check matchup';
       adviceCls = 'alert-warn';
       adviceText = `High variance player (Floor ${lower.toFixed(1)} pts / Ceiling ${upper.toFixed(1)} pts). Monitor game script and weather before lock.`;
     } else if (weekly < 9.0) {
@@ -73,7 +78,7 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
 
   container.innerHTML = `
     <div class="player-modal-backdrop" id="modalBackdrop">
-      <div class="player-modal-card card reveal in" role="dialog" aria-modal="true" aria-labelledby="modalPlayerName">
+      <div class="player-modal-card card reveal in" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="modalPlayerName">
         <button class="modal-close-btn" id="modalCloseBtn" aria-label="Close modal">✕</button>
 
         <!-- Centered Header Hero -->
@@ -90,7 +95,7 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
             <span class="mono faint micro">${escapeHtml(p.team || 'NFL')} vs ${escapeHtml(p.opponent_team || 'TBD')}</span>
             ${injuryBadge(p.injury_status)}
             ${p.tier ? `<span class="badge badge-violet">Tier ${p.tier}</span>` : ''}
-            <span class="badge ${edge === 'BUY' ? 'badge-emerald' : edge === 'SELL' ? 'badge-crimson' : 'badge-faint'}">${edge} EDGE</span>
+            <span class="badge ${edge === 'BUY' ? 'badge-emerald' : edge === 'SELL' ? 'badge-crimson' : 'badge-faint'}" aria-label="${escapeAttr(edge)}">${edgeIcon}${edge} EDGE</span>
             <span class="mono faint micro">ECR #${p.ecr ?? '—'} · ADP #${p.adp ?? '—'}</span>
           </div>
         </div>
@@ -98,7 +103,7 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
         <!-- Market vs Model Comparison Cards -->
         <div class="modal-values-grid" style="margin-top:16px">
           <div class="modal-val-card">
-            <span class="kicker">Gridiron Model $</span>
+            <span class="kicker">Model $</span>
             <span class="mono val-large" style="color:var(--amber)">$${gridironAuction}</span>
             <span class="micro faint">${weekly.toFixed(1)} projected pts/wk</span>
           </div>
@@ -162,21 +167,29 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
     </div>
   `;
 
+  const card = container.querySelector('.player-modal-card');
+  // close defined before trapFocus so Escape can invoke full close (not just release).
+  let releaseFocus = () => {};
   const close = () => {
+    try { releaseFocus(); } catch (_) {}
     container.innerHTML = '';
-    document.removeEventListener('keydown', handleKey);
+    // Focus return is handled by trapFocus.release(), but ensure fallback
+    // if trigger is still in the document and focus landed on body.
+    if (triggerEl && typeof triggerEl.focus === 'function' && document.contains(triggerEl)) {
+      if (!document.activeElement || document.activeElement === document.body) {
+        triggerEl.focus();
+      }
+    }
   };
+  releaseFocus = trapFocus(card, triggerEl, close);
 
-  const handleKey = (e) => {
-    if (e.key === 'Escape') close();
-  };
-
-  root.querySelector('#modalCloseBtn')?.addEventListener('click', close);
-  root.querySelector('#modalDismissBtn')?.addEventListener('click', close);
-  root.querySelector('#modalBackdrop')?.addEventListener('click', (e) => {
+  // NOTE: container lives under document.body (not #app), so query container
+  // directly — root.querySelector would be null when root is #app (P0-1).
+  container.querySelector('#modalCloseBtn')?.addEventListener('click', close);
+  container.querySelector('#modalDismissBtn')?.addEventListener('click', close);
+  container.querySelector('#modalBackdrop')?.addEventListener('click', (e) => {
     if (e.target.id === 'modalBackdrop') close();
   });
-  document.addEventListener('keydown', handleKey);
 }
 
 function renderStatBar(label, value, maxVal, color, unit) {
@@ -194,8 +207,4 @@ function renderStatBar(label, value, maxVal, color, unit) {
       </div>
     </div>
   `;
-}
-
-function escapeHtml(s) {
-  return String(s || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 }

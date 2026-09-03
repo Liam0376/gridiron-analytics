@@ -10,9 +10,9 @@
 >
 > Location: **top-level `hub/` directory** with its own `package.json` / `pyproject.toml` (if Python) and isolated `README.md`. Root repo's `AGENTS.md` and `CLAUDE.md` constraints (`$0`, `127.0.0.1` only) apply equally to the hub.
 
-**Goal:** A token-free, $0, fully-local fantasy hub that lets you — without a single LLM call — see everything the model already knows: weekly projections (with calibrated intervals), matchups, weather-impacts, tierlists, roster start/sit with confidence, waiver priorities, and trade evaluations, plus a fast search over all of it. Data freshness comes from the existing daily `launchd` → `refresh_job.sh` → `SQLite WAL` pipeline, not from the hub.
+**Goal:** A token-free, $0, fully-local fantasy hub — no LLM calls — that surfaces everything the model already knows: weekly projections (with calibrated intervals), matchups, weather, tierlists, roster start/sit with confidence, waiver priorities, trade evaluations, and fast search. Freshness comes from the existing daily `launchd` → `refresh_job.sh` → SQLite WAL pipeline, not from the hub.
 
-**Non-goals (v1):** No model retraining, no new projection features, no schema migrations, no auth/multi-user, no public hosting, no phone tunnel, no LLM narrative (that remains an *optional* out-of-band `muse -p` you invoke manually, not part of the hub).
+**Non-goals (v1):** No model retraining, new projection features, schema migrations, auth/multi-user, public hosting, phone tunnel, or LLM narrative (that remains an *optional* out-of-band `muse -p`, not part of the hub).
 
 **Spec dependency:** `docs/superpowers/specs/2026-08-26-fantasy-football-analytics-design.md` + current implementation (`src/ffanalytics/api.py:52` `_CACHE`, `schema.sql`, `projection.py`, `conformal.py`, `decision.py`, `scoring.py`, `adapters/schedule.py`, `adapters/weather.py`).
 
@@ -30,7 +30,7 @@ launchd (07:00) → POST /refresh → adapters → SQLite + _CACHE → projectio
                                               hub/ (localhost:8001) → browser
 ```
 
-No per-request LLM, no embeddings needed. Tierlists and search are deterministic sorts/filters on `projected_points`, `interval`, `team_ratings`, and `FLEX_SCARCITY_MULTIPLIER`. If you ever want a sentence like "why start X", you run `muse -p "explain ..."` against the same DB snapshot — the hub itself stays at 0 tokens.
+No per-request LLM, no embeddings needed. Tierlists and search are deterministic sorts/filters on `projected_points`, `interval`, `team_ratings`, and `FLEX_SCARCITY_MULTIPLIER`. For "why start X", run `muse -p "explain ..."` against the same DB snapshot — the hub stays at 0 tokens.
 
 ## 2. Technology decision
 
@@ -62,7 +62,7 @@ hub/                          # new top-level, git-ignored from model perspectiv
 
 ## 3. Data contract — what the hub may read (and how)
 
-Hub is **read-only**. No `POST /refresh` from hub UI (show a manual curl snippet instead).
+Hub is **read-only**. No `POST /refresh` from hub UI; show a manual curl snippet instead.
 
 | Need | Primary (live cache) | Fallback (DB direct, read-only) | Notes |
 |---|---|---|---|
@@ -103,8 +103,8 @@ Purpose: go/no-go before you set a lineup.
 The hero view. Replaces needing to ask Muse "who should I start?".
 
 - Table columns: `player | pos | team | opp | opp rating (vs_pos) | proj (pts) | interval [low–high] width | weather Δ | tier | injury | trending`
-  - `projection_width` = `qhat` interval width (`conformal.py`) — narrow = confident.
-  - `weather Δ` computed as `-(max(0, wind-15) * WEATHER_WIND_PENALTY_PER_MPH)` for QB/WR/K else 0.
+  - `projection_width` = `qhat` interval width (`conformal.py`); narrow = confident.
+  - `weather Δ` = `-(max(0, wind-15) * WEATHER_WIND_PENALTY_PER_MPH)` for QB/WR/K; 0 elsewhere.
   - All numbers show to 1 decimal; interval as `14.2 ±4.1` or `[10.1 – 18.3]`.
 - Controls:
   - **Search** (see §5) — instant client-side `filter()`, debounced 150ms.

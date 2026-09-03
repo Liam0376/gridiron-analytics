@@ -1,7 +1,7 @@
 #!/bin/bash
 # hub/start.sh — one-click warm-boot launcher. Starts model+proxy+hub, ensures DATA is warm before opening browser.
 # 127.0.0.1 only — never bind 0.0.0.0 (see docs/RUNBOOK.md and CLAUDE.md hard constraints).
-# Flags: --auto (auto-refresh if stale, no prompt), --no-refresh (never POST, open even if cold), --force (refresh even if fresh), --no-browser (skip opening browser)
+# Flags: --auto (auto-refresh if stale, no prompt), --no-refresh (never POST, open even if cold), --force (refresh even if fresh), --no-browser (skip opening browser), --lan (explicit opt-in: display LAN URL with warning; default stays 127.0.0.1 local-only)
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -11,33 +11,67 @@ AUTO=0
 NO_REFRESH=0
 FORCE=0
 NO_BROWSER=0
+LAN=0
 for arg in "$@"; do
   case "$arg" in
     --auto) AUTO=1 ;;
     --no-refresh) NO_REFRESH=1 ;;
     --force) FORCE=1 ;;
     --no-browser) NO_BROWSER=1 ;;
-    -h|--help) echo "Usage: bash hub/start.sh [--auto] [--no-refresh] [--force] [--no-browser]"; exit 0 ;;
+    --lan) LAN=1 ;;
+    -h|--help) echo "Usage: bash hub/start.sh [--auto] [--no-refresh] [--force] [--no-browser] [--lan]"; exit 0 ;;
   esac
 done
 
 export SLEEPER_LEAGUE_ID="${SLEEPER_LEAGUE_ID:-test}"
 
-# detect LAN IP for phone access
-LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || echo "127.0.0.1")
+# Local-only default: all services bind 127.0.0.1. LAN URL display requires
+# explicit --lan opt-in (see warning below). No hardcoded user paths —
+# REPO_ROOT is derived from the script location.
+LAN_IP="127.0.0.1"
+if [ "$LAN" = "1" ]; then
+  LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || echo "127.0.0.1")
+  echo "⚠ WARNING: --lan violates the local-only constraint (127.0.0.1 only, never 0.0.0.0, no tunnels)."
+  echo "  The Vite proxy still binds 127.0.0.1 by default, so http://${LAN_IP}:8001 will NOT"
+  echo "  respond unless you deliberately rebind — which is outside the supported OSS setup."
+  echo "  Explicit opt-in acknowledged; continuing local-only."
+fi
 
 echo "→ Fantasy Hub — warm-boot start (Ctrl+C to stop, 0 resources after)"
-echo "  Model: http://127.0.0.1:8000   Hub: http://${LAN_IP}:8001   Proxy: http://127.0.0.1:8002"
-echo "  Flags: auto=$AUTO no-refresh=$NO_REFRESH force=$FORCE no-browser=$NO_BROWSER"
+echo "  Model: http://127.0.0.1:8000   Hub: http://127.0.0.1:8001   Proxy: http://127.0.0.1:8002"
+echo "  Flags: auto=$AUTO no-refresh=$NO_REFRESH force=$FORCE no-browser=$NO_BROWSER lan=$LAN"
 echo ""
+
+# Blast-radius guard for lsof reclaim: only kill PIDs whose command looks like
+# our stack (python/uvicorn/vite/node/npm). Anything else (e.g. an unrelated
+# service on the same port) is warned about and skipped, never killed.
+safe_kill_port() {
+  local port="$1"
+  local pids
+  pids=$(lsof -ti :"$port" 2>/dev/null || true)
+  [ -z "$pids" ] && return 0
+  local pid cmd
+  for pid in $pids; do
+    cmd=$(ps -p "$pid" -o comm= 2>/dev/null || echo "unknown")
+    case "$cmd" in
+      *python*|*uvicorn*|*node*|*vite*|*npm*)
+        echo "  • port $port pid $pid ($cmd) — reclaiming (previous hub instance)…"
+        kill "$pid" 2>/dev/null || true
+        ;;
+      *)
+        echo "  ⚠ port $port pid $pid ($cmd) not ours (expected python/uvicorn/vite/node) — skipping kill"
+        ;;
+    esac
+  done
+}
 
 cleanup() {
   echo ""
   echo "→ stopping…"
   jobs -p | xargs -I {} kill {} 2>/dev/null || true
-  lsof -ti :8000 2>/dev/null | xargs kill 2>/dev/null || true
-  lsof -ti :8001 2>/dev/null | xargs kill 2>/dev/null || true
-  lsof -ti :8002 2>/dev/null | xargs kill 2>/dev/null || true
+  safe_kill_port 8000 || true
+  safe_kill_port 8001 || true
+  safe_kill_port 8002 || true
   echo "✓ stopped — 0 processes left"
   exit 0
 }
@@ -46,8 +80,7 @@ trap cleanup INT TERM EXIT
 # 0) If ports already in use from previous run (you double-clicked), reclaim them gracefully
 for p in 8000 8001 8002; do
   if lsof -ti :$p >/dev/null 2>&1; then
-    echo "  • port $p already in use — reclaiming (previous hub instance)…"
-    lsof -ti :$p 2>/dev/null | xargs kill 2>/dev/null || true
+    safe_kill_port "$p" || true
     sleep 1
   fi
 done
@@ -72,8 +105,10 @@ else
   echo "  ✓ model up (pid $API_PID)"
 fi
 
-# ensure DB + schema exists (warm-boot step 1)
-.venv/bin/python -c "from ffanalytics import db; c=db.get_connection(); db.init_schema(c); c.close(); print('  ✓ DB warm (fantasy.db + schema)')" 2>&1 | head -5
+# ensure DB + schema exists via init_schema warm-boot (step 1) — delegated to
+# scripts/db_warm.py, which calls db.init_schema(), before any refresh check.
+# (hub scripts must not import ffanalytics; see docs/architecture-decisions/0002-hub-isolation.md)
+.venv/bin/python scripts/db_warm.py 2>&1 | head -5
 
 # 2) Hub proxy (127.0.0.1 only)
 echo "→ starting hub proxy :8002 (mode=ro)…"
@@ -221,13 +256,13 @@ if curl -sf http://127.0.0.1:8001/ >/dev/null 2>&1; then
   fi
   echo ""
   echo "  ┌─────────────────────────────────────────────────────┐"
-  echo "  │  🏈 Gridiron Hub ready                              │"
+  echo "  │  Fantasy Hub ready (local-only)                     │"
   echo "  │  Mac:    http://127.0.0.1:8001                      │"
-  echo "  │  iPhone: http://${LAN_IP}:8001                │"
-  echo "  │                                                     │"
-  echo "  │  iPhone setup: open URL in Safari → Share → Add to  │"
-  echo "  │  Home Screen. Launches as standalone app.            │"
   echo "  └─────────────────────────────────────────────────────┘"
+  if [ "$LAN" = "1" ]; then
+    echo "  ⚠ --lan opt-in: LAN URL http://${LAN_IP}:8001 shown for reference only."
+    echo "    Services still bind 127.0.0.1; LAN access requires deliberate rebind (unsupported)."
+  fi
   echo ""
   wait
 else
@@ -240,13 +275,13 @@ else
   fi
   echo ""
   echo "  ┌─────────────────────────────────────────────────────┐"
-  echo "  │  🏈 Gridiron Hub ready                              │"
+  echo "  │  Fantasy Hub ready (local-only)                     │"
   echo "  │  Mac:    http://127.0.0.1:8001                      │"
-  echo "  │  iPhone: http://${LAN_IP}:8001                │"
-  echo "  │                                                     │"
-  echo "  │  iPhone setup: open URL in Safari → Share → Add to  │"
-  echo "  │  Home Screen. Launches as standalone app.            │"
   echo "  └─────────────────────────────────────────────────────┘"
+  if [ "$LAN" = "1" ]; then
+    echo "  ⚠ --lan opt-in: LAN URL http://${LAN_IP}:8001 shown for reference only."
+    echo "    Services still bind 127.0.0.1; LAN access requires deliberate rebind (unsupported)."
+  fi
   echo ""
   npm --prefix hub run dev
 fi

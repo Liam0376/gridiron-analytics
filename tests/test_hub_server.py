@@ -149,3 +149,192 @@ def test_hub_server_endpoints(hub_server_url, endpoint, expected_key):
         assert response.status == 200
         body = json.loads(response.read().decode('utf-8'))
         assert expected_key in body
+
+
+def test_hub_readonly_attempt_write_fails(hub_server_url):
+    # Non-GET must not succeed (read-only proxy: only GET/OPTIONS).
+    import urllib.error
+    post_req = urllib.request.Request(
+        f"{hub_server_url}/hub-api/meta", data=b"{}", method="POST"
+    )
+    try:
+        with urllib.request.urlopen(post_req, timeout=5) as response:
+            assert response.status != 200, "POST should not return 200 on read-only proxy"
+    except urllib.error.HTTPError as e:
+        assert e.code in (400, 403, 404, 405, 501), f"unexpected POST status {e.code}"
+    # DB itself is opened mode=ro by the handler — direct write must fail.
+    import sqlite3
+    ro_uri = f"file:{hubserver.Handler.db_path}?mode=ro"
+    ro_conn = sqlite3.connect(ro_uri, uri=True)
+    try:
+        with pytest.raises(sqlite3.OperationalError):
+            ro_conn.execute("INSERT INTO refresh_log VALUES ('x', '2026-01-01', 1, '')")
+    finally:
+        ro_conn.close()
+
+
+def test_hub_rosters_full_shape(hub_server_url):
+    url = f"{hub_server_url}/hub-api/rosters-full"
+    req = urllib.request.Request(url)
+    with urllib.request.urlopen(req, timeout=5) as response:
+        assert response.status == 200
+        # 60s server-side cache contract: Last-Modified + Cache-Control max-age=60.
+        assert response.headers.get("Last-Modified"), "rosters-full must send Last-Modified"
+        cc = (response.headers.get("Cache-Control") or "")
+        assert "max-age=60" in cc, f"rosters-full Cache-Control should contain max-age=60, got {cc!r}"
+        body = json.loads(response.read().decode("utf-8"))
+    assert "rosters" in body
+    assert "league_leaderboard" in body
+    assert "leagueRosters" in body or "allTeams" in body
+    assert "meta" in body
+    rosters = body["rosters"]
+    assert isinstance(rosters, dict) and len(rosters) >= 1
+    first = rosters.get("1") or rosters.get(1) or next(iter(rosters.values()))
+    for key in ("starters", "bench", "reserve", "team_info"):
+        assert key in first, f"rosters-full entry missing {key}"
+    # Second fetch should hit the 60s server cache (same Last-Modified).
+    with urllib.request.urlopen(urllib.request.Request(url), timeout=5) as r2:
+        assert r2.headers.get("Last-Modified") == response.headers.get("Last-Modified")
+
+
+def test_hub_json_cache_control_no_store(hub_server_url):
+    # JSON endpoints consistently send Cache-Control (no-store except rosters-full).
+    with urllib.request.urlopen(f"{hub_server_url}/hub-api/meta", timeout=5) as response:
+        cc = response.headers.get("Cache-Control") or ""
+        assert "no-store" in cc, f"/meta Cache-Control should be no-store, got {cc!r}"
+
+
+def test_hub_scoring_parity_smoke():
+    # No ffanalytics import per isolation — duplicate expected value as fixture.
+    # 300 pass yds @0.04 (=12.0) + 2 pass TD @5.0 (=10.0) => 22.0.
+    scoring_fixture = {"pass_yd": 0.04, "pass_td": 5.0}
+    player = {"passing_yards": 300, "passing_tds": 2}
+    pts = hubserver._calc_points_from_raw(player, scoring_fixture)
+    assert pts == pytest.approx(22.0)
+    # Full default scoring still prices the same stat line at 22.0 (no other stats).
+    pts_default = hubserver._calc_points_from_raw(player, hubserver.DEFAULT_SCORING)
+    assert pts_default == pytest.approx(22.0)
+
+
+def test_hub_rosters_full_ims_304(hub_server_url):
+    import urllib.error
+    url = f"{hub_server_url}/hub-api/rosters-full"
+    with urllib.request.urlopen(urllib.request.Request(url), timeout=5) as r:
+        assert r.status == 200
+        lm = r.headers.get("Last-Modified")
+        assert lm, "rosters-full must send Last-Modified"
+    req = urllib.request.Request(url, headers={"If-Modified-Since": lm})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r2:
+            assert r2.status == 304, f"expected 304 for IMS, got {r2.status}"
+    except urllib.error.HTTPError as e:
+        assert e.code == 304, f"expected 304 for IMS, got {e.code}"
+
+
+def test_hub_projections_ims_304(hub_server_url):
+    import urllib.error
+    url = f"{hub_server_url}/hub-api/projections"
+    with urllib.request.urlopen(urllib.request.Request(url), timeout=5) as r:
+        assert r.status == 200
+        lm = r.headers.get("Last-Modified")
+        assert lm, "projections must send Last-Modified"
+        cc = (r.headers.get("Cache-Control") or "")
+        assert "max-age=60" in cc, f"projections Cache-Control should contain max-age=60, got {cc!r}"
+    req = urllib.request.Request(url, headers={"If-Modified-Since": lm})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r2:
+            assert r2.status == 304, f"expected 304 for IMS, got {r2.status}"
+    except urllib.error.HTTPError as e:
+        assert e.code == 304, f"expected 304 for IMS, got {e.code}"
+
+
+def test_hub_projections_prefers_team_over_recent_team(tmp_path):
+    import sqlite3
+    import time
+    from http.server import HTTPServer
+    db_path = tmp_path / "team.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE player_stats (season INT, week INT, data TEXT)")
+    conn.execute(
+        "INSERT INTO player_stats VALUES (2026, 1, ?)",
+        (json.dumps([{"player_id": "99999", "player_display_name": "Team Test Player", "short_name": "Team Test Player", "position": "WR", "team": "LAR", "recent_team": "JAX", "receiving_yards": 100, "receptions": 5}]),),
+    )
+    conn.execute("CREATE TABLE league_settings (season INT, data TEXT)")
+    conn.execute("INSERT INTO league_settings VALUES (2026, '{}')")
+    conn.execute("CREATE TABLE injury_status (data TEXT)")
+    conn.execute("INSERT INTO injury_status VALUES ('{}')")
+    conn.execute("CREATE TABLE news_data (kind TEXT, fetched_at TEXT, data TEXT)")
+    conn.execute("INSERT INTO news_data VALUES ('trending', '2026-08-30T10:00:00', '[]')")
+    conn.execute("CREATE TABLE market_consensus (season INT, week INT, data TEXT, fetched_at TEXT)")
+    conn.execute("INSERT INTO market_consensus VALUES (2026, 1, '[]', '2026-08-30T10:00:00')")
+    conn.execute("CREATE TABLE rosters (season INT, week INT, data TEXT)")
+    conn.execute("INSERT INTO rosters VALUES (2026, 1, '[]')")
+    conn.commit()
+    conn.close()
+    orig_db = hubserver.Handler.db_path
+    orig_proj = hubserver._PROJECTIONS_CACHE
+    orig_sleeper = hubserver.SLEEPER_PLAYERS_CACHE
+    orig_sleeper_at = hubserver._SLEEPER_PLAYERS_AT
+    hubserver._PROJECTIONS_CACHE = {"at": 0.0, "payload": None, "last_modified": ""}
+    hubserver.SLEEPER_PLAYERS_CACHE = {"dummy": {"full_name": "Dummy", "team": "KC", "position": "QB"}}
+    hubserver._SLEEPER_PLAYERS_AT = time.time()
+    hubserver.Handler.db_path = db_path
+    port = get_free_port()
+    httpd = HTTPServer(('127.0.0.1', port), hubserver.Handler)
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    try:
+        url = f"http://127.0.0.1:{port}/hub-api/projections?limit=2000"
+        with urllib.request.urlopen(url, timeout=10) as r:
+            assert r.status == 200
+            body = json.loads(r.read().decode("utf-8"))
+            assert "players" in body
+            match = [p for p in body["players"] if str(p.get("player_id")) == "99999"]
+            assert match, "fixture player 99999 missing from projections"
+            assert match[0]["team"] == "LAR", f"team must win over recent_team, got {match[0]['team']!r}"
+            assert match[0]["team"] != "JAX"
+    finally:
+        httpd.shutdown()
+        try:
+            httpd.server_close()
+        except Exception:
+            pass
+        hubserver.Handler.db_path = orig_db
+        hubserver._PROJECTIONS_CACHE = orig_proj
+        hubserver.SLEEPER_PLAYERS_CACHE = orig_sleeper
+        hubserver._SLEEPER_PLAYERS_AT = orig_sleeper_at
+        hubserver._PROJECTIONS_CACHE = {"at": 0.0, "payload": None, "last_modified": ""}
+
+
+def test_hub_stale_sleeper_served_no_500(hub_server_url):
+    import time
+    stale = {"1234": {"full_name": "Stale Player", "first_name": "Stale", "last_name": "Player", "position": "QB", "team": "KC"}}
+    orig_cache = hubserver.SLEEPER_PLAYERS_CACHE
+    orig_at = hubserver._SLEEPER_PLAYERS_AT
+    orig_fetch = hubserver._fetch_sleeper_players_from_network
+    orig_proj = hubserver._PROJECTIONS_CACHE
+
+    def _boom():
+        raise RuntimeError("network down")
+
+    hubserver.SLEEPER_PLAYERS_CACHE = dict(stale)
+    hubserver._SLEEPER_PLAYERS_AT = time.time() - hubserver._SLEEPER_PLAYERS_TTL - 10
+    hubserver._fetch_sleeper_players_from_network = _boom
+    hubserver._PROJECTIONS_CACHE = {"at": 0.0, "payload": None, "last_modified": ""}
+    try:
+        data = hubserver.get_sleeper_players_cached()
+        assert isinstance(data, dict) and "1234" in data, "must serve stale on network fail"
+        assert data["1234"]["full_name"] == "Stale Player"
+        nm = hubserver.get_sleeper_player_name("1234")
+        assert "Stale Player" in nm
+        with urllib.request.urlopen(f"{hub_server_url}/hub-api/projections?limit=10", timeout=10) as r:
+            assert r.status == 200, "projections must not 500 when Sleeper network fails"
+            body = json.loads(r.read().decode("utf-8"))
+            assert "players" in body
+        time.sleep(0.5)
+    finally:
+        hubserver.SLEEPER_PLAYERS_CACHE = orig_cache
+        hubserver._SLEEPER_PLAYERS_AT = orig_at
+        hubserver._fetch_sleeper_players_from_network = orig_fetch
+        hubserver._PROJECTIONS_CACHE = orig_proj
+        hubserver._PROJECTIONS_CACHE = {"at": 0.0, "payload": None, "last_modified": ""}

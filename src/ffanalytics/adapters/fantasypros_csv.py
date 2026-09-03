@@ -1,10 +1,5 @@
-"""Local FantasyPros CSV fallback — $0, no API limit.
-
-Reads the two user-provided exports at repo root:
-  - FantasyPros_2026_Draft_ALL_Rankings.csv (ECR, tiers, POS rank)
-  - FantasyPros_2026_Overall_ADP_Rankings.csv (AVG/Sleeper ADP)
-Provides full coverage (519 ECR + 695 ADP) vs free API 10 DST limit.
-"""
+"""Local FantasyPros CSV fallback: $0, no API limit. Reads the two
+user-provided exports at repo root (519 ECR + 695 ADP)."""
 
 import csv
 import re
@@ -52,7 +47,6 @@ def _pos_rank(pos_raw: str) -> int | None:
 
 
 def load_draft_rankings(path: Path | None = None) -> list[dict]:
-    """Parse Draft ALL Rankings.csv -> list with ECR/tier."""
     p = path or _find_file(DRAFT_FILES)
     if not p or not p.exists():
         return []
@@ -102,7 +96,6 @@ def load_draft_rankings(path: Path | None = None) -> list[dict]:
 
 
 def load_adp_rankings(path: Path | None = None) -> list[dict]:
-    """Parse Overall ADP Rankings.csv -> list with ADP AVG/Sleeper."""
     p = path or _find_file(ADP_FILES)
     if not p or not p.exists():
         return []
@@ -165,13 +158,6 @@ def load_adp_rankings(path: Path | None = None) -> list[dict]:
 
 
 def load_combined_csv() -> list[dict]:
-    """Merge Draft ECR + ADP into unified list keyed by name+team+pos.
-
-    For each player, combine:
-      rank_ecr / rank_ecr_pos / tier (from draft)
-      rank_adp / rank_adp_pos / avg_adp / sleeper_adp (from adp)
-    Returns list of merged dicts suitable for comparison.py (has both).
-    """
     draft = load_draft_rankings()
     adp = load_adp_rankings()
     # index by normalized key: (norm_name, team, pos)
@@ -223,7 +209,6 @@ def load_combined_csv() -> list[dict]:
 
 
 def get_fantasypros_csv_players() -> list[dict]:
-    """Public helper for refresh: returns merged list or [] if no CSVs found."""
     rows = load_combined_csv()
     # filter out empty names
     return [r for r in rows if r.get("player_name")]

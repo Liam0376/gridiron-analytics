@@ -105,13 +105,12 @@ def test_neutral_points_avoids_vegas_extrapolation():
 
 def test_usage_trend_prior_only():
     from ffanalytics.stat_projector import _usage_trend_adjustment
-    # 3 old 60, 3 recent 120 → trend vs prior only = 1.0 → +15% → 60*1.15=69? Wait base 90 → 103.5
-    # With dilution old impl gave +5% (94.5). New should be higher.
+    # 3 old 60, 3 recent 120 → trend = (120/60)-1 = 1.0, capped to ±0.5 → 0.5
+    # base 90 * (1 + 0.5 * 0.15) = 90 * 1.075 = 96.75
     history = [{"rushing_yards": 60} for _ in range(3)] + [{"rushing_yards": 120} for _ in range(3)]
     base = 90
     adjusted = _usage_trend_adjustment(base, history, "rushing_yards")
-    # Prior-only avg 60, recent 120 → trend 1.0 → 90*1.15=103.5
-    assert adjusted == pytest.approx(103.5)
+    assert adjusted == pytest.approx(96.75)
 
 
 def test_vegas_safe_float_string():
@@ -120,3 +119,30 @@ def test_vegas_safe_float_string():
     ctx = build_game_context(schedule)
     assert ctx[("KC", 1)]["implied_total"] == 20.5
     assert ctx[("LV", 1)]["implied_total"] == 27.5
+
+
+def test_default_implied_total_21_provenance():
+    # Default 21.0 frozen (conservative below league avg 22.2 for BYE/missing; no value change).
+    # Empty schedule → BYE fallback with 21.0 implied (documents provenance, guards against retune).
+    season_stats = [
+        {"player_id": "p9", "player_display_name": "Test RB", "position": "RB", "team": "DET", "week": 1, "season_type": "REG", "rushing_yards": 80, "rushing_tds": 1},
+    ]
+    scoring = {"rush_yd": 0.1, "rush_td": 6}
+    projs = build_weekly_projections(season_stats, [], target_week=5, scoring_settings=scoring)
+    assert len(projs) == 1
+    assert projs[0]["opponent_team"] == "BYE"
+    # Implied fallback is 21.0 (checked via source, not recomputed value to avoid coupling to weights)
+    import inspect
+    from ffanalytics import stat_projector
+    src = inspect.getsource(stat_projector.build_weekly_projections)
+    assert "21.0" in src
+
+
+def test_build_game_context_observed_weather_limitation():
+    # Documents pre-game-forecast limitation: schedule temp/wind are observed post-game,
+    # not forecasts (see build_game_context docstring). No value change.
+    import inspect
+    from ffanalytics import stat_projector
+    doc = (stat_projector.build_game_context.__doc__ or "")
+    assert "OBSERVED" in doc or "observed" in doc
+    assert "forecast" in doc.lower()

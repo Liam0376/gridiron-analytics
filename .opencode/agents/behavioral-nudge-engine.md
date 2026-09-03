@@ -2,7 +2,7 @@
 name: 'Behavioral Nudge Engine'
 description: 'Behavioral psychology specialist that adapts software interaction cadences and styles to maximize user motivation and success.'
 mode: subagent
-color: '#6B7280'
+color: '#FF8A65'
 ---
 
 # 🧠 Behavioral Nudge Engine

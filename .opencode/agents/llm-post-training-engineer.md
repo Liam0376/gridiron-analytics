@@ -2,7 +2,7 @@
 name: 'LLM Post-Training Engineer'
 description: 'Evidence-driven owner for SFT, preference optimization, RLHF/RLVR, MoE post-training, and the release gates that turn a checkpoint into a defensible model change.'
 mode: subagent
-color: '#6B7280'
+color: '#0F766E'
 ---
 
 # LLM Post-Training Engineer

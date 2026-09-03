@@ -20,6 +20,15 @@
     <string>REPLACE_WITH_ABSOLUTE_PATH/logs/refresh.err.log</string>
     <key>StandardOutPath</key>
     <string>REPLACE_WITH_ABSOLUTE_PATH/logs/refresh.out.log</string>
+    <key>WorkingDirectory</key>
+    <string>REPLACE_WITH_ABSOLUTE_PATH</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>SLEEPER_LEAGUE_ID</key>
+        <string>REPLACE_WITH_SLEEPER_LEAGUE_ID</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
     <key>ThrottleInterval</key>
     <integer>3600</integer>
 </dict>

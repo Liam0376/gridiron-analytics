@@ -207,15 +207,17 @@
   "final_points_mae": 4.4632118340080655,
   "final_points_corr": 0.6578886208078296,
   "final_points_pairwise": 0.7445303198959582,
-  "baseline_mae": 4.163,
-  "baseline_corr": 0.6918,
-  "baseline_pairwise": 0.777,
+  "baseline_mae": 4.563,
+  "baseline_corr": 0.648,
+  "baseline_pairwise": 0.741,
+  "baseline_n": 10351,
+  "baseline_note": "Production freeze (true scoring via scoring.py DEFAULT_SCORING on Sleeper settings, 2024-2025 weeks 4-18, n=10351; K MAE 4.09). Prior 4.163/0.6918/0.777 was K-zeroed (old_map ignored fg_* -> K MAE 0.001, -0.416 bias) - SUPERSEDED. Stored val_* is 2025-only holdout; combined backtest below incl. train is in-sample diagnostic only.",
   "baseline_pos_mae": {
     "QB": 7.08,
     "RB": 4.43,
     "WR": 4.42,
     "TE": 3.63,
-    "K": 0.01
+    "K": 4.09
   },
   "params": {
     "n_estimators": 500,
@@ -266,14 +268,17 @@
   "skipped_stats": [],
   "git_sha": "c2e3cf75dc06ac0bda8ccbea4ddde87f5c0154c4",
   "status": "REJECTED",
-  "reason": "stat-level REJECTED \u2014 MAE 4.4632 >= 4.163; corr 0.6579 <= 0.6918; pairwise 74.4530% <= 77.7% \u2014 evidence: points MAE 4.4632 vs baseline 4.163, corr 0.6579 vs 0.6918, pairwise 74.4530% vs 77.7%",
+  "reason": "stat-level REJECTED \u2014 evidence: holdout val 4.4632 vs production freeze 4.563 wins MAE narrowly (+0.10) but combined 4.307 win is in-sample 2024 overfit (gap 0.316); narrow local win not worth dependency/overfit risk vs 0.10 gap to floor; per-stat only TDs beat, yards/receptions +0.36-0.62 worse",
   "backtest": {
     "status": "REJECTED",
-    "reason": "REJECTED \u2014 MAE 4.3071 >= 4.163; pairwise 75.9632% <= 77.7% \u2014 stat-level does not beat all three gates vs baseline; vs point-level 4.45 diff -0.1429",
-    "val_mae": 4.307140479515885,
-    "val_corr": 0.707536944393358,
-    "pairwise": 0.75963212079042,
-    "absolute_gate": false,
-    "local_gate": true
+    "reason": "REJECTED — combined_diagnostic 4.3071 is in-sample 2024 leakage (diagnostic only, NOT val); honest gate is holdout 2025 top-level val_* vs freeze 4.563/0.648/0.741 — narrow local win not worth dependency risk; vs point-level legacy 4.45 (val-tuned) diff -0.1429 is also in-sample",
+    "combined_diagnostic_mae": 4.307140479515885,
+    "combined_diagnostic_corr": 0.707536944393358,
+    "combined_diagnostic_pairwise": 0.75963212079042,
+    "combined_diagnostic_absolute_gate": true,
+    "local_gate": true,
+    "overfit_gap": 0.3163983944694708,
+    "overfit_gap_note": "overfit_gap = |2024 in-sample MAE 4.1468 - 2025 holdout MAE 4.4632| = 0.316 (see data/ml/backtest_stat_level_results.json per_year); combined win is 2024 overfit, honest OOS gate is holdout top-level val_* only.",
+    "protocol_note": "nested: gate on honest holdout 2025 top-level val_* only; combined_diagnostic incl. train is in-sample diagnostic (in-sample leakage for boosters trained on 2023-2024) — do not gate on combined (see scripts/backtest_stat_level.py nested protocol)"
   }
 }

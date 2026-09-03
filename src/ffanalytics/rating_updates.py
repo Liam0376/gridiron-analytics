@@ -1,6 +1,12 @@
 """Consumes game results from nflreadpy schedule data and updates team_ratings
 in SQLite using the Elo rating engine — both overall (win/loss) and positional
-(fantasy points allowed to opposing QB/RB/WR/TE)."""
+(fantasy points allowed to opposing QB/RB/WR/TE).
+
+NOTE: these positional ratings are tracked for research/shadow only and are
+NOT consumed by the production stat projector.
+tested and REJECTED — evidence: stat_projector.py:22-24 opponent defense
+factors hurt correlation. Constants/means below are frozen (comments only);
+do not tune without an honest OOS backtest."""
 
 import json
 import sqlite3
@@ -18,7 +24,6 @@ _POS_MEAN_PTS = {"QB": 17.5, "RB": 12.0, "WR": 12.5, "TE": 8.5}
 
 
 def _load_ratings(conn: sqlite3.Connection, season: int) -> dict[str, dict[str, Rating]]:
-    """Load existing ratings from DB. Returns {team: {position_group: Rating}}."""
     rows = conn.execute(
         "SELECT team, position_group, rating, rating_deviation FROM team_ratings WHERE season = ?",
         (season,),
@@ -33,7 +38,6 @@ def _load_ratings(conn: sqlite3.Connection, season: int) -> dict[str, dict[str, 
 
 
 def _save_ratings(conn: sqlite3.Connection, ratings: dict[str, dict[str, Rating]], season: int, week: int) -> None:
-    """Upsert ratings into team_ratings table."""
     for team, groups in ratings.items():
         for pg, rating in groups.items():
             conn.execute(
@@ -53,11 +57,6 @@ def _compute_positional_points_allowed(
     week: int,
     scoring_settings: dict | None = None,
 ) -> dict[str, dict[str, float]]:
-    """From player-level weekly stats, compute total fantasy points each
-    defense allowed to each opposing position group.
-
-    Returns {defending_team: {position_group: total_fantasy_pts_allowed}}.
-    """
     pts_allowed: dict[str, dict[str, float]] = {}
 
     for p in player_stats:
@@ -97,14 +96,10 @@ def update_team_ratings_from_results(
     nfl_module=None,
     scoring_settings: dict | None = None,
 ) -> dict[str, dict[str, Rating]]:
-    """Fetch completed game results for the given week, update team ratings.
-
-    Updates two tracks:
-      1. "overall" — win/loss Elo from game scores
-      2. "vs_QB", "vs_RB", "vs_WR", "vs_TE" — defensive positional Elo from
-         fantasy points allowed to each opposing position group
-
-    Returns the updated ratings dict."""
+    # Two tracks updated each week:
+    #   1. "overall" — win/loss Elo from game scores
+    #   2. "vs_QB", "vs_RB", "vs_WR", "vs_TE" — defensive positional Elo
+    #      from fantasy points allowed to each opposing position group
     from ffanalytics.adapters.schedule import get_schedule
     from ffanalytics.adapters.nflverse import get_weekly_player_stats
 

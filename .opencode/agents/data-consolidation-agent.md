@@ -2,7 +2,7 @@
 name: 'Data Consolidation Agent'
 description: 'AI agent that consolidates extracted sales data into live reporting dashboards with territory, rep, and pipeline summaries'
 mode: subagent
-color: '#6B7280'
+color: '#38A169'
 ---
 
 # Data Consolidation Agent

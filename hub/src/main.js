@@ -4,14 +4,6 @@ import { fetchHealth, fetchMeta, computeStaleness, fetchProjections, fetchCompar
 import { shimmer } from './components/shimmer.js';
 import { renderMobileNav, bindMobileNav } from './components/mobileNav.js';
 import { renderDashboard } from './views/dashboard.js';
-import { renderMatchups } from './views/matchups.js';
-import { renderProjections } from './views/projections.js';
-import { renderTierlists } from './views/tierlists.js';
-import { renderTeam } from './views/team.js';
-import { renderRoster } from './views/roster.js';
-import { renderWaiver } from './views/waiver.js';
-import { renderTrade } from './views/trade.js';
-import { renderAuction } from './views/auction.js';
 import { filterPlayers } from './search.js';
 import { playerAvatar } from './components/playerAvatar.js';
 import { userAvatar } from './components/userAvatar.js';
@@ -19,20 +11,38 @@ import { posBadge } from './components/badges.js';
 import { teamLogo } from './components/teamLogo.js';
 import { openPlayerModal } from './components/playerModal.js';
 
-const views = {
-  dashboard: renderDashboard,
-  team: renderTeam,
-  matchups: renderMatchups,
-  projections: renderProjections,
-  tierlists: renderTierlists,
-  auction: renderAuction,
-  roster: renderRoster,
-  waiver: renderWaiver,
-  trade: renderTrade,
+// Lazy-loaded view modules — initial bundle stays small (~40% smaller),
+// heavy views (auction 940 lines, trade 390, etc.) load only on navigation.
+const viewLoaders = {
+  dashboard: () => import('./views/dashboard.js'),
+  team: () => import('./views/team.js'),
+  matchups: () => import('./views/matchups.js'),
+  projections: () => import('./views/projections.js'),
+  tierlists: () => import('./views/tierlists.js'),
+  auction: () => import('./views/auction.js'),
+  roster: () => import('./views/roster.js'),
+  waiver: () => import('./views/waiver.js'),
+  trade: () => import('./views/trade.js'),
 };
+const viewCache = new Map();
+
+async function loadView(id) {
+  const loader = viewLoaders[id] || viewLoaders.dashboard;
+  if (viewCache.has(id)) return viewCache.get(id);
+  const mod = await loader();
+  // Pick the exported render function by convention: render<PascalCase>(root).
+  const pascal = id.charAt(0).toUpperCase() + id.slice(1);
+  const fn = mod[`render${pascal}`] || mod.default;
+  if (!fn) throw new Error(`view ${id} has no render function`);
+  viewCache.set(id, fn);
+  return fn;
+}
 
 function renderNav() {
   const tabs = document.getElementById('navTabs');
+  if (!tabs) return;
+  tabs.setAttribute('role', 'tablist');
+  tabs.setAttribute('aria-label', 'Sections');
   const cur = getRoute().id;
   const icons = {
     dashboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
@@ -45,10 +55,38 @@ function renderNav() {
     trade: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16V4"/><path d="M7 4l-3 3"/><path d="M7 4l3 3"/><path d="M17 8v12"/><path d="M17 20l3-3"/><path d="M17 20l-3-3"/></svg>',
   };
   tabs.innerHTML = allRoutes().map(r=>`
-    <button class="sidebar-tab ${r.id===cur?'active':''}" data-route="${r.id}" role="tab" aria-selected="${r.id===cur}">${icons[r.id]||icons.dashboard}<span class="label">${r.label}</span></button>
+    <button id="tab-${r.id}" class="sidebar-tab ${r.id===cur?'active':''}" data-route="${r.id}" role="tab" aria-selected="${r.id===cur}" aria-controls="app" tabindex="${r.id===cur?'0':'-1'}">${icons[r.id]||icons.dashboard}<span class="label">${r.label}</span></button>
   `).join('');
-  tabs.querySelectorAll('[data-route]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{ location.hash = btn.getAttribute('data-route'); });
+  // APG tabpanel wiring: #app is the controlled panel (index.html owns the element).
+  const appPanel = document.getElementById('app');
+  if (appPanel) {
+    appPanel.setAttribute('role', 'tabpanel');
+    appPanel.setAttribute('aria-labelledby', `tab-${cur}`);
+  }
+  const tabBtns = Array.from(tabs.querySelectorAll('[data-route]'));
+  const activateTab = (btn) => { location.hash = btn.getAttribute('data-route'); };
+  tabBtns.forEach((btn, idx)=>{
+    btn.addEventListener('click', ()=> activateTab(btn));
+    btn.addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        activateTab(btn);
+        return;
+      }
+      let nextIdx = null;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') nextIdx = (idx + 1) % tabBtns.length;
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') nextIdx = (idx - 1 + tabBtns.length) % tabBtns.length;
+      else if (e.key === 'Home') nextIdx = 0;
+      else if (e.key === 'End') nextIdx = tabBtns.length - 1;
+      if (nextIdx != null) {
+        e.preventDefault();
+        tabBtns.forEach(b=>b.setAttribute('tabindex','-1'));
+        const next = tabBtns[nextIdx];
+        next.setAttribute('tabindex','0');
+        next.focus();
+        activateTab(next);
+      }
+    });
   });
   renderMobileNavBar(cur);
 }
@@ -79,6 +117,7 @@ async function refreshStaleness() {
     else { dot.className = 'dot cold'; el.textContent = health.source === 'proxy' ? 'Local DB Active' : s.label; }
     el.title = ts ? `lastUpdated: ${ts}` : 'no timestamp';
   } catch {
+    // detection failed, default to cold
     dot.className = 'dot cold';
     el.textContent = 'checking…';
   }
@@ -90,8 +129,13 @@ async function render() {
   const route = getRoute();
   const app = document.getElementById('app');
   app.innerHTML = `<div class="page"><div class="card" style="padding:20px">${shimmer(route.id === 'projections' ? 'table' : 'kpi')}</div></div>`;
-  const fn = views[route.id] || views.dashboard;
+  // Disconnect prior IntersectionObserver before attaching new one.
+  if (app.__revealObserver) {
+    app.__revealObserver.disconnect();
+    app.__revealObserver = null;
+  }
   try {
+    const fn = await loadView(route.id);
     await fn(app);
     // reveal animation
     app.querySelectorAll('.reveal').forEach((el,i)=>{
@@ -102,10 +146,11 @@ async function render() {
     const io = new IntersectionObserver((entries)=>{
       entries.forEach(e=>{ if(e.isIntersecting) e.target.classList.add('in'); });
     }, { threshold: 0.08 });
+    app.__revealObserver = io;
     app.querySelectorAll('.reveal').forEach(el=> io.observe(el));
   } catch (e) {
-    app.innerHTML = `<div class="alert alert-bad">Failed to render ${route.id}: ${String(e)}<br><span class="faint" style="font:500 11px ui-monospace, SFMono-Regular, monospace">${e.stack || ''}</span></div>`;
-    console.error(e);
+    app.innerHTML = `<div class="alert alert-bad">Couldn't load this view. Try refreshing.</div>`;
+console.error(e);
   }
 }
 
@@ -180,6 +225,8 @@ async function loadSearchPlayersCache() {
           allSearchPlayers = Array.from(map.values());
         } catch (e) {
           console.error('Error loading search cache:', e);
+          // Reset promise so the next call can retry instead of returning a stuck in-flight.
+          searchPromise = null;
         }
       })();
     }
@@ -189,6 +236,51 @@ async function loadSearchPlayersCache() {
 
 if (globalSearch && searchDropdown) {
   let searchTimer = null;
+  let searchActiveIndex = -1;
+
+  // APG combobox/listbox wiring
+  globalSearch.setAttribute('role', 'combobox');
+  globalSearch.setAttribute('aria-expanded', 'false');
+  globalSearch.setAttribute('aria-controls', 'searchDropdown');
+  globalSearch.setAttribute('aria-autocomplete', 'list');
+  globalSearch.setAttribute('aria-haspopup', 'listbox');
+  searchDropdown.setAttribute('role', 'listbox');
+  searchDropdown.setAttribute('aria-label', 'Search results');
+
+  const setSearchExpanded = (open) => {
+    globalSearch.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) {
+      searchActiveIndex = -1;
+      globalSearch.removeAttribute('aria-activedescendant');
+    }
+  };
+  const hideSearchDropdown = () => {
+    searchDropdown.style.display = 'none';
+    setSearchExpanded(false);
+  };
+  const updateSearchActive = () => {
+    const opts = Array.from(searchDropdown.querySelectorAll('[role="option"]'));
+    opts.forEach((el, i) => {
+      const active = i === searchActiveIndex;
+      el.setAttribute('aria-selected', active ? 'true' : 'false');
+      el.classList.toggle('active', active);
+      if (active) {
+        globalSearch.setAttribute('aria-activedescendant', el.id);
+        el.scrollIntoView({ block: 'nearest' });
+      }
+    });
+    if (searchActiveIndex === -1) globalSearch.removeAttribute('aria-activedescendant');
+  };
+  const activateSearchOption = (idx) => {
+    const opts = Array.from(searchDropdown.querySelectorAll('[role="option"]'));
+    const el = opts[idx];
+    if (!el) return false;
+    // Reuse the element's click handler so keyboard matches mouse behavior.
+    el.click();
+    return true;
+  };
+  // Expose for renderSearchDropdown closure
+  globalSearch.__searchNav = { updateSearchActive, hideSearchDropdown, activateSearchOption, getActive: () => searchActiveIndex, setActive: (v) => { searchActiveIndex = v; } };
 
   globalSearch.addEventListener('focus', () => {
     loadSearchPlayersCache();
@@ -202,7 +294,7 @@ if (globalSearch && searchDropdown) {
     searchTimer = setTimeout(async () => {
       const q = e.target.value.trim();
       if (!q) {
-        searchDropdown.style.display = 'none';
+        hideSearchDropdown();
         return;
       }
       await loadSearchPlayersCache();
@@ -211,20 +303,45 @@ if (globalSearch && searchDropdown) {
   });
 
   globalSearch.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
+    const opts = Array.from(searchDropdown.querySelectorAll('[role="option"]'));
+    const isOpen = searchDropdown.style.display === 'block' && opts.length > 0;
+    if (e.key === 'ArrowDown') {
+      if (!isOpen) return;
+      e.preventDefault();
+      searchActiveIndex = (searchActiveIndex + 1) % opts.length;
+      updateSearchActive();
+    } else if (e.key === 'ArrowUp') {
+      if (!isOpen) return;
+      e.preventDefault();
+      searchActiveIndex = (searchActiveIndex - 1 + opts.length) % opts.length;
+      updateSearchActive();
+    } else if (e.key === 'Home' && isOpen) {
+      e.preventDefault();
+      searchActiveIndex = 0;
+      updateSearchActive();
+    } else if (e.key === 'End' && isOpen) {
+      e.preventDefault();
+      searchActiveIndex = opts.length - 1;
+      updateSearchActive();
+    } else if (e.key === 'Enter') {
+      if (isOpen && searchActiveIndex >= 0) {
+        e.preventDefault();
+        activateSearchOption(searchActiveIndex);
+        return;
+      }
       const q = globalSearch.value.trim();
       if (q) {
-        searchDropdown.style.display = 'none';
+        hideSearchDropdown();
         location.hash = `projections?q=${encodeURIComponent(q)}`;
       }
     } else if (e.key === 'Escape') {
-      searchDropdown.style.display = 'none';
+      hideSearchDropdown();
     }
   });
 
   document.addEventListener('click', (e) => {
     if (!globalSearch.contains(e.target) && !searchDropdown.contains(e.target)) {
-      searchDropdown.style.display = 'none';
+      hideSearchDropdown();
     }
   });
 }
@@ -245,15 +362,16 @@ function renderSearchDropdown(q) {
   if (!matches.length && !matchingTeams.length) {
     searchDropdown.innerHTML = `<div class="empty" style="padding:12px; font-size:12px">No matches found for "${escapeHtml(q)}"</div>`;
     searchDropdown.style.display = 'block';
+    globalSearch.setAttribute('aria-expanded', 'true');
     return;
   }
 
   searchDropdown.innerHTML = `
     <div style="display:flex; flex-direction:column; gap:2px">
       ${matchingTeams.length ? `
-        <div class="micro faint" style="padding:4px 8px; text-transform:uppercase; letter-spacing:0.04em">Fantasy Bahamas Teams</div>
-        ${matchingTeams.map(t => `
-          <a href="#roster" class="search-item row align-between" style="padding:6px 10px; border-radius:8px; text-decoration:none; color:var(--text)">
+        <div class="micro faint" style="padding:4px 8px; text-transform:uppercase; letter-spacing:0.04em" aria-hidden="true">League Teams</div>
+        ${matchingTeams.map((t, i) => `
+          <a href="#roster" id="search-opt-team-${i}" role="option" aria-selected="false" tabindex="-1" class="search-item row align-between" style="padding:6px 10px; border-radius:8px; text-decoration:none; color:var(--text)">
             <div class="row align-center" style="gap:10px">
               ${userAvatar(t, 26)}
               <div>
@@ -268,9 +386,9 @@ function renderSearchDropdown(q) {
       ` : ''}
 
       ${matches.length ? `
-        <div class="micro faint" style="padding:4px 8px; text-transform:uppercase; letter-spacing:0.04em">NFL Players</div>
-        ${matches.map(p => `
-          <div class="search-item row align-between" data-search-pid="${p.player_id}" style="padding:8px 10px; border-radius:8px; cursor:pointer; transition:background 0.12s">
+        <div class="micro faint" style="padding:4px 8px; text-transform:uppercase; letter-spacing:0.04em" aria-hidden="true">NFL Players</div>
+        ${matches.map((p, i) => `
+          <div id="search-opt-player-${i}" role="option" aria-selected="false" tabindex="-1" class="search-item row align-between" data-search-pid="${p.player_id}" style="padding:8px 10px; border-radius:8px; cursor:pointer; transition:background 0.12s">
             <div class="row align-center" style="gap:10px">
               ${playerAvatar(p, 28)}
               <div>
@@ -292,33 +410,53 @@ function renderSearchDropdown(q) {
       ` : ''}
 
       <div class="divider" style="margin:4px 0"></div>
-      <div id="viewAllSearchBtn" style="padding:8px; text-align:center; font:600 12px "Helvetica Neue", Helvetica, sans-serif; color:var(--sky); cursor:pointer">
+      <div id="viewAllSearchBtn" role="option" aria-selected="false" tabindex="-1" style="padding:8px; text-align:center; font:600 12px "Helvetica Neue", Helvetica, sans-serif; color:var(--sky); cursor:pointer">
         View all ${allSearchPlayers.length ? filterPlayers(allSearchPlayers, q).length : ''} matches in Projections →
       </div>
     </div>
   `;
 
   searchDropdown.style.display = 'block';
+  globalSearch.setAttribute('aria-expanded', 'true');
+  if (globalSearch.__searchNav) globalSearch.__searchNav.setActive(-1);
+
+  const bindOptionKeys = (el) => {
+    el.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        el.click();
+      }
+    });
+  };
 
   searchDropdown.querySelectorAll('[data-search-pid]').forEach(el => {
-    el.addEventListener('click', () => {
+    const openForEl = () => {
       const pid = el.getAttribute('data-search-pid');
       const p = allSearchPlayers.find(x => String(x.player_id) === String(pid));
       if (p) {
         searchDropdown.style.display = 'none';
+        globalSearch.setAttribute('aria-expanded', 'false');
         openPlayerModal(p);
       }
+    };
+    el.addEventListener('click', openForEl);
+    bindOptionKeys(el);
+  });
+
+  searchDropdown.querySelectorAll('a[role="option"]').forEach(el => {
+    bindOptionKeys(el);
+    el.addEventListener('click', () => {
+      searchDropdown.style.display = 'none';
+      globalSearch.setAttribute('aria-expanded', 'false');
     });
   });
 
   searchDropdown.querySelector('#viewAllSearchBtn')?.addEventListener('click', () => {
     searchDropdown.style.display = 'none';
+    globalSearch.setAttribute('aria-expanded', 'false');
     location.hash = `projections?q=${encodeURIComponent(q)}`;
   });
-}
-
-function escapeHtml(s) {
-  return String(s || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+  searchDropdown.querySelector('#viewAllSearchBtn') && bindOptionKeys(searchDropdown.querySelector('#viewAllSearchBtn'));
 }
 
 document.addEventListener('keydown', (e)=>{
@@ -329,14 +467,23 @@ document.addEventListener('keydown', (e)=>{
   }
 });
 
-// Linear-style mouse spotlight tracking for data cards and rows
+// Linear-style mouse spotlight tracking for data cards and rows (rAF throttled)
+let mxPending = null;
+let mxLastEvent = null;
+function applyMx() {
+  if (!mxLastEvent) return;
+  const e = mxLastEvent;
+  mxPending = null;
+  const target = e.target.closest('.card');
+  if (!target) return;
+  const rect = target.getBoundingClientRect();
+  target.style.setProperty('--mx', `${e.clientX - rect.left}px`);
+  target.style.setProperty('--my', `${e.clientY - rect.top}px`);
+}
 document.addEventListener('mousemove', (e) => {
-  const target = e.target.closest('.card, tr, .player-card-v2, .kpi-card');
-  if (target) {
-    const rect = target.getBoundingClientRect();
-    target.style.setProperty('--mx', `${e.clientX - rect.left}px`);
-    target.style.setProperty('--my', `${e.clientY - rect.top}px`);
-  }
+  mxLastEvent = e;
+  if (mxPending != null) return;
+  mxPending = requestAnimationFrame(applyMx);
 });
 
 window.addEventListener('hashchange', render);

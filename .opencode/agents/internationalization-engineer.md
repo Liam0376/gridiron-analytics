@@ -2,7 +2,7 @@
 name: 'Internationalization Engineer'
 description: 'Expert i18n engineer for ICU MessageFormat, CLDR plural rules, RTL and bidirectional layouts, locale-aware date/number/currency formatting, string extraction pipelines, and pseudo-localization testing.'
 mode: subagent
-color: '#6B7280'
+color: '#0EA5E9'
 ---
 
 # Internationalization Engineer

@@ -1,17 +1,15 @@
 // User avatar component via Sleeper CDN with initials fallback
-function escapeAttr(s) {
-  return String(s || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
-}
+import { safeAvatarUrl, escapeAttr } from '../lib/escape.js';
 
 export function userAvatar(user, size = 32) {
   const name = user?.display_name || user?.team_name || user?.owner_name || user?.name || '?';
   const initial = escapeAttr(name.charAt(0).toUpperCase());
   const avatarId = user?.avatar || user?.avatar_id;
-  const avatarUrl = user?.avatar_url || (avatarId ? `https://sleepercdn.com/avatars/thumbs/${avatarId}` : null);
-  
+  const avatarUrl = safeAvatarUrl(user?.avatar_url) || (avatarId ? safeAvatarUrl(`https://sleepercdn.com/avatars/thumbs/${avatarId}`) : null);
+
   const fs = Math.round(size * 0.42);
   const fallbackHtml = `<div class="user-avatar-fallback" style="width:${size}px;height:${size}px;border-radius:50%;background:linear-gradient(135deg, var(--surface-raised), var(--surface));border:1px solid var(--border-active);display:flex;align-items:center;justify-content:center;font:700 ${fs}px ui-monospace, SFMono-Regular,monospace;color:var(--amber);flex-shrink:0">${initial}</div>`;
-  
+
   if (!avatarUrl) {
     return fallbackHtml;
   }

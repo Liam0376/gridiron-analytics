@@ -66,8 +66,9 @@ else
   echo "  ✓ model up (pid $API_PID)"
 fi
 
-# ensure DB + schema exists (warm-boot step 1)
-.venv/bin/python -c "from ffanalytics import db; c=db.get_connection(); db.init_schema(c); c.close(); print('  ✓ DB warm (fantasy.db + schema)')" 2>&1 | head -5
+# ensure DB + schema exists (warm-boot step 1) — delegated to scripts/db_warm.py
+# (hub scripts must not import ffanalytics; see docs/architecture-decisions/0002-hub-isolation.md)
+.venv/bin/python scripts/db_warm.py 2>&1 | head -5
 
 # 2) Hub proxy
 echo "→ starting hub proxy :8002 (mode=ro)…"

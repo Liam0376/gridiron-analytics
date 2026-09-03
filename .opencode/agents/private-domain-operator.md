@@ -2,7 +2,7 @@
 name: 'Private Domain Operator'
 description: 'Expert in building enterprise WeChat (WeCom) private domain ecosystems, with deep expertise in SCRM systems, segmented community operations, Mini Program commerce integration, user lifecycle management, and full-funnel conversion optimization.'
 mode: subagent
-color: '#6B7280'
+color: '#1A73E8'
 ---
 
 # Marketing Private Domain Operator

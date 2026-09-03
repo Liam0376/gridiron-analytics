@@ -13,15 +13,34 @@ Run: .venv/bin/python hub/server.py
 
 import argparse
 import json
+import logging
+import os
 import sqlite3
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import time
+from email.utils import formatdate
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timedelta
 
 # Audit: thread safety for global caches (if moved to ThreadingHTTPServer)
 _CACHE_LOCK = threading.Lock()
+# Single-flight locks for Sleeper refresh — never hold _CACHE_LOCK across network I/O.
+_SLEEPER_FETCH_LOCK = threading.Lock()
+_SLEEPER_USERS_FETCH_LOCK = threading.Lock()
+_SLEEPER_PLAYERS_TTL = 24 * 3600
+_SLEEPER_PLAYERS_AT = 0.0
+_SLEEPER_USERS_TTL = 3600
+_SLEEPER_USERS_AT = 0.0
+# rosters-full: one build_league_analytics pass cached 60s + Last-Modified
+_ROSTERS_FULL_TTL = 60
+_ROSTERS_FULL_CACHE = {"at": 0.0, "payload": None, "last_modified": ""}
+# projections + comparison mirror rosters-full: 60s server TTL + Last-Modified/304
+_PROJECTIONS_TTL = 60
+_PROJECTIONS_CACHE = {"at": 0.0, "payload": None, "last_modified": ""}
+_COMPARISON_TTL = 60
+_COMPARISON_CACHE = {"at": 0.0, "payload": None, "last_modified": ""}
 
 # --- Vendored scoring logic (mirror of src/ffanalytics/scoring.py @ 2026-08-28 Sleeper Bahamas) ---
 DEFAULT_SCORING = {
@@ -157,6 +176,9 @@ def qhat(residuals, alpha=0.2):
     return a[rank - 1]
 
 # --- Vendored week calc (mirrors api.py:24) ---
+# NOTE(divergence): src/ffanalytics/config.py::compute_nfl_week returns 0 in
+# preseason, but hub keeps 1 so the UI always has a valid 1-18 week slate.
+# TODO: unify preseason sentinel (0 vs 1) once hub handles week-0 empty slate gracefully.
 def compute_nfl_week(now=None):
     if now is None:
         now = datetime.now()
@@ -171,15 +193,44 @@ def compute_nfl_week(now=None):
     return max(1, min(18, w))
 
 def get_db_path(cli_path: str | None) -> Path:
-    if cli_path:
-        return Path(cli_path)
-    # hub/server.py -> repo root is parent of hub/
+    # Allowlist: DB must live inside repo data/ dir.
+    # Rejects "..", absolute escapes outside repo, and file: URI metachars ?#.
     here = Path(__file__).resolve()
     repo_root = here.parent.parent
-    env = __import__("os").environ.get("FFANALYTICS_DB_PATH")
-    if env:
-        return Path(env)
-    return repo_root / "data" / "fantasy.db"
+    data_dir = repo_root / "data"
+    try:
+        data_resolved = data_dir.resolve()
+    except Exception:
+        data_resolved = data_dir
+    raw = None
+    if cli_path:
+        raw = str(cli_path)
+    else:
+        # hub/server.py -> repo root is parent of hub/
+        env = os.environ.get("FFANALYTICS_DB_PATH")
+        if env:
+            raw = str(env)
+        else:
+            return repo_root / "data" / "fantasy.db"
+    if not raw:
+        return repo_root / "data" / "fantasy.db"
+    # file: URI query/fragment metachars would break mode=ro URI — reject.
+    if "?" in raw or "#" in raw:
+        raise ValueError("invalid DB path: must be inside data/")
+    # Explicit parent-traversal rejection (even if it would resolve inside).
+    if ".." in Path(raw).parts:
+        raise ValueError("invalid DB path: must be inside data/")
+    p = Path(raw)
+    try:
+        base = Path.cwd()
+        candidate = (p if p.is_absolute() else (base / p)).resolve()
+    except Exception:
+        raise ValueError("invalid DB path: must be inside data/")
+    try:
+        candidate.relative_to(data_resolved)
+    except ValueError:
+        raise ValueError("invalid DB path: must be inside data/")
+    return candidate
 
 def get_conn(db_path: Path) -> sqlite3.Connection:
     # read-only, immutable when possible; uri=True required for mode=ro
@@ -230,78 +281,271 @@ def load_json_blob(row, key="data"):
 SLEEPER_PLAYERS_CACHE = {}
 SLEEPER_USERS_CACHE = {}
 
-def get_sleeper_users(conn=None):
-    global SLEEPER_USERS_CACHE
-    with _CACHE_LOCK:
-        if SLEEPER_USERS_CACHE:
-            return SLEEPER_USERS_CACHE
-        if conn:
+
+def _fetch_sleeper_players_from_network():
+    # Network I/O helper — never call with _CACHE_LOCK held.
+    import urllib.request
+    req = urllib.request.urlopen("https://api.sleeper.app/v1/players/nfl", timeout=5)
+    return json.loads(req.read().decode())
+
+
+def _fetch_sleeper_users_from_network():
+    # Network I/O helper — never call with _CACHE_LOCK held.
+    import urllib.request
+    req = urllib.request.urlopen("https://api.sleeper.app/v1/league/1397736035240173568/users", timeout=5)
+    return json.loads(req.read().decode())
+
+
+def _ensure_sleeper_players_refresh_background():
+    # Trigger single-flight background refresh; serve stale meanwhile.
+    if _SLEEPER_FETCH_LOCK.locked():
+        return
+
+    def _bg():
+        acquired = _SLEEPER_FETCH_LOCK.acquire(blocking=False)
+        if not acquired:
+            return
+        try:
             try:
-                row = try_fetch_one(conn, "SELECT data FROM league_settings ORDER BY season DESC LIMIT 1")
-                l_data = load_json_blob(row) or {}
-                db_users = l_data.get("users") or []
-                for u in db_users:
-                    if isinstance(u, dict):
-                        uid = str(u.get("user_id", ""))
-                        if uid:
-                            avatar = u.get("avatar")
-                            avatar_url = f"https://sleepercdn.com/avatars/thumbs/{avatar}" if avatar else None
-                            SLEEPER_USERS_CACHE[uid] = {
-                                "user_id": uid,
-                                "display_name": u.get("display_name") or uid,
-                                "team_name": u.get("team_name") or u.get("display_name") or f"Team {uid[:4]}",
-                                "avatar": avatar,
-                                "avatar_url": avatar_url,
-                            }
-                if SLEEPER_USERS_CACHE:
-                    return SLEEPER_USERS_CACHE
+                data = _fetch_sleeper_players_from_network()
+            except Exception:
+                return  # serve stale on failure
+            if isinstance(data, dict) and data:
+                global SLEEPER_PLAYERS_CACHE, _SLEEPER_PLAYERS_AT
+                with _CACHE_LOCK:
+                    SLEEPER_PLAYERS_CACHE = data
+                    _SLEEPER_PLAYERS_AT = time.time()
+        finally:
+            try:
+                _SLEEPER_FETCH_LOCK.release()
             except Exception:
                 pass
+
+    t = threading.Thread(target=_bg, daemon=True)
+    t.start()
+
+
+def _ensure_sleeper_users_refresh_background():
+    if _SLEEPER_USERS_FETCH_LOCK.locked():
+        return
+
+    def _bg():
+        acquired = _SLEEPER_USERS_FETCH_LOCK.acquire(blocking=False)
+        if not acquired:
+            return
         try:
-            import urllib.request
-            req = urllib.request.urlopen("https://api.sleeper.app/v1/league/1397736035240173568/users", timeout=5)
-            users_list = json.loads(req.read().decode())
-            for u in users_list:
-                uid = str(u.get("user_id"))
-                meta = u.get("metadata") or {}
-                avatar = u.get("avatar")
-                avatar_url = f"https://sleepercdn.com/avatars/thumbs/{avatar}" if avatar else None
-                SLEEPER_USERS_CACHE[uid] = {
-                    "user_id": uid,
-                    "display_name": u.get("display_name") or uid,
-                    "team_name": meta.get("team_name") or u.get("display_name") or f"Team {uid[:4]}",
-                    "avatar": avatar,
-                    "avatar_url": avatar_url,
-                }
+            try:
+                users_list = _fetch_sleeper_users_from_network()
+            except Exception:
+                return  # serve stale on failure
+            if isinstance(users_list, list) and users_list:
+                fresh = {}
+                for u in users_list:
+                    if not isinstance(u, dict):
+                        continue
+                    uid = str(u.get("user_id") or "")
+                    if not uid:
+                        continue
+                    meta = u.get("metadata") or {}
+                    avatar = u.get("avatar")
+                    avatar_url = f"https://sleepercdn.com/avatars/thumbs/{avatar}" if avatar else None
+                    fresh[uid] = {
+                        "user_id": uid,
+                        "display_name": u.get("display_name") or uid,
+                        "team_name": meta.get("team_name") or u.get("display_name") or f"Team {uid[:4]}",
+                        "avatar": avatar,
+                        "avatar_url": avatar_url,
+                    }
+                global SLEEPER_USERS_CACHE, _SLEEPER_USERS_AT
+                with _CACHE_LOCK:
+                    SLEEPER_USERS_CACHE = fresh
+                    _SLEEPER_USERS_AT = time.time()
+        finally:
+            try:
+                _SLEEPER_USERS_FETCH_LOCK.release()
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_bg, daemon=True)
+    t.start()
+
+
+def warm_sleeper_caches_async():
+    # Startup-warmed cache: prefetch players/users in background so request
+    # path serves cache without blocking urlopen. Safe to call multiple times.
+    global _SLEEPER_PLAYERS_AT, _SLEEPER_USERS_AT
+    with _CACHE_LOCK:
+        players_empty = not SLEEPER_PLAYERS_CACHE
+        users_empty = not SLEEPER_USERS_CACHE
+    if players_empty:
+        _ensure_sleeper_players_refresh_background()
+    if users_empty:
+        _ensure_sleeper_users_refresh_background()
+
+
+def get_sleeper_players_cached() -> dict:
+    # TTL + single-flight + serve-stale. Never holds _CACHE_LOCK across I/O.
+    # Double-checked locking: fast check under lock, fetch without lock,
+    # re-check after acquiring single-flight lock.
+    global SLEEPER_PLAYERS_CACHE, _SLEEPER_PLAYERS_AT
+    now = time.time()
+    with _CACHE_LOCK:
+        cached = SLEEPER_PLAYERS_CACHE
+        at = _SLEEPER_PLAYERS_AT
+        if cached and (now - at < _SLEEPER_PLAYERS_TTL):
+            return cached
+        stale = cached
+    if stale:
+        # Stale present: refresh in background, serve stale now (off request path).
+        _ensure_sleeper_players_refresh_background()
+        return stale
+    # Cold miss: single-flight synchronous fetch (startup path only).
+    acquired = _SLEEPER_FETCH_LOCK.acquire(blocking=False)
+    if not acquired:
+        with _CACHE_LOCK:
+            return SLEEPER_PLAYERS_CACHE
+    try:
+        with _CACHE_LOCK:
+            if SLEEPER_PLAYERS_CACHE and (time.time() - _SLEEPER_PLAYERS_AT < _SLEEPER_PLAYERS_TTL):
+                return SLEEPER_PLAYERS_CACHE
+        try:
+            data = _fetch_sleeper_players_from_network()
         except Exception:
-            SLEEPER_USERS_CACHE = {}
-        return SLEEPER_USERS_CACHE
+            with _CACHE_LOCK:
+                return SLEEPER_PLAYERS_CACHE  # serve stale (possibly {}) on failure
+        with _CACHE_LOCK:
+            if isinstance(data, dict) and data:
+                SLEEPER_PLAYERS_CACHE = data
+                _SLEEPER_PLAYERS_AT = time.time()
+            return SLEEPER_PLAYERS_CACHE
+    finally:
+        try:
+            _SLEEPER_FETCH_LOCK.release()
+        except Exception:
+            pass
+
+
+def get_sleeper_users(conn=None):
+    global SLEEPER_USERS_CACHE, _SLEEPER_USERS_AT
+    now = time.time()
+    with _CACHE_LOCK:
+        if SLEEPER_USERS_CACHE and (now - _SLEEPER_USERS_AT < _SLEEPER_USERS_TTL):
+            return SLEEPER_USERS_CACHE
+        stale = dict(SLEEPER_USERS_CACHE) if SLEEPER_USERS_CACHE else {}
+    # Prefer DB snapshot (fast, no network, no lock held across I/O).
+    if conn is not None:
+        try:
+            row = try_fetch_one(conn, "SELECT data FROM league_settings ORDER BY season DESC LIMIT 1")
+            l_data = load_json_blob(row) or {}
+            db_users = l_data.get("users") or []
+            fresh = {}
+            for u in db_users:
+                if isinstance(u, dict):
+                    uid = str(u.get("user_id", ""))
+                    if uid:
+                        avatar = u.get("avatar")
+                        avatar_url = f"https://sleepercdn.com/avatars/thumbs/{avatar}" if avatar else None
+                        fresh[uid] = {
+                            "user_id": uid,
+                            "display_name": u.get("display_name") or uid,
+                            "team_name": u.get("team_name") or u.get("display_name") or f"Team {uid[:4]}",
+                            "avatar": avatar,
+                            "avatar_url": avatar_url,
+                        }
+            if fresh:
+                with _CACHE_LOCK:
+                    SLEEPER_USERS_CACHE = fresh
+                    _SLEEPER_USERS_AT = time.time()
+                    return SLEEPER_USERS_CACHE
+        except Exception:
+            pass
+    if stale:
+        _ensure_sleeper_users_refresh_background()
+        return stale
+    acquired = _SLEEPER_USERS_FETCH_LOCK.acquire(blocking=False)
+    if not acquired:
+        with _CACHE_LOCK:
+            return SLEEPER_USERS_CACHE
+    try:
+        with _CACHE_LOCK:
+            if SLEEPER_USERS_CACHE and (time.time() - _SLEEPER_USERS_AT < _SLEEPER_USERS_TTL):
+                return SLEEPER_USERS_CACHE
+        try:
+            users_list = _fetch_sleeper_users_from_network()
+        except Exception:
+            with _CACHE_LOCK:
+                return SLEEPER_USERS_CACHE  # serve stale on failure
+        fresh = {}
+        for u in users_list if isinstance(users_list, list) else []:
+            if not isinstance(u, dict):
+                continue
+            uid = str(u.get("user_id") or "")
+            if not uid:
+                continue
+            meta = u.get("metadata") or {}
+            avatar = u.get("avatar")
+            avatar_url = f"https://sleepercdn.com/avatars/thumbs/{avatar}" if avatar else None
+            fresh[uid] = {
+                "user_id": uid,
+                "display_name": u.get("display_name") or uid,
+                "team_name": meta.get("team_name") or u.get("display_name") or f"Team {uid[:4]}",
+                "avatar": avatar,
+                "avatar_url": avatar_url,
+            }
+        with _CACHE_LOCK:
+            if fresh:
+                SLEEPER_USERS_CACHE = fresh
+                _SLEEPER_USERS_AT = time.time()
+            return SLEEPER_USERS_CACHE
+    finally:
+        try:
+            _SLEEPER_USERS_FETCH_LOCK.release()
+        except Exception:
+            pass
 
 def get_sleeper_player_name(player_id: str) -> str:
-    global SLEEPER_PLAYERS_CACHE
-    with _CACHE_LOCK:
-        if SLEEPER_PLAYERS_CACHE:
-            p = SLEEPER_PLAYERS_CACHE.get(player_id, {})
-            if p:
-                nm = p.get("full_name") or f"{p.get('first_name', '')} {p.get('last_name', '')}".strip()
-                pos = (p.get("position") or ("DEF" if player_id.isalpha() else "")).upper()
-                if nm:
-                    return f"{nm} ({pos})" if pos else nm
-                return player_id
-    with _CACHE_LOCK:
-        if not SLEEPER_PLAYERS_CACHE:
-            try:
-                import urllib.request
-                req = urllib.request.urlopen("https://api.sleeper.app/v1/players/nfl", timeout=5)
-                SLEEPER_PLAYERS_CACHE = json.loads(req.read().decode())
-            except Exception:
-                SLEEPER_PLAYERS_CACHE = {}
-        p = SLEEPER_PLAYERS_CACHE.get(player_id, {})
-    nm = p.get("full_name") or f"{p.get('first_name', '')} {p.get('last_name', '')}".strip()
-    pos = (p.get("position") or ("DEF" if player_id.isalpha() else "")).upper()
-    if nm:
-        return f"{nm} ({pos})" if pos else nm
+    players = get_sleeper_players_cached()
+    p = players.get(player_id, {}) if isinstance(players, dict) else {}
+    if p:
+        nm = p.get("full_name") or f"{p.get('first_name', '')} {p.get('last_name', '')}".strip()
+        pos = (p.get("position") or ("DEF" if player_id.isalpha() else "")).upper()
+        if nm:
+            return f"{nm} ({pos})" if pos else nm
+        return player_id
+    # Cache miss / unknown ID: return ID without blocking on network (stale served above).
     return player_id
+
+def _build_sleeper_gsis_map(conn) -> dict:
+    """gsis_id -> sleeper_id. Used by endpoints that need to enrich cached
+    comparison/projection rows whose player_id is a GSIS string."""
+    players = get_sleeper_players_cached()
+    out = {}
+    for sid, sp in (players.items() if isinstance(players, dict) else []):
+        if not isinstance(sp, dict):
+            continue
+        g = sp.get("gsis_id")
+        if g:
+            out[str(g)] = str(sid)
+    return out
+
+def _normalize_team_abbrev(team: str) -> str:
+    """Normalize team abbreviations to match Sleeper's format."""
+    team = (team or "").upper().strip()
+    # Common mappings: comparison uses short names, Sleeper uses full
+    mapping = {
+        "LA": "LAR",  # Rams
+        "JAC": "JAX",
+        "WSH": "WAS",
+        "GB": "GB",
+        "KC": "KC",
+        "LV": "LV",
+        "NE": "NE",
+        "NO": "NO",
+        "SF": "SF",
+        "TB": "TB",
+        "TEN": "TEN",
+    }
+    return mapping.get(team, team)
 
 NFL_TEAM_BYES_CACHE = {}
 
@@ -394,17 +638,14 @@ def build_league_analytics(conn):
                     comp_by_name_pos[(norm, pos)] = c
                 comp_by_name[norm] = c
 
-    global SLEEPER_PLAYERS_CACHE
-    if not SLEEPER_PLAYERS_CACHE:
-        try:
-            import urllib.request
-            req = urllib.request.urlopen("https://api.sleeper.app/v1/players/nfl", timeout=5)
-            SLEEPER_PLAYERS_CACHE = json.loads(req.read().decode())
-        except Exception:
-            SLEEPER_PLAYERS_CACHE = {}
+    # Sleeper players via startup-warmed TTL cache (never blocks on network
+    # when stale data exists; never holds _CACHE_LOCK across I/O).
+    _sleeper_players = get_sleeper_players_cached()
 
     users_map = get_sleeper_users(conn)
     byes_map = get_nfl_team_byes()
+    # PERF: compute once per request — never per-player (was N file reads).
+    _opponent_map = get_nfl_opponent_map(compute_nfl_week())
 
     draft_prices = {}
     try:
@@ -453,7 +694,7 @@ def build_league_analytics(conn):
         pos_counters = {"QB": 0, "RB": 0, "WR": 0, "TE": 0, "FLEX": 0, "K": 0, "DEF": 0}
 
         for idx, pid in enumerate(ids):
-            sp = SLEEPER_PLAYERS_CACHE.get(str(pid), {})
+            sp = (_sleeper_players.get(str(pid), {}) if isinstance(_sleeper_players, dict) else {})
             p_name = sp.get("full_name") or f"{sp.get('first_name','')} {sp.get('last_name','')}".strip() or str(pid)
             pos = (sp.get("position") or ("DEF" if str(pid).isalpha() else "UNK")).upper()
             team = (sp.get("team") or "").upper()
@@ -551,7 +792,7 @@ def build_league_analytics(conn):
                 "projection_upper": proj_upper,
                 "width": round(width, 2),
                 "injury_status": injuries.get(str(pid)) or sp.get("injury_status"),
-                "opponent_team": get_nfl_opponent_map(compute_nfl_week()).get(team) or st.get("opponent_team") or "",
+                "opponent_team": _opponent_map.get(team) or st.get("opponent_team") or "",
                 "slot": slot_label,
                 "pass_yds": pass_yds,
                 "pass_tds": pass_tds,
@@ -744,7 +985,12 @@ class Handler(BaseHTTPRequestHandler):
             print(f"[{self.log_date_time_string()}] {self.command} {self.path}")
 
     def end_headers(self):
-        self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1:8001")
+        origin = self.headers.get("Origin", "")
+        # Allowlist the local Vite dev server on both loopback names.
+        # Omit header for non-allowlisted origins (never emit `null`).
+        if origin in ("http://127.0.0.1:8001", "http://localhost:8001"):
+            self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         super().end_headers()
@@ -765,7 +1011,7 @@ class Handler(BaseHTTPRequestHandler):
 
         # enforce only /hub-api/* or /health
         if path == "/health":
-            self.json({"status": "ok", "proxy": "hub read-only", "db": str(self.db_path)})
+            self.json({"status": "ok", "proxy": "hub read-only", "db": "ok"})
             return
 
         if not path.startswith("/hub-api/"):
@@ -774,19 +1020,25 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             conn = get_conn(self.db_path)
-        except Exception as e:
-            self.json({"error": f"cannot open DB read-only: {e}", "db": str(self.db_path)}, status=503)
+        except Exception:
+            # Generic message — never disclose absolute db path; log server-side.
+            logging.warning("hub proxy: cannot open DB read-only", exc_info=True)
+            self.json({"error": "database unavailable"}, status=503)
             return
 
         try:
             if path == "/hub-api/meta":
                 self.handle_meta(conn, qs)
+            elif path == "/hub-api/ready":
+                self.handle_ready(conn)
             elif path == "/hub-api/projections":
                 self.handle_projections(conn, qs)
             elif path == "/hub-api/matchups":
                 self.handle_matchups(conn, qs)
             elif path == "/hub-api/roster":
                 self.handle_roster(conn, qs)
+            elif path == "/hub-api/rosters-full":
+                self.handle_rosters_full(conn)
             elif path == "/hub-api/news":
                 self.handle_news(conn)
             elif path == "/hub-api/refresh-log":
@@ -801,19 +1053,24 @@ class Handler(BaseHTTPRequestHandler):
                 self.handle_comparison(conn, qs)
             else:
                 self.send_error(404, f"unknown hub-api path {path}")
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            self.json({"error": str(e)}, status=500)
+        except Exception:
+            logging.exception("proxy error handling %s", path)
+            self.json({"error": "Internal server error"}, status=500)
         finally:
             try: conn.close()
             except: pass
 
-    def json(self, obj, status=200):
+    def json(self, obj, status=200, headers=None):
         body = json.dumps(obj, indent=2).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        # Consistent caching: no-store by default; callers may override.
+        _extra = dict(headers or {})
+        if "Cache-Control" not in _extra:
+            self.send_header("Cache-Control", "no-store")
+        for k, v in _extra.items():
+            self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
 
@@ -841,13 +1098,49 @@ class Handler(BaseHTTPRequestHandler):
             r = try_fetch_one(conn, f"SELECT COUNT(*) as c FROM {tbl}")
             counts[tbl] = r["c"] if r else 0
 
-        # placeholder weather flag
+        # placeholder weather flag (40.0,-74.0 coords are the refresh.py placeholder)
         weather_placeholder = True
         r = try_fetch_one(conn, "SELECT lat, lon FROM weather LIMIT 1")
         if r and not (r["lat"] == 40.0 and r["lon"] == -74.0):
             weather_placeholder = False
+        weather_status = "placeholder" if weather_placeholder else "live"
 
-        teams_data_map, league_leaderboard, rosters, players = build_league_analytics(conn)
+        # PERF: fetch blobs directly — never run full build_league_analytics
+        # here just to extract rosters/players (was 12-team enrichment per call).
+        row = try_fetch_one(conn, "SELECT data FROM rosters ORDER BY rowid DESC LIMIT 1")
+        rosters = load_json_blob(row) or []
+        if not isinstance(rosters, list):
+            rosters = []
+        # data_source for frontend banners: demo when player_stats empty/seeded.
+        data_source = "live"
+        try:
+            has_players = False
+            try:
+                prow = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 ORDER BY rowid DESC LIMIT 1")
+                pdata = load_json_blob(prow) if prow else None
+                if isinstance(pdata, list) and len(pdata) > 0:
+                    has_players = True
+                else:
+                    for cand in conn.execute("SELECT data FROM player_stats ORDER BY rowid DESC LIMIT 10").fetchall():
+                        d = load_json_blob(cand)
+                        if isinstance(d, list) and len(d) > 0:
+                            has_players = True
+                            break
+            except Exception:
+                pass
+            if not has_players:
+                data_source = "demo"
+            else:
+                srow = try_fetch_one(conn, "SELECT source FROM refresh_log ORDER BY ran_at DESC LIMIT 1")
+                if srow:
+                    try:
+                        src = (srow["source"] or "").lower()
+                    except Exception:
+                        src = ""
+                    if "demo" in src or "seed" in src:
+                        data_source = "demo"
+        except Exception:
+            pass
         teams = []
         users_map = get_sleeper_users(conn)
         for r in (rosters if isinstance(rosters, list) else []):
@@ -862,6 +1155,16 @@ class Handler(BaseHTTPRequestHandler):
                 "owner_name": owner_name,
                 "avatar": u_info.get("avatar"),
             })
+        # Serve last cached leaderboard when fresh; never trigger a full build here.
+        league_leaderboard = []
+        try:
+            with _CACHE_LOCK:
+                _cached_full = _ROSTERS_FULL_CACHE.get("payload")
+                _cached_at = _ROSTERS_FULL_CACHE.get("at", 0.0)
+                if _cached_full is not None and (time.time() - _cached_at < _ROSTERS_FULL_TTL):
+                    league_leaderboard = _cached_full.get("league_leaderboard") or []
+        except Exception:
+            league_leaderboard = []
 
         self.json({
             "season": data.get("season") or season,
@@ -876,11 +1179,69 @@ class Handler(BaseHTTPRequestHandler):
             "counts": counts,
             "teams": teams,
             "weather_placeholder": weather_placeholder,
+            "weather_status": weather_status,
+            "data_source": data_source,
             "league_leaderboard": league_leaderboard,
-            "db": str(self.db_path),
         })
 
+    def handle_ready(self, conn):
+        # Readiness (model has /ready; proxy mirrors it): 200 when DB present
+        # + fresh-ish (rosters + player_stats non-empty), 503 otherwise.
+        try:
+            rrow = try_fetch_one(conn, "SELECT data FROM rosters ORDER BY rowid DESC LIMIT 1")
+            rosters = load_json_blob(rrow) or []
+            has_rosters = isinstance(rosters, list) and len(rosters) > 0
+        except Exception:
+            has_rosters = False
+        try:
+            has_players = False
+            try:
+                prow = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 ORDER BY rowid DESC LIMIT 1")
+                pdata = load_json_blob(prow) if prow else None
+                if isinstance(pdata, list) and len(pdata) > 0:
+                    has_players = True
+                else:
+                    for cand in conn.execute("SELECT data FROM player_stats ORDER BY rowid DESC LIMIT 10").fetchall():
+                        d = load_json_blob(cand)
+                        if isinstance(d, list) and len(d) > 0:
+                            has_players = True
+                            break
+            except Exception:
+                pass
+        except Exception:
+            has_players = False
+        if has_rosters and has_players:
+            self.json({"status": "ready"})
+        else:
+            self.json({"error": "not ready: database empty or missing"}, status=503)
+
     def handle_projections(self, conn, qs):
+        # 60s server-side cache + Last-Modified/304 mirroring rosters-full.
+        global _PROJECTIONS_CACHE
+        _now = time.time()
+        with _CACHE_LOCK:
+            _pcached = _PROJECTIONS_CACHE.get("payload")
+            _pat = _PROJECTIONS_CACHE.get("at", 0.0)
+            _plm = _PROJECTIONS_CACHE.get("last_modified", "")
+            if _pcached is not None and (_now - _pat < _PROJECTIONS_TTL):
+                _ims = self.headers.get("If-Modified-Since")
+                if _ims and _plm and _ims == _plm:
+                    self.send_response(304)
+                    self.send_header("Cache-Control", "private, max-age=60")
+                    self.send_header("Last-Modified", _plm)
+                    self.end_headers()
+                    return
+                _limit0 = 800
+                try:
+                    if qs.get("limit", [None])[0]:
+                        _limit0 = max(10, min(2000, int(qs.get("limit")[0])))
+                except Exception:
+                    pass
+                _full0 = _pcached.get("players_full") or []
+                _nf0 = _pcached.get("num_flex", 2)
+                _sliced0 = _full0[:_limit0]
+                self.json({"players": _sliced0, "count": len(_sliced0), "meta": {"source": "db:player_stats:averaged", "num_flex": _nf0}}, headers={"Cache-Control": "private, max-age=60", "Last-Modified": _plm})
+                return
         # Load player_stats blob (latest non-empty — preseason week 0 is often "[]"; also handle invalid JSON with NaN)
         # Prefer SQL json_array_length>0 but fall back to Python scan if SQLite JSON is invalid (NaN)
         row = None
@@ -934,7 +1295,8 @@ class Handler(BaseHTTPRequestHandler):
                     "player_id": pid,
                     "player_name": p.get("player_display_name") or p.get("short_name") or p.get("player_name") or pid,
                     "position": (p.get("position") or p.get("position_group") or "UNK").upper(),
-                    "team": p.get("recent_team") or p.get("team") or "",
+                    # nflverse quirk: prefer `team` over `recent_team` for abbrev.
+                    "team": p.get("team") or p.get("recent_team") or "",
                     "opponent_team": p.get("opponent_team") or "",
                     "total_pts": 0.0,
                     "games": 0,
@@ -943,7 +1305,10 @@ class Handler(BaseHTTPRequestHandler):
             agg[pid]["total_pts"] += pts
             agg[pid]["games"] += 1
             agg[pid]["week_pts"].append(pts)
-            if p.get("recent_team"):
+            # nflverse quirk: prefer `team` over `recent_team`.
+            if p.get("team"):
+                agg[pid]["team"] = p["team"]
+            elif p.get("recent_team"):
                 agg[pid]["team"] = p["recent_team"]
 
         def _pos_factor(pos):
@@ -960,11 +1325,25 @@ class Handler(BaseHTTPRequestHandler):
             if isinstance(c, dict) and c.get("player_id"):
                 comp_by_id[str(c["player_id"])] = c
 
+        # Sleeper cache via startup-warmed TTL (never holds _CACHE_LOCK across I/O).
+        _sleeper_players = get_sleeper_players_cached()
+
         gsis_to_sleeper = {}
-        if SLEEPER_PLAYERS_CACHE:
-            for sid, sp in SLEEPER_PLAYERS_CACHE.items():
-                g = sp.get("gsis_id")
-                if g: gsis_to_sleeper[str(g)] = str(sid)
+        name_team_pos_to_sleeper = {}
+        for sid, sp in (_sleeper_players.items() if isinstance(_sleeper_players, dict) else []):
+            if not isinstance(sp, dict):
+                continue
+            g = sp.get("gsis_id")
+            if g: gsis_to_sleeper[str(g)] = str(sid)
+            # Also build name+team+pos -> sleeper_id for fallback lookup
+            nm = (sp.get("full_name") or f"{sp.get('first_name','')} {sp.get('last_name','')}".strip()).lower()
+            tm = (sp.get("team") or "").upper()
+            ps = (sp.get("position") or "").upper()
+            if nm and tm and ps:
+                name_team_pos_to_sleeper[(nm, tm, ps)] = str(sid)
+
+        # PERF: compute once per request — never per-player.
+        _opp_map = get_nfl_opponent_map(compute_nfl_week())
 
         out = []
         for pid, a in agg.items():
@@ -990,14 +1369,23 @@ class Handler(BaseHTTPRequestHandler):
             width = max(3.0, min(14.0, width))
             low = pts - (width / 2.0)
             high = pts + (width / 2.0)
+            # Try GSIS map first, then name+team+pos lookup against Sleeper cache
+            sleeper_id = gsis_to_sleeper.get(pid)
+            if not sleeper_id:
+                nm = (a["player_name"] or "").lower()
+                tm = (a["team"] or "").upper()
+                ps = (pos or "").upper()
+                if nm and tm and ps:
+                    sleeper_id = name_team_pos_to_sleeper.get((nm, tm, ps))
+
             out.append({
                 "player_id": pid,
-                "sleeper_id": gsis_to_sleeper.get(pid, pid if pid.isdigit() else None),
+                "sleeper_id": sleeper_id if sleeper_id else (pid if pid.isdigit() else None),
                 "player_name": a["player_name"],
                 "position": pos,
                 "position_group": pos,
                 "team": a["team"],
-                "opponent_team": get_nfl_opponent_map(compute_nfl_week()).get(a["team"]) or a["opponent_team"] or "",
+                "opponent_team": _opp_map.get(a["team"]) or a["opponent_team"] or "",
                 "projected_points": round(pts, 2),
                 "point_estimate": round(pts, 2),
                 "projection_lower": round(low, 2),
@@ -1013,8 +1401,18 @@ class Handler(BaseHTTPRequestHandler):
                 "games": a["games"],
             })
         out.sort(key=lambda x: x["projected_points"], reverse=True)
-        out = out[:2000]
-        self.json({"players": out, "count": len(out), "meta": {"source": "db:player_stats:averaged", "num_flex": num_flex}})
+        _last_modified = formatdate(timeval=_now, localtime=False, usegmt=True)
+        with _CACHE_LOCK:
+            _PROJECTIONS_CACHE = {"at": _now, "payload": {"players_full": out, "num_flex": num_flex}, "last_modified": _last_modified}
+        # ?limit support (default 800 for UI, max 2000 to bound payload).
+        limit = 800
+        try:
+            if qs.get("limit", [None])[0]:
+                limit = max(10, min(2000, int(qs.get("limit")[0])))
+        except Exception:
+            pass
+        sliced = out[:limit]
+        self.json({"players": sliced, "count": len(sliced), "meta": {"source": "db:player_stats:averaged", "num_flex": num_flex}}, headers={"Cache-Control": "private, max-age=60", "Last-Modified": _last_modified})
 
     def handle_matchups(self, conn, qs):
         week_vals = qs.get("week", [None])[0]
@@ -1094,6 +1492,8 @@ class Handler(BaseHTTPRequestHandler):
             })
 
         # Target roster selection: ?roster_id=N or ?owner_id=X. Default to roster_id=1.
+        # NOTE: server default stays 1; client derives the actual selection from
+        # leagueRosters/allTeams (see hub/src roster picker).
         req_roster_id = (qs.get("roster_id", [None])[0] or "").strip()
         req_owner_id = (qs.get("owner_id", [None])[0] or "").strip()
 
@@ -1190,8 +1590,91 @@ class Handler(BaseHTTPRequestHandler):
         data = load_json_blob(row) or []
         self.json({"rosters": data})
 
+    def handle_rosters_full(self, conn):
+        # ONE build_league_analytics pass for all 12 enriched rosters (fixes N+1).
+        # 60s server-side cache + Last-Modified; clients may use If-Modified-Since.
+        global _ROSTERS_FULL_CACHE
+        now = time.time()
+        with _CACHE_LOCK:
+            cached = _ROSTERS_FULL_CACHE.get("payload")
+            at = _ROSTERS_FULL_CACHE.get("at", 0.0)
+            lm = _ROSTERS_FULL_CACHE.get("last_modified", "")
+            if cached is not None and (now - at < _ROSTERS_FULL_TTL):
+                ims = self.headers.get("If-Modified-Since")
+                if ims and lm and ims == lm:
+                    self.send_response(304)
+                    self.send_header("Cache-Control", "private, max-age=60")
+                    self.send_header("Last-Modified", lm)
+                    self.end_headers()
+                    return
+                self.json(cached, headers={"Cache-Control": "private, max-age=60", "Last-Modified": lm})
+                return
+        teams_data_map, league_leaderboard, rosters, players = build_league_analytics(conn)
+        users_map = get_sleeper_users(conn)
+        all_teams = []
+        for r in (rosters if isinstance(rosters, list) else []):
+            if not isinstance(r, dict):
+                continue
+            r_id = r.get("roster_id")
+            o_id = str(r.get("owner_id") or "")
+            u_info = users_map.get(o_id, {})
+            disp_name = u_info.get("display_name") or u_info.get("team_name") or f"Team {r_id}"
+            t_name = u_info.get("team_name") or u_info.get("display_name") or f"Team {r_id}"
+            all_teams.append({
+                "roster_id": r_id,
+                "user_id": o_id,
+                "owner_id": o_id,
+                "owner_name": disp_name,
+                "display_name": disp_name,
+                "team_name": t_name,
+                "avatar": u_info.get("avatar"),
+                "avatar_url": u_info.get("avatar_url"),
+                "players_count": len(r.get("players") or []),
+            })
+        payload = {
+            "rosters": teams_data_map,
+            "league_leaderboard": league_leaderboard,
+            "team_leaderboard": league_leaderboard,
+            "leagueRosters": all_teams,
+            "allTeams": all_teams,
+            "meta": {"rosters": len(rosters) if isinstance(rosters, list) else 0, "players": len(players) if isinstance(players, list) else 0},
+        }
+        last_modified = formatdate(timeval=now, localtime=False, usegmt=True)
+        with _CACHE_LOCK:
+            _ROSTERS_FULL_CACHE = {"at": now, "payload": payload, "last_modified": last_modified}
+        self.json(payload, headers={"Cache-Control": "private, max-age=60", "Last-Modified": last_modified})
+
     def handle_comparison(self, conn, qs):
         # Model vs Market (Sleeper pts+stats vs FantasyPros ECR/ADP) — built by refresh.py
+        # 60s server-side cache + Last-Modified/304 mirroring rosters-full.
+        global _COMPARISON_CACHE
+        _cnow = time.time()
+        with _CACHE_LOCK:
+            _ccached = _COMPARISON_CACHE.get("payload")
+            _cat = _COMPARISON_CACHE.get("at", 0.0)
+            _clm = _COMPARISON_CACHE.get("last_modified", "")
+            if _ccached is not None and (_cnow - _cat < _COMPARISON_TTL):
+                _cims = self.headers.get("If-Modified-Since")
+                if _cims and _clm and _cims == _clm:
+                    self.send_response(304)
+                    self.send_header("Cache-Control", "private, max-age=60")
+                    self.send_header("Last-Modified", _clm)
+                    self.end_headers()
+                    return
+                _cfull = _ccached.get("players_full") or []
+                _cfetched = _ccached.get("fetched_at")
+                _cedge = (qs.get("edge", [None])[0] or "").upper()
+                _cfiltered = _cfull
+                if _cedge in ("BUY", "SELL", "NEUTRAL"):
+                    _cfiltered = [p for p in _cfull if isinstance(p, dict) and (p.get("edge") or "").upper() == _cedge]
+                _climit = 2000
+                try:
+                    if qs.get("limit", [None])[0]:
+                        _climit = max(10, min(2000, int(qs.get("limit")[0])))
+                except Exception:
+                    pass
+                self.json({"players": _cfiltered[:_climit], "count": len(_cfiltered), "fetched_at": _cfetched, "meta": {"source": "market_consensus", "preseason_note": "Market pts empty until Week 1 publish; rank comparison (ECR/ADP) works now."}}, headers={"Cache-Control": "private, max-age=60", "Last-Modified": _clm})
+                return
         row = None
         fetched_at = None
         try:
@@ -1205,6 +1688,46 @@ class Handler(BaseHTTPRequestHandler):
         # fallback: if empty, report meta so UI can degrade gracefully
         if not isinstance(players, list):
             players = []
+
+        # Enrich every row with sleeper_id (same map /projections uses).
+        # Cached comparison rows may predate the backend fix that emits sleeper_id;
+        # without this, playerAvatar() falls back to the letter initial.
+        # Sleeper via startup-warmed TTL cache (never holds _CACHE_LOCK across I/O).
+        _sleeper_players = get_sleeper_players_cached()
+
+        gsis_to_sleeper = {}
+        name_team_pos_to_sleeper = {}
+        for sid, sp in (_sleeper_players.items() if isinstance(_sleeper_players, dict) else []):
+            if not isinstance(sp, dict):
+                continue
+            g = sp.get("gsis_id")
+            if g: gsis_to_sleeper[str(g)] = str(sid)
+            # Also build name+team+pos -> sleeper_id for fallback lookup
+            nm = (sp.get("full_name") or f"{sp.get('first_name','')} {sp.get('last_name','')}".strip()).lower()
+            tm = (sp.get("team") or "").upper()
+            ps = (sp.get("position") or "").upper()
+            if nm and tm and ps:
+                name_team_pos_to_sleeper[(nm, tm, ps)] = str(sid)
+
+        for p in players:
+            if not isinstance(p, dict):
+                continue
+            pid = str(p.get("player_id") or "")
+            if not p.get("sleeper_id"):
+                # Try GSIS map first
+                sleeper_id = gsis_to_sleeper.get(pid)
+                if not sleeper_id:
+                    # Fallback: name+team+pos lookup (normalize team abbrevs)
+                    nm = (p.get("player_name") or "").lower()
+                    tm = _normalize_team_abbrev(p.get("team") or "")
+                    ps = (p.get("position") or "").upper()
+                    if nm and tm and ps:
+                        sleeper_id = name_team_pos_to_sleeper.get((nm, tm, ps))
+                if sleeper_id:
+                    p["sleeper_id"] = sleeper_id
+        _clast = formatdate(timeval=_cnow, localtime=False, usegmt=True)
+        with _CACHE_LOCK:
+            _COMPARISON_CACHE = {"at": _cnow, "payload": {"players_full": players, "fetched_at": fetched_at}, "last_modified": _clast}
         # optional edge filter ?edge=BUY
         edge_filter = (qs.get("edge", [None])[0] or "").upper()
         if edge_filter in ("BUY", "SELL", "NEUTRAL"):
@@ -1216,7 +1739,7 @@ class Handler(BaseHTTPRequestHandler):
                 limit = max(10, min(2000, int(qs.get("limit")[0])))
         except Exception:
             pass
-        self.json({"players": players[:limit], "count": len(players), "fetched_at": fetched_at, "meta": {"source": "market_consensus", "preseason_note": "Market pts empty until Week 1 publish; rank comparison (ECR/ADP) works now."}})
+        self.json({"players": players[:limit], "count": len(players), "fetched_at": fetched_at, "meta": {"source": "market_consensus", "preseason_note": "Market pts empty until Week 1 publish; rank comparison (ECR/ADP) works now."}}, headers={"Cache-Control": "private, max-age=60", "Last-Modified": _clast})
 
     def handle_waiver(self, conn):
         # reuse projections but filter to free agents (not rostered)
@@ -1246,6 +1769,9 @@ class Handler(BaseHTTPRequestHandler):
             pid = str(p.get("player_id") or p.get("id") or "")
             if pid in rostered:
                 continue
+            # TODO(consistency): waiver scores from raw fantasy_points while
+            # projections/roster prefer model_points with raw fallback; use model
+            # points when present once waiver loads market_consensus (multi-line).
             pts = float(p.get("fantasy_points") or 0)
             if pts < 5:  # threshold to avoid noise
                 continue
@@ -1261,14 +1787,29 @@ def main():
     ap.add_argument("--db", default=None, help="path to fantasy.db")
     args = ap.parse_args()
 
-    db_path = get_db_path(args.db)
+    if args.host != "127.0.0.1":
+        # No behavior change — warn on clumsy non-loopback --host.
+        logging.warning("hub: --host %s is not loopback; expected 127.0.0.1", args.host)
+        print(f"WARNING: --host {args.host} is not loopback; expected 127.0.0.1")
+    try:
+        db_path = get_db_path(args.db)
+    except ValueError as e:
+        # Generic message — never disclose absolute path; log server-side.
+        logging.error("hub: invalid DB path: %s", e)
+        print(f"invalid DB path: {e}")
+        raise SystemExit(2)
     Handler.db_path = db_path
     print(f"hub read-only proxy → {db_path} (mode=ro)")
     print(f"listening on http://{args.host}:{args.port}  (127.0.0.1 only)")
-    print("endpoints: /health, /hub-api/meta, /hub-api/projections, /hub-api/matchups, /hub-api/roster, /hub-api/news, /hub-api/refresh-log, /hub-api/team-ratings, /hub-api/comparison")
+    print("endpoints: /health, /hub-api/meta, /hub-api/ready, /hub-api/projections, /hub-api/matchups, /hub-api/roster, /hub-api/rosters-full, /hub-api/news, /hub-api/refresh-log, /hub-api/team-ratings, /hub-api/comparison")
     print("zero writes, zero tokens, read-only")
+    # Startup-warm Sleeper caches in background so request path serves cache.
+    try:
+        warm_sleeper_caches_async()
+    except Exception:
+        pass
 
-    httpd = HTTPServer((args.host, args.port), Handler)
+    httpd = ThreadingHTTPServer((args.host, args.port), Handler)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

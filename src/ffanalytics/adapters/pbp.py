@@ -11,30 +11,48 @@ snap data unavailable). Handles zero-division and dome temp None.
 """
 
 import json
+import logging
+import random
+import time
 from collections import defaultdict
 from pathlib import Path
 
-# Persistent cache dir (repo-local, checked first). Scratch dir is the
-# backtest hard-coded temp path — checked as fallback so existing
-# backtest_final.py cache + PBP cache can be read without network.
+logger = logging.getLogger(__name__)
+
+# Persistent cache dir is the only cache; all callers must populate
+# data/nfl_cache/pbp_{season}.json before relying on cached PBP.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 PERSISTENT_CACHE_DIR = _REPO_ROOT / "data" / "nfl_cache"
-SCRATCH_CACHE_DIR = Path(
-    "/private/tmp/claude-501/-Users-liam/88d4447f-857f-4e47-88fe-c423d3893260/scratchpad/nfl_cache"
-)
+
+
+# Audit 6.0: single clear network call site in this module is
+# nfl.load_pbp(seasons=[...]) in get_pbp_features, so it gets the same 3x
+# retry wrapper as nflverse/schedule/news (log attempts + jitter, additive).
+def _call_with_retry(fn, max_retries=3, backoff_base=1.5):
+    for attempt in range(max_retries):
+        try:
+            return fn()
+        except Exception as exc:
+            if attempt == max_retries - 1:
+                raise
+            logger.warning(
+                "pbp: attempt %d/%d failed (%s); retrying",
+                attempt + 1, max_retries, exc,
+            )
+            time.sleep(backoff_base * (attempt + 1) + random.uniform(0, 0.5))
 
 
 def _load_from_cache(season: int) -> list[dict] | None:
-    for base in (PERSISTENT_CACHE_DIR, SCRATCH_CACHE_DIR):
-        p = base / f"pbp_{season}.json"
-        if p.exists():
-            try:
-                with open(p) as f:
-                    data = json.load(f)
-                if isinstance(data, list):
-                    return data
-            except Exception:
-                continue
+    p = PERSISTENT_CACHE_DIR / f"pbp_{season}.json"
+    if not p.exists():
+        return None
+    try:
+        with open(p) as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return data
+    except Exception:
+        return None
     return None
 
 
@@ -106,29 +124,6 @@ def _aggregate_pbp_rows(rows: list[dict], season: int) -> list[dict]:
                 is_pass = True
             elif pt == "run":
                 is_rush = True
-
-        # Handle dome temp None gracefully — don't crash if temp/wind are None
-        # (roof == dome/closed means stadium is indoors, temp/wind irrelevant)
-        # We just ensure we don't divide by None or do arithmetic on None.
-        # For PBP features we don't need temp, but we touch it to prove
-        # handling and avoid KeyError on missing fields.
-        temp = r.get("temp")
-        roof = r.get("roof") or ""
-        is_dome = roof in ("dome", "closed")
-        if is_dome:
-            # per spec: dome temp is None (not 72)
-            # We keep it as None and don't use it in share calculations
-            temp_val = None
-        else:
-            temp_val = temp  # may be None for missing, handled below
-        # demonstrate wind handling similarly (not used for shares)
-        wind = r.get("wind")
-        if wind is None:
-            wind = 0
-        # temp_val and wind intentionally unused for shares — just prove
-        # we handle None without ZeroDivision or TypeError
-        _ = temp_val
-        _ = wind
 
         if is_pass or is_rush:
             team_plays[(posteam, wk)] += 1
@@ -279,9 +274,8 @@ def get_pbp_features(season: int, nfl_module=None) -> list[dict]:
     load_pbp rows per (player_id, week) into shares. Handles zero division
     and dome temp None.
 
-    Caching: if data/nfl_cache/pbp_{season}.json exists, load it; else fall
-    back to scratch cache dir (for backtests); else call nflreadpy, aggregate,
-    write cache atomically to data/nfl_cache.
+    Caching: if data/nfl_cache/pbp_{season}.json exists, load it; else call
+    nflreadpy, aggregate, write cache atomically to data/nfl_cache.
     """
     # Use cache only when caller hasn't injected a mock module. Injected
     # mocks are for testing aggregation logic and should always recompute.
@@ -291,7 +285,7 @@ def get_pbp_features(season: int, nfl_module=None) -> list[dict]:
             return cached
 
     nfl = nfl_module if nfl_module is not None else __import__("nflreadpy")
-    frame = nfl.load_pbp(seasons=[season])
+    frame = _call_with_retry(lambda: nfl.load_pbp(seasons=[season]))
     rows = frame.to_dicts()
     aggregated = _aggregate_pbp_rows(rows, season)
 

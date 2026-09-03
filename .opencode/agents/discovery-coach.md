@@ -2,7 +2,7 @@
 name: 'Discovery Coach'
 description: 'Coaches sales teams on elite discovery methodology — question design, current-state mapping, gap quantification, and call structure that surfaces real buying motivation.'
 mode: subagent
-color: '#6B7280'
+color: '#5C7CFA'
 ---
 
 # Discovery Coach Agent

@@ -2,7 +2,7 @@
 
 **Zero tokens. $0. 127.0.0.1 only. Read-only.**
 
-A local fantasy football hub that turns your already-updated model (`data/fantasy.db` + `127.0.0.1:8000`) into a searchable, sortable UI: projections with calibrated intervals, matchups with wind badges, tierlists for your 2-FLEX board, roster start/sit with overlap confidence, waiver priority, and trade lab.
+A local fantasy football hub that turns your updated model (`data/fantasy.db` + `127.0.0.1:8000`) into a searchable, sortable UI: projections with calibrated intervals, matchups with wind badges, tierlists for your 2-FLEX board, roster start/sit with overlap confidence, waiver priority, and trade lab.
 
 This is a **completely separate product** that lives alongside `src/ffanalytics` in one repo but shares no code, no deps, and no writes.
 
@@ -16,7 +16,7 @@ This is a **completely separate product** that lives alongside `src/ffanalytics`
 
 Verify: `bash hub/verify-isolation.sh` (also `npm run verify` inside `hub/`).
 
-## One-click start (recommended — zero hassle, zero background after)
+## One-click start
 
 ```bash
 bash hub/start.sh
@@ -26,9 +26,9 @@ bash hub/start.sh
 
 Or double-click **`hub/FantasyHub.command`** in Finder (same script, macOS will ask to allow once).
 
-This is the *only* command you need. It installs `hub/node_modules` once if missing, waits for health checks, and opens your browser. While the tab is closed it idles at ~0% CPU. After `Ctrl+C`, `lsof -i :8000 -i :8001 -i :8002` shows nothing.
+Only command needed. Installs `hub/node_modules` once if missing, waits for health checks, opens the browser. Idles ~0% CPU when closed. After `Ctrl+C`, `lsof -i :8000 -i :8001 -i :8002` is empty.
 
-Force-stop if needed: `bash hub/stop.sh`
+Stop: `bash hub/stop.sh`
 
 ## Manual start (if you prefer 3 terminals)
 
@@ -52,12 +52,12 @@ Production build: `npm run build` → `hub/dist/`
 ## Tabs
 
 - **Dashboard** — season/week, lastUpdated staleness, refresh log, zero-token explainer
-- **Matchups** — week picker (1–18), your league matchups + NFL slate, wind badges. Weather currently `⚠ placeholder` (coords 40.0,−74.0 in `refresh.py:256` until stadium map lands)
+- **Matchups** — week picker (1–18), league matchups + NFL slate, wind badges. Weather currently `⚠ placeholder` (coords 40.0,−74.0 in `refresh.py:256` until stadium map lands)
 - **Projections** — searchable table (all numbers mono). Interval bar shows `low — point — high` (conformal `α=0.2, 80%`). Search chips: `pos:WR wind>15 healthy:true trending:true interval<3`
 - **Tierlists** — deterministic tiers by gap > `max(2.0, 0.7×medianWidth)` or cap=6. Tabs: QB/RB/WR/TE/FLEX
 - **My Roster** — starters vs bench with overlap confidence (HIGH if intervals don't overlap)
 - **Waiver** — ranked by `improvement_over_roster`, not raw points; includes trending from `news_data`
-- **Trade Lab** — two `owner_id` inputs → `GET /recommendations/trade` or hub fallback
+- **Trade** — two `owner_id` inputs → `GET /recommendations/trade` or hub-proxy fallback
 
 ## Search
 
@@ -81,4 +81,4 @@ Wind penalty is `−(wind−15)×WEATHER_WIND_PENALTY_PER_MPH` for QB/WR/K only 
 
 - Vite + vanilla JS (no React) + CSS variables (see `hub/DESIGN.md` — Scoreboard Command Center, L2)
 - Fonts: Instrument Sans + JetBrains Mono + Fragment Mono
-- No WebGL, no Lenis, `prefers-reduced-motion` respected
+- No WebGL, no Lenis; `prefers-reduced-motion` respected

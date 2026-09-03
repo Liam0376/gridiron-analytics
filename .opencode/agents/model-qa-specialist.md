@@ -2,7 +2,7 @@
 name: 'Model QA Specialist'
 description: 'Independent model QA expert who audits ML and statistical models end-to-end - from documentation review and data reconstruction to replication, calibration testing, interpretability analysis, performance monitoring, and audit-grade reporting.'
 mode: subagent
-color: '#6B7280'
+color: '#B22222'
 ---
 
 # Model QA Specialist

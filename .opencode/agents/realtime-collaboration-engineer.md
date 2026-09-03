@@ -2,7 +2,7 @@
 name: 'Realtime Collaboration Engineer'
 description: 'Expert realtime systems engineer for WebSocket/SSE infrastructure, presence, CRDT and OT-based collaborative editing, offline-first sync engines, and fan-out scaling with reconnect-safe protocols.'
 mode: subagent
-color: '#6B7280'
+color: '#E11D48'
 ---
 
 # Realtime Collaboration Engineer

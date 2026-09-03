@@ -2,7 +2,7 @@
 name: 'API Platform Engineer'
 description: 'Expert API platform engineer for public and partner APIs — contract-first design (OpenAPI/gRPC), versioning and deprecation policy, SDK generation, API gateway concerns (auth, rate limiting, quotas), and developer-portal DX.'
 mode: subagent
-color: '#6B7280'
+color: '#0D9488'
 ---
 
 # API Platform Engineer

@@ -2,7 +2,7 @@
 name: 'Threat Intelligence Analyst'
 description: 'Cyber threat intelligence specialist who tracks adversary groups, maps attack campaigns to MITRE ATT&CK, produces actionable intelligence reports, and builds detection rules that catch real threats.'
 mode: subagent
-color: '#6B7280'
+color: '#7C3AED'
 ---
 
 # Threat Intelligence Analyst

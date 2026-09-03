@@ -1,8 +1,10 @@
-import { fetchRoster, fetchTrade } from '../api.js';
+import { fetchRoster, fetchTrade, fetchComparison } from '../api.js';
 import { posBadge, injuryBadge } from '../components/badges.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
 import { getTeamColor } from '../components/teamColors.js';
+import { computeVbdParams, vbdAuction, vbdAuctionUncapped } from '../components/vbdAuction.js';
+import { escapeHtml } from '../lib/escape.js';
 
 export async function renderTrade(root) {
   const params = new URLSearchParams(location.hash.split('?')[1] || '');
@@ -11,8 +13,8 @@ export async function renderTrade(root) {
 
   root.innerHTML = `
     <div class="hero reveal in">
-      <h1>Trade Lab</h1>
-      <p>Select two teams, pick the players being traded on each side, and analyze Gridiron Model weekly & ROS trade impact.</p>
+      <h1>Trade</h1>
+      <p>Select two teams, pick the players being traded on each side, and analyze Model weekly &amp; ROS trade impact.</p>
     </div>
 
     <div class="card reveal in" style="margin-top:16px">
@@ -63,11 +65,11 @@ export async function renderTrade(root) {
 
     <div class="card reveal in" style="margin-top:20px; background:var(--surface-raised)">
       <div class="card-header row align-between">
-        <h3>Core Engine VBD Analysis</h3>
-        <button class="btn btn-primary" id="runVbdBtn">Run Deep Engine Eval</button>
+        <h3>Trade VBD</h3>
+        <button class="btn btn-primary" id="runVbdBtn">Evaluate</button>
       </div>
       <div class="card-body" id="vbdResult">
-        <div class="faint" style="font-size:12px">Click "Run Deep Engine Eval" to evaluate full roster baseline trade value using positional VBD and decay models.</div>
+        <div class="faint" style="font-size:12px">Click Evaluate for full roster VBD.</div>
       </div>
     </div>
   `;
@@ -90,6 +92,27 @@ export async function renderTrade(root) {
   const selectedPidsA = new Set();
   const selectedPidsB = new Set();
 
+  // VOR $ unification — lazy VBD params from comparison (mirrors roster/team/matchups)
+  let vbdParams = null;
+  let vbdFetchPromise = null;
+  async function ensureVbdParams() {
+    if (vbdParams) return vbdParams;
+    if (vbdFetchPromise) return vbdFetchPromise;
+    vbdFetchPromise = (async () => {
+      try {
+        const comp = await fetchComparison({ limit: 800 });
+        const players = comp?.players || [];
+        if (players.length) {
+          vbdParams = computeVbdParams(players);
+        }
+      } catch (_) {
+        vbdParams = null;
+      }
+      return vbdParams;
+    })();
+    return vbdFetchPromise;
+  }
+
   // Populate Team Selectors
   try {
     const baseData = await fetchRoster();
@@ -110,7 +133,7 @@ export async function renderTrade(root) {
     return data;
   }
 
-  async function updateSide(side) {
+  async function loadRoster(side) {
     const isA = side === 'A';
     const rosterId = isA ? selA.value : selB.value;
     const targetEl = isA ? rosterAEl : rosterBEl;
@@ -132,7 +155,7 @@ export async function renderTrade(root) {
 
     renderRosterList(targetEl, fullRoster(data), side, targetSet);
     updateSubcounts();
-    recalculateTrade();
+    renderTradeVerdict();
   }
 
   function updateSubcounts() {
@@ -189,12 +212,15 @@ export async function renderTrade(root) {
         if (e.target.checked) targetSet.add(pid);
         else targetSet.delete(pid);
         updateSubcounts();
-        recalculateTrade();
+        renderTradeVerdict();
       });
     });
   }
 
-  function recalculateTrade() {
+  async function renderTradeVerdict() {
+    // Ensure VBD params for $ VOR pricing (lazily fetched once)
+    await ensureVbdParams();
+
     const listA = fullRoster(rosterDataA).filter(p => selectedPidsA.has(String(p.player_id || p.id)));
     const listB = fullRoster(rosterDataB).filter(p => selectedPidsB.has(String(p.player_id || p.id)));
 
@@ -210,31 +236,51 @@ export async function renderTrade(root) {
       return;
     }
 
-    const sumWeeklyA = listA.reduce((s, p) => s + Number(p.gridiron_points ?? p.model_points ?? p.projected_points ?? 0), 0);
-    const sumWeeklyB = listB.reduce((s, p) => s + Number(p.gridiron_points ?? p.model_points ?? p.projected_points ?? 0), 0);
+    // VOR $ logic: for each selected player, use p.auction or vbdAuction(model_season_points) or vbdAuctionUncapped
+    const dollarsFor = (p) => {
+      if (!p) return 0;
+      if (p.auction != null && Number(p.auction) !== 0) return Number(p.auction);
+      if (p.gridironAuction != null && Number(p.gridironAuction) !== 0) return Number(p.gridironAuction);
+      const pos = (p.position || '').toUpperCase();
+      const season = Number(p.model_season_points ?? p.modelSeasonPoints ?? ((p.gridiron_points ?? p.model_points ?? p.projected_points ?? 0) * 17));
+      if (vbdParams) {
+        const capped = vbdAuction(season, pos, vbdParams);
+        const uncapped = vbdAuctionUncapped(season, pos, vbdParams);
+        // p.auction fallback already handled; prefer capped for starters, uncapped bench true value when capped collapses to $1
+        if (capped > 1) return capped;
+        if (uncapped > 0) return Math.max(capped, uncapped);
+        return capped;
+      }
+      // Fallback if params not ready: use paid price or $1 bench
+      return Number(p.auction_price_paid ?? p.auction ?? 1);
+    };
 
-    const sumRosA = listA.reduce((s, p) => s + Number(p.model_season_points ?? ((p.gridiron_points ?? 0) * 17)), 0);
-    const sumRosB = listB.reduce((s, p) => s + Number(p.model_season_points ?? ((p.gridiron_points ?? 0) * 17)), 0);
+    const sumA = listA.reduce((s, p) => s + dollarsFor(p), 0);
+    const sumB = listB.reduce((s, p) => s + dollarsFor(p), 0);
 
-    const sumCostA = listA.reduce((s, p) => s + Number(p.auction_price_paid ?? p.auction ?? 0), 0);
-    const sumCostB = listB.reduce((s, p) => s + Number(p.auction_price_paid ?? p.auction ?? 0), 0);
-
-    // Team A gives listA and receives listB
-    const netWeeklyA = sumWeeklyB - sumWeeklyA;
-    const netRosA = sumRosB - sumRosA;
+    // Team A gives listA and receives listB — net $ VOR ROS for Team A
+    const netA = sumB - sumA;
 
     let verdict = 'EVEN / FAIR TRADE';
     let verdictColor = 'var(--text-muted)';
     let verdictBg = 'var(--surface-raised)';
 
-    if (netRosA >= 15) {
+    if (netA >= 8) {
       verdict = `WIN FOR ${nameA.toUpperCase()}`;
       verdictColor = 'var(--emerald)';
       verdictBg = 'rgba(16,185,129,0.1)';
-    } else if (netRosA <= -15) {
+    } else if (netA >= 5) {
+      verdict = `LEAN TO ${nameA.toUpperCase()}`;
+      verdictColor = 'var(--emerald)';
+      verdictBg = 'rgba(16,185,129,0.07)';
+    } else if (netA <= -8) {
       verdict = `WIN FOR ${nameB.toUpperCase()}`;
       verdictColor = 'var(--amber)';
       verdictBg = 'rgba(245,158,11,0.1)';
+    } else if (netA <= -5) {
+      verdict = `LEAN TO ${nameB.toUpperCase()}`;
+      verdictColor = 'var(--amber)';
+      verdictBg = 'rgba(245,158,11,0.07)';
     }
 
     summaryBanner.innerHTML = `
@@ -242,25 +288,19 @@ export async function renderTrade(root) {
         <div class="card-body">
           <div class="row align-between align-center" style="flex-wrap:wrap; gap:12px">
             <div>
-              <div class="micro faint" style="text-transform:uppercase; letter-spacing:0.5px">Gridiron Trade Verdict</div>
+              <div class="micro faint" style="text-transform:uppercase; letter-spacing:0.5px">Trade verdict — $ VOR ROS</div>
               <h2 style="margin:2px 0 0; color:${verdictColor}">${escapeHtml(verdict)}</h2>
             </div>
             <div class="row" style="gap:24px; flex-wrap:wrap">
               <div class="stat">
-                <div class="stat-value mono ${netWeeklyA >= 0 ? 'text-ok' : 'text-bad'}" style="font-size:20px">
-                  ${netWeeklyA >= 0 ? '+' : ''}${netWeeklyA.toFixed(1)}
+                <div class="stat-value mono ${netA >= 0 ? 'text-ok' : 'text-bad'}" style="font-size:20px">
+                  ${netA >= 0 ? '+' : ''}$${netA.toFixed(0)}
                 </div>
-                <div class="stat-label">${escapeHtml(nameA)} Net pts/wk</div>
+                <div class="stat-label">${escapeHtml(nameA)} Net $ VOR ROS</div>
               </div>
               <div class="stat">
-                <div class="stat-value mono ${netRosA >= 0 ? 'text-ok' : 'text-bad'}" style="font-size:20px">
-                  ${netRosA >= 0 ? '+' : ''}${netRosA.toFixed(0)}
-                </div>
-                <div class="stat-label">${escapeHtml(nameA)} Net ROS pts</div>
-              </div>
-              <div class="stat">
-                <div class="stat-value mono" style="font-size:20px">$${sumCostA} vs $${sumCostB}</div>
-                <div class="stat-label">Draft Value Traded</div>
+                <div class="stat-value mono" style="font-size:20px">$${sumA} vs $${sumB}</div>
+                <div class="stat-label">$ VOR Traded · $${sumA} vs $${sumB}</div>
               </div>
             </div>
           </div>
@@ -269,22 +309,26 @@ export async function renderTrade(root) {
 
           <div class="grid grid-2" style="font-size:12px">
             <div>
-              <strong style="color:var(--text)">${escapeHtml(nameA)} Gives:</strong>
-              ${listA.length ? listA.map(p => `
+              <strong style="color:var(--text)">${escapeHtml(nameA)} Gives ($${sumA} $ VOR ROS):</strong>
+              ${listA.length ? listA.map(p => {
+                const d = dollarsFor(p);
+                return `
                 <div class="row align-between" style="padding:3px 0">
                   <span>${escapeHtml(p.player_name)} (${p.position})</span>
-                  <span class="mono faint">${Number(p.gridiron_points ?? 0).toFixed(1)} pts/wk</span>
+                  <span class="mono faint">$${d} $ VOR</span>
                 </div>
-              `).join('') : '<div class="faint">No players selected</div>'}
+              `}).join('') : '<div class="faint">No players selected</div>'}
             </div>
             <div>
-              <strong style="color:var(--text)">${escapeHtml(nameB)} Gives:</strong>
-              ${listB.length ? listB.map(p => `
+              <strong style="color:var(--text)">${escapeHtml(nameB)} Gives ($${sumB} $ VOR ROS):</strong>
+              ${listB.length ? listB.map(p => {
+                const d = dollarsFor(p);
+                return `
                 <div class="row align-between" style="padding:3px 0">
                   <span>${escapeHtml(p.player_name)} (${p.position})</span>
-                  <span class="mono faint">${Number(p.gridiron_points ?? 0).toFixed(1)} pts/wk</span>
+                  <span class="mono faint">$${d} $ VOR</span>
                 </div>
-              `).join('') : '<div class="faint">No players selected</div>'}
+              `}).join('') : '<div class="faint">No players selected</div>'}
             </div>
           </div>
         </div>
@@ -297,7 +341,7 @@ export async function renderTrade(root) {
     try {
       const data = await fetchTrade(selA.value, selB.value);
       if (!data) {
-        vbdRes.innerHTML = `<div class="alert alert-warn">No response from trade evaluation engine.</div>`;
+        vbdRes.innerHTML = `<div class="alert alert-warn">Trade evaluation returned no result.</div>`;
         return;
       }
 
@@ -314,23 +358,23 @@ export async function renderTrade(root) {
         <div class="faint" style="font-size:12px">${escapeHtml(data.recommendation || '')}</div>
       `;
     } catch (e) {
-      vbdRes.innerHTML = `<div class="alert alert-bad">Evaluation error: ${escapeHtml(String(e))}</div>`;
+      vbdRes.innerHTML = `<div class="alert alert-bad">Trade evaluation failed. See console.</div>`;
     }
   }
 
   selA.addEventListener('change', () => {
     selectedPidsA.clear();
-    updateSide('A');
+    loadRoster('A');
   });
   selB.addEventListener('change', () => {
     selectedPidsB.clear();
-    updateSide('B');
+    loadRoster('B');
   });
 
   vbdBtn.addEventListener('click', runVbdEval);
 
   // Initial load
-  await Promise.all([updateSide('A'), updateSide('B')]);
+  await Promise.all([loadRoster('A'), loadRoster('B')]);
 }
 
 function fullRoster(data) {
@@ -340,8 +384,4 @@ function fullRoster(data) {
     ...(Array.isArray(data.bench) ? data.bench : []),
     ...(Array.isArray(data.reserve) ? data.reserve : []),
   ];
-}
-
-function escapeHtml(s) {
-  return String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }

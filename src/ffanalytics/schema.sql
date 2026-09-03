@@ -114,3 +114,8 @@ CREATE TABLE IF NOT EXISTS league_transactions (
     data JSON NOT NULL,
     created_at TEXT NOT NULL
 );
+
+-- P0 audit: per-source refresh history lookups (hub refresh-log, /ready checks)
+-- why: refresh_log grows unbounded (one row per source per refresh); without
+-- this index every ORDER BY ran_at DESC scan is a full table scan.
+CREATE INDEX IF NOT EXISTS idx_refresh_log_src_time ON refresh_log(source, ran_at DESC);

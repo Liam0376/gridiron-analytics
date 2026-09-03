@@ -1,5 +1,7 @@
 import os
 from unittest.mock import MagicMock
+import pytest
+
 from ffanalytics.adapters.fantasypros import (
     get_fantasypros_players,
     get_fantasypros_news,
@@ -7,10 +9,18 @@ from ffanalytics.adapters.fantasypros import (
 )
 
 
-def test_fantasypros_no_key_returns_empty():
-    assert get_fantasypros_players(api_key="") == []
-    assert get_fantasypros_news(api_key="") == []
-    assert get_fantasypros_injuries(api_key="") == []
+def test_fantasypros_no_key_raises(monkeypatch):
+    """Missing/empty key must fail loud, not silently return []."""
+    from ffanalytics.adapters import fantasypros
+    # Stub load_dotenv to no-op so the repo's .env doesn't auto-supply a key.
+    monkeypatch.setattr(fantasypros, "load_dotenv", lambda *_a, **_kw: None)
+    monkeypatch.delenv("FANTASYPROS_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="FANTASYPROS_API_KEY"):
+        get_fantasypros_players(api_key="")
+    with pytest.raises(RuntimeError, match="FANTASYPROS_API_KEY"):
+        get_fantasypros_news(api_key="")
+    with pytest.raises(RuntimeError, match="FANTASYPROS_API_KEY"):
+        get_fantasypros_injuries(api_key="")
 
 
 def test_fantasypros_mocked_calls():

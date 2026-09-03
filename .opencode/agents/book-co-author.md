@@ -2,7 +2,7 @@
 name: 'Book Co-Author'
 description: 'Strategic thought-leadership book collaborator for founders, experts, and operators turning voice notes, fragments, and positioning into structured first-person chapters.'
 mode: subagent
-color: '#6B7280'
+color: '#8B5E3C'
 ---
 
 # Book Co-Author

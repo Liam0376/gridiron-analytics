@@ -8,9 +8,10 @@
     "dev": "vite --host 127.0.0.1 --port 8001 --strictPort",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 8001",
-    "verify": "bash ./verify-isolation.sh"
+    "verify": "bash ./verify-isolation.sh",
+    "check": "node --check src/main.js && node --check src/api.js && node --check src/router.js && node --check src/search.js && node --check src/tierlist.js && node --check src/views/dashboard.js && node --check src/views/matchups.js && node --check src/views/projections.js && node --check src/views/tierlists.js && node --check src/views/team.js && node --check src/views/roster.js && node --check src/views/waiver.js && node --check src/views/trade.js && node --check src/views/auction.js && node --check src/views/auction/table.js && node --check src/views/auction/state.js && node --check src/views/auction/bidAdvice.js && node --check src/components/shimmer.js && node --check src/components/mobileNav.js && node --check src/components/playerAvatar.js && node --check src/components/userAvatar.js && node --check src/components/badges.js && node --check src/components/teamLogo.js && node --check src/components/teamColors.js && node --check src/components/playerModal.js && node --check src/components/playerCard.js && node --check src/components/teamSelector.js && node --check src/components/intervalBar.js && node --check src/components/vbdAuction.js && node --check src/lib/escape.js && node --check src/lib/enrichPlayer.js && node --check src/lib/slots.js && node --check src/lib/focusTrap.js && node --check src/lib/auctionMath.js"
   },
   "devDependencies": {
-    "vite": "^5.4.0"
+    "vite": "^6.4.3"
   }
 }

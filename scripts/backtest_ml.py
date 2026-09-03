@@ -3,9 +3,15 @@
 
 Loads train/val jsonl (or rebuilds via build_training_rows for 2024-2025 weeks 4-18).
 For each player-week, computes stat_pts (stat_projector pipeline with Vegas/weather via projected features) + xgb_pts (model predict) + ensemble = w*xgb + (1-w)*stat.
-Grid w 0.0→1.0 step 0.05 minimizing val MAE (2025). Report w.
-Run final backtest on 2024-2025 combined vs baseline 4.163, report MAE, corr, pairwise, bias, pos_mae for stat, xgb, ensemble.
-Gates: ensemble must beat ALL THREE of stat baseline to pass.
+Grid w 0.0→1.0 step 0.05 on TRAIN-ONLY split (2024), lock w, evaluate ONCE on
+holdout (2025 val). Report w. Legacy w=0.40 quoted in headers was val-tuned
+(leaky: tuned on val then reported on combined incl. val) — documented here
+for reproducibility, NOT re-tuned to a new value.
+Run final backtest on holdout (2025) + diagnostic combined vs production
+freeze baseline 4.563/0.648/0.741 (n=10351, true scoring), report MAE, corr,
+pairwise, bias, pos_mae for stat, xgb, ensemble.
+Gates: ensemble must beat ALL THREE of stat baseline on HOLDOUT to pass
+(combined incl. train is diagnostic only — in-sample leakage).
 
 Writes data/ml/backtest_ml_results.json
 """
@@ -24,10 +30,21 @@ SRC_DIR = REPO_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-# Baseline per spec
-BASELINE = {"mae": 4.163, "corr": 0.6918, "pairwise": 0.777}
+# Production freeze baseline (true scoring, 2024-2025 weeks 4-18, n=10351):
+# MAE 4.563 / Corr 0.648 / Pairwise 0.741. Early scratch 4.163/0.6918/0.777
+# was K-zeroed (old_map ignored fg_* → K MAE 0.001, -0.416 bias; deflated MAE
+# ~0.40, inflated corr/pairwise) — SUPERSEDED, do not gate on stale numbers.
+BASELINE = {"mae": 4.563, "corr": 0.648, "pairwise": 0.741}
 
-# Feature list must match train.py
+# Feature list must match train.py.
+# Canonical training code reference (REJECTED, no behavior change):
+#   src/ffanalytics/ml/ is intentionally empty (XGBoost rejected as production).
+#   Canonical training code lives at docs/rejected-ml-evidence/ml_train.py
+#   (verbatim from src/ffanalytics/ml/train.py) + ml_features.py.
+#   Explicit commented import path (do NOT resurrect training, no new deps):
+#   # from docs.rejected_ml_evidence.ml_train import FEATURE_COLS, PARAMS  # REJECTED — evidence: data/models/xgb_meta.json val 4.556 vs local stat 4.474 fails OOS
+#   tested and REJECTED — evidence: data/models/xgb_meta.json (val 4.556 vs true stat 4.474 local, ensemble w=0.40 val-tuned leaky).
+#   Backtests below use hardcoded FEATURE_COLS fallback only (no xgboost import here).
 try:
     from ffanalytics.ml.train import FEATURE_COLS, PARAMS  # type: ignore
 except Exception:
@@ -77,11 +94,20 @@ try:
     from ffanalytics.scoring import calculate_fantasy_points, DEFAULT_SCORING
     SCORING = DEFAULT_SCORING
 except Exception:
+    # Fallback cold-start scoring (K-zero bug class guard below).
+    # Must include fg_*/xpm keys — early scratch old_map ignored fg_* → K MAE 0.001 (SUPERSEDED 4.163).
+    # tested and REJECTED omitting K — evidence: stat_projector.py:8-13 K-zero deflated MAE ~0.40.
     SCORING = {
         "rec": 1.0, "rec_yd": 0.1, "rush_yd": 0.1, "pass_yd": 0.04,
         "pass_td": 5.0, "rush_td": 6.0, "rec_td": 6.0, "pass_int": -1.0,
         "fum_lost": -2.0,
+        "fgm_0_19": 3.0, "fgm_20_29": 3.0, "fgm_30_39": 3.0,
+        "fgm_40_49": 4.0, "fgm_50_59": 5.0, "fgm_60p": 6.0,
+        "fgmiss": -1.0, "xpm": 1.0, "xpmiss": -1.0,
     }
+    # K-zero guard: fallback must contain kicking keys or scoring silently zeroes K (early 4.163 bug).
+    assert all(k in SCORING for k in ("fgm_0_19", "fgm_20_29", "fgm_30_39", "fgm_40_49", "fgm_50_59", "fgmiss", "xpm")), \
+        "SCORING fallback missing fg_*/xpm keys — K would score 0 (K-zero bug class, see stat_projector.py:8-13)"
 
     def calculate_fantasy_points(stats, scoring_settings=None):
         return 0.0
@@ -311,35 +337,63 @@ def main():
         xgb_2024 = stat_2024
         xgb_2025 = stat_2025
 
-    # Grid w 0.0→1.0 step 0.05 minimizing val MAE (2025)
+    # NESTED PROTOCOL (leakage fix): tune w on TRAIN-ONLY split (2024), lock w,
+    # evaluate ONCE on holdout (2025 val). Legacy behavior tuned w on val then
+    # reported on combined incl. val/train — leaky (val reused for tuning +
+    # reporting; combined incl. train is in-sample for the XGB booster).
+    # Do NOT retune stored w to a new value — legacy val-tuned w below is
+    # preserved as `legacy_val_tuned_w` (current w=0.40 cited in headers is
+    # val-tuned); honest train-tuned `best_w` is used for gating.
     import numpy as np
+    # Honest: grid on train-only (2024)
     best_w = 0.0
     best_mae = float("inf")
-    grid_results = []
+    honest_grid = []
     for w in [round(i*0.05,2) for i in range(21)]:
-        ens = [w*xv + (1-w)*sv for xv, sv in zip(xgb_val, stat_val)]
-        mae = float(np.mean([abs(e - a) for e,a in zip(ens, y_val)]))
-        grid_results.append({"w": w, "mae": mae})
+        ens = [w*xv + (1-w)*sv for xv, sv in zip(xgb_2024, stat_2024)]
+        mae = float(np.mean([abs(e - a) for e,a in zip(ens, y_2024)])) if y_2024 else float("inf")
+        honest_grid.append({"w": w, "mae": mae})
         if mae < best_mae:
             best_mae = mae
             best_w = w
-    print(f"[backtest] grid best w {best_w} val MAE {best_mae:.4f} (vs stat {float(np.mean([abs(s-a) for s,a in zip(stat_val, y_val)])):.4f} xgb {float(np.mean([abs(x-a) for x,a in zip(xgb_val, y_val)])):.4f})")
+    print(f"[backtest] honest grid (train-2024 tuned) best w {best_w} train MAE {best_mae:.4f}")
+    # Legacy (leaky, for documentation only — do not gate on this):
+    legacy_w = 0.0
+    legacy_mae = float("inf")
+    grid_results = []
+    for w in [round(i*0.05,2) for i in range(21)]:
+        ens = [w*xv + (1-w)*sv for xv, sv in zip(xgb_val, stat_val)]
+        mae = float(np.mean([abs(e - a) for e,a in zip(ens, y_val)])) if y_val else float("inf")
+        grid_results.append({"w": w, "mae": mae})
+        if mae < legacy_mae:
+            legacy_mae = mae
+            legacy_w = w
+    print(f"[backtest] legacy grid (val-tuned, leaky) w {legacy_w} val MAE {legacy_mae:.4f} (vs stat {float(np.mean([abs(s-a) for s,a in zip(stat_val, y_val)])) if y_val else 0:.4f} xgb {float(np.mean([abs(x-a) for x,a in zip(xgb_val, y_val)])) if y_val else 0:.4f}) — documented only, NOT used for gating")
 
-    # Update meta with w
+    # Update meta with w — preserve legacy val-tuned w as `w` (do NOT retune
+    # stored value to honest train-tuned; document honest separately).
     if meta_path.exists():
         try:
             with open(meta_path) as f:
                 meta=json.load(f)
-            meta["w"] = best_w
-            meta["grid_best_mae"] = best_mae
+            meta["w"] = legacy_w
+            meta["grid_best_mae"] = legacy_mae
+            meta["w_note"] = "val-tuned legacy (leaky: tuned on val, reported on combined incl val)"
+            meta["honest_w_train_tuned"] = best_w
+            meta["honest_train_mae"] = best_mae
             with open(meta_path, "w") as out:
                 json.dump(meta, out, indent=2)
-            print(f"[backtest] updated meta {meta_path} with w={best_w}")
+            print(f"[backtest] updated meta {meta_path} with legacy w={legacy_w} + honest w={best_w}")
         except Exception as e:
             print(f"[backtest] failed to update meta w: {e}", file=sys.stderr)
 
-    # Final backtest on 2024-2025 combined
-    def eval_set(name, y_true, stat_pred, xgb_pred, rows):
+    # Final backtest: honest holdout (2025) is the gate; combined is diagnostic
+    # only (includes train → in-sample for booster). w is locked from train.
+    def eval_set(name, y_true, stat_pred, xgb_pred, rows, w=None):
+        import numpy as np
+        if w is None:
+            w = best_w
+        ens_pred = [w*x + (1-w)*s for x,s in zip(xgb_pred, stat_pred)]
         import numpy as np
         ens_pred = [best_w*x + (1-best_w)*s for x,s in zip(xgb_pred, stat_pred)]
         stat_metrics = _evaluate(y_true, stat_pred, rows)
@@ -356,16 +410,18 @@ def main():
     stat_2024_m, xgb_2024_m, ens_2024_m = eval_set("2024", y_2024, stat_2024, xgb_2024, rows_2024)
     stat_2025_m, xgb_2025_m, ens_2025_m = eval_set("2025", y_val, stat_val, xgb_val, val_rows_filt)
 
-    # Gates: ensemble must beat ALL THREE of stat baseline (local stat, not absolute 4.163) but also report vs absolute
-    # Per spec Gate 1: ensemble must beat MAE<4.163, corr>0.6918, pairwise>77.7% vs baseline file
-    # We report both local and absolute
-    local_gate = (ens_2425_m["mae"] < stat_2425_m["mae"] and ens_2425_m["corr"] > stat_2425_m["corr"] and ens_2425_m["pairwise"] > stat_2425_m["pairwise"])
-    absolute_gate = (ens_2425_m["mae"] < BASELINE["mae"] and ens_2425_m["corr"] > BASELINE["corr"] and ens_2425_m["pairwise"] > BASELINE["pairwise"])
-    print(f"[backtest] local gate (ens beats stat on all 3) ? {local_gate}")
-    print(f"[backtest] absolute gate (ens beats baseline 4.163/0.6918/77.7%) ? {absolute_gate}")
-    print(f"  ens 2425 MAE {ens_2425_m['mae']:.4f} vs baseline {BASELINE['mae']} {'PASS' if ens_2425_m['mae']<BASELINE['mae'] else 'FAIL'}")
-    print(f"  ens corr {ens_2425_m['corr']:.4f} vs {BASELINE['corr']} {'PASS' if ens_2425_m['corr']>BASELINE['corr'] else 'FAIL'}")
-    print(f"  ens pw {ens_2425_m['pairwise']:.4%} vs {BASELINE['pairwise']:.1%} {'PASS' if ens_2425_m['pairwise']>BASELINE['pairwise'] else 'FAIL'}")
+    # Gates: honest OOS gate is HOLDOUT (2025) with train-locked w.
+    # Local holdout gate: ensemble (train-tuned w) beats local stat on all 3.
+    # Absolute gate: ensemble holdout beats production freeze 4.563/0.648/0.741.
+    # Combined 2024-2025 reported as diagnostic only (in-sample leakage).
+    local_gate = (ens_2025_m["mae"] < stat_2025_m["mae"] and ens_2025_m["corr"] > stat_2025_m["corr"] and ens_2025_m["pairwise"] > stat_2025_m["pairwise"])
+    absolute_gate = (ens_2025_m["mae"] < BASELINE["mae"] and ens_2025_m["corr"] > BASELINE["corr"] and ens_2025_m["pairwise"] > BASELINE["pairwise"])
+    print(f"[backtest] honest local gate (ens train-tuned beats stat on holdout 2025, all 3) ? {local_gate}")
+    print(f"[backtest] absolute gate (ens holdout beats freeze 4.563/0.648/74.1%) ? {absolute_gate}")
+    print(f"  ens holdout MAE {ens_2025_m['mae']:.4f} vs baseline {BASELINE['mae']} {'PASS' if ens_2025_m['mae']<BASELINE['mae'] else 'FAIL'}")
+    print(f"  ens corr {ens_2025_m['corr']:.4f} vs {BASELINE['corr']} {'PASS' if ens_2025_m['corr']>BASELINE['corr'] else 'FAIL'}")
+    print(f"  ens pw {ens_2025_m['pairwise']:.4%} vs {BASELINE['pairwise']:.1%} {'PASS' if ens_2025_m['pairwise']>BASELINE['pairwise'] else 'FAIL'}")
+    print(f"[backtest] diagnostic combined 2024-2025 (in-sample, NOT for gating): ens MAE {ens_2425_m['mae']:.4f} stat {stat_2425_m['mae']:.4f}")
 
     # Also check overfit: 2024 vs 2025 gap
     try:
@@ -376,7 +432,12 @@ def main():
 
     results = {
         "w": best_w,
-        "grid": grid_results,
+        "w_note": "honest train-2024-tuned, locked, evaluated once on holdout 2025",
+        "legacy_val_tuned_w": legacy_w,
+        "legacy_val_tuned_mae": legacy_mae,
+        "legacy_note": "val-tuned (leaky: tuned on val, reported on combined incl val) — documented only, current w=0.40 cited in headers is val-tuned",
+        "grid": honest_grid,
+        "legacy_grid_val_tuned": grid_results,
         "best_val_mae": best_mae,
         "model_loaded": model_loaded,
         "baseline": BASELINE,

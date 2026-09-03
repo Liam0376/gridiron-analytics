@@ -32,8 +32,8 @@ R's `nflreadr`.
   corrected by Thursday (NFL stat correction window).
 - Install: `pip install nflreadpy`
 
-**Decision: use `nflreadpy`, not `nfl_data_py`.** The original prompt referenced
-`nfl_data_py` — that package is dead; adopting the maintained successor.
+**Decision: use `nflreadpy`, not `nfl_data_py`.** The original brief
+referenced `nfl_data_py` — dead; adopting the maintained successor.
 
 ## 2. Sleeper API
 
@@ -42,13 +42,13 @@ Confirmed free, public, read-only, no API key. Official docs at docs.sleeper.com
 - Endpoints: league settings (`scoring_settings` — flat key/value map, e.g.
   `pass_td`, `rec`, `rec_yd`), rosters, users, matchups, transactions, full player
   DB (`/v1/players/nfl`, ~5MB — fetch at most once/day), trending adds/drops.
-- Rate limit: keep under ~1000 calls/min (some sources cite ~90/min — be
-  conservative, cache aggressively, don't hammer `/players/nfl`).
+- Rate limit: keep under ~1000 calls/min (some sources cite ~90/min —
+  conservative: cache aggressively, don't hammer `/players/nfl`).
 - Injury field: `injury_status` on player objects (Questionable/Doubtful/Out/null),
   updates daily, resets Wednesdays at start of new NFL week.
-- **This is the primary source for league-exact scoring** — pull `scoring_settings`
-  programmatically, verify against Fantasy Bahamas' actual settings at season start
-  and don't hardcode.
+- **Primary source for league-exact scoring.** Pull `scoring_settings`
+  programmatically; verify against Fantasy Bahamas' actual settings at
+  season start; never hardcode.
 
 ## 3. ESPN hidden/undocumented API
 

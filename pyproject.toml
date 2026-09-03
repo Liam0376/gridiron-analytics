@@ -1,13 +1,27 @@
 [project]
 name = "ffanalytics"
 version = "0.1.0"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.15"
+# Last-verified resolved versions (2026-09-03, from `.venv/bin/pip freeze`;
+# informational only — ranges below stay canonical, no bumps, no hashes/lockfile:
+# $0 local scope, CI installs fresh each run, so a lockfile adds churn without
+# benefit — see docs/CONTRIBUTING.md):
+#   fastapi==0.141.1, uvicorn==0.52.4, nflreadpy==0.1.5,
+#   requests==2.34.2, pydantic==2.13.4, python-dotenv==1.2.3
 dependencies = [
     "fastapi>=0.115.0,<1.0.0",
     "uvicorn>=0.30.0,<1.0.0",
     "nflreadpy>=0.1.0,<1.0.0",
     "requests>=2.32.0,<3.0.0",
     "pydantic>=2.9.0,<3.0.0",
+    "python-dotenv>=1.0.0,<2.0.0",
+]
+
+[project.optional-dependencies]
+# ML extras (rejected as production — stat_projector.py is the production
+# path; install only for backtests / dataset builds):
+#   pip install -e .[ml]
+ml = [
     "xgboost>=2.0.0,<3.0.0",
     "scikit-learn>=1.4.0,<2.0.0",
     "numpy>=1.26.0,<3.0.0",

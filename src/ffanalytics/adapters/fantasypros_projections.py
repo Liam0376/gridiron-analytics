@@ -303,9 +303,7 @@ def load_flx_projections() -> dict[tuple, dict]:
             player = row[0].strip()
             team = row[1].strip().upper()
             pos_raw = row[2].strip()
-            # POS like RB1 -> base RB
-            import re as _re
-            m = _re.match(r"^([A-Z]+)", pos_raw.upper())
+            m = re.match(r"^([A-Z]+)", pos_raw.upper())
             pos = m.group(1) if m else pos_raw.upper()
             if pos not in ("RB", "WR", "TE"):
                 continue
@@ -344,7 +342,6 @@ def load_flx_projections() -> dict[tuple, dict]:
 
 
 def load_all_projections() -> dict[tuple, dict]:
-    """Merge all position files into one dict keyed by (norm_name, team, pos)."""
     merged: dict[tuple, dict] = {}
     # FLX first as base for RB/WR/TE, then individual files will overwrite with more precise if needed
     for loader in [load_flx_projections, load_rb_projections, load_wr_projections, load_te_projections, load_qb_projections]:
@@ -419,5 +416,4 @@ def load_all_projections() -> dict[tuple, dict]:
 
 
 def get_fantasypros_projections_map() -> dict[tuple, dict]:
-    """Public: season market projections keyed for comparison builder."""
     return load_all_projections()

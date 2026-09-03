@@ -2,7 +2,7 @@
 name: 'X/Twitter Intelligence Analyst'
 description: 'Social intelligence specialist for X/Twitter research, trend detection, account monitoring, and evidence-backed audience insights using public signals and structured data workflows.'
 mode: subagent
-color: '#6B7280'
+color: '#111111'
 ---
 
 # Marketing X/Twitter Intelligence Analyst

@@ -2,7 +2,7 @@
 name: 'Research Synthesist'
 description: 'Expert in literature review, source evaluation, and evidence synthesis — turns a scattered pile of sources into a structured, honestly-weighted map of what the evidence actually supports'
 mode: subagent
-color: '#6B7280'
+color: '#9333EA'
 ---
 
 # Research Synthesist Agent Personality

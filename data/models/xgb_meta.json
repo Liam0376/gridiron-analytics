@@ -56,15 +56,17 @@
     "TE": 3.591968222876576,
     "RB": 4.580397658664503
   },
-  "baseline_mae": 4.163,
-  "baseline_corr": 0.6918,
-  "baseline_pairwise": 0.777,
+  "baseline_mae": 4.563,
+  "baseline_corr": 0.648,
+  "baseline_pairwise": 0.741,
+  "baseline_n": 10351,
+  "baseline_note": "Production freeze (true scoring via scoring.py DEFAULT_SCORING on Sleeper settings, 2024-2025 weeks 4-18, n=10351; K MAE 4.09). Prior 4.163/0.6918/0.777 was K-zeroed (old_map ignored fg_* -> K MAE 0.001, -0.416 bias) - SUPERSEDED. Stored val_* below is stale 2025-only split (n=4978, without-K scoring) and is NOT directly comparable to the combined freeze; honest OOS gate is val-only vs local true stat.",
   "baseline_pos_mae": {
     "QB": 7.08,
     "RB": 4.43,
     "WR": 4.42,
     "TE": 3.63,
-    "K": 0.01
+    "K": 4.09
   },
   "params": {
     "n_estimators": 500,
@@ -80,5 +82,5 @@
   "w": null,
   "git_sha": "unknown",
   "status": "REJECTED",
-  "reason": "val MAE 4.5562 > baseline 4.163 \u2014 XGB does not beat stat model; ensemble not winning per spec Task 5."
+  "reason": "REJECTED \u2014 evidence: val 4.5562 (2025-only, without-K scoring) vs local true stat 4.474 fails honest OOS; vs production freeze 4.563/0.648/0.741 the stored val split/scoring is non-comparable (see baseline_note); ensemble w=0.40 val-tuned leaky, combined win is in-sample 2024 leakage."
 }

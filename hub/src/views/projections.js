@@ -7,6 +7,7 @@ import { teamLogo } from '../components/teamLogo.js';
 import { playerCard } from '../components/playerCard.js';
 import { getTeamColor } from '../components/teamColors.js';
 import { openPlayerModal } from '../components/playerModal.js';
+import { escapeHtml } from '../lib/escape.js';
 
 let allPlayers = [];
 let compById = new Map();
@@ -51,8 +52,27 @@ export async function renderProjections(root) {
   const params = new URLSearchParams(location.hash.split('?')[1] || '');
   currentQuery = params.get('q') || document.getElementById('globalSearch')?.value || '';
   currentPage = 1;
+  // Honor ?limit on projections (default 800, max 2000 like server).
+  const limitParam = Number(params.get('limit') || 800);
+  const projLimit = Number.isFinite(limitParam) ? Math.max(10, Math.min(2000, Math.floor(limitParam))) : 800;
 
-  const data = await fetchProjections({});
+  // Fetch rosters FIRST (they have Sleeper IDs which work with CDN).
+  // This mirrors team hub's approach — roster player IDs are Sleeper IDs.
+  let sleeperIdByNamePos = new Map();
+  try {
+    const rosterData = await fetchRoster({});
+    const allRosterPlayers = (rosterData.rosters || rosterData.leagueRosters || [])
+      .flatMap(r => (r.players || []).map(pid => ({ player_id: pid, team: r.team_name })))
+      .concat((rosterData.starters || []), (rosterData.bench || []), (rosterData.reserve || []));
+    for (const p of allRosterPlayers) {
+      if (p.player_id && p.player_name) {
+        const key = `${p.player_name.toLowerCase()}|${(p.position || '').toUpperCase()}`;
+        sleeperIdByNamePos.set(key, String(p.player_id));
+      }
+    }
+  } catch {}
+
+  const data = await fetchProjections({ limit: projLimit });
   allPlayers = data.players || [];
   const meta = data.meta || {};
 
@@ -61,6 +81,14 @@ export async function renderProjections(root) {
   try { compRaw = await fetchComparison({ limit: 2000 }); } catch { compRaw = { players: [], count: 0, meta: {}, fetched_at: null }; }
   compById = new Map((compRaw.players || []).map(c => [String(c.player_id), c]));
   comparisonMeta = compRaw;
+
+  // Enrich ALL players with Sleeper IDs from roster lookup (bypasses GSIS→Sleeper gap)
+  for (const p of allPlayers) {
+    const key = `${(p.player_name || '').toLowerCase()}|${(p.position || '').toUpperCase()}`;
+    if (!p.sleeper_id && sleeperIdByNamePos.has(key)) {
+      p.sleeper_id = sleeperIdByNamePos.get(key);
+    }
+  }
 
   // Ensure all market players are included so no player is missing
   const seenIds = new Set(allPlayers.map(p => String(p.player_id)));
@@ -144,7 +172,7 @@ export async function renderProjections(root) {
   const g = document.getElementById('globalSearch');
   if (g && !g.dataset.bound) {
     g.dataset.bound = '1';
-    g.addEventListener('input', debounce(()=>{ currentQuery = g.value; currentPage = 1; updateTable(); syncHash(); }, 150));
+    g.addEventListener('input', debounce(()=>{ currentQuery = g.value; currentPage = 1; renderTable(); syncHash(); }, 150));
     g.addEventListener('keydown', e=>{ if(e.key==='/' && document.activeElement!==g){ e.preventDefault(); g.focus(); }});
   }
   if (g) g.value = currentQuery;
@@ -157,7 +185,7 @@ export async function renderProjections(root) {
   root.innerHTML = `
     <div class="hero reveal in">
       <h1>Projections</h1>
-      <p>Searchable, sortable source of truth. <span class="mono" style="color:var(--amber)">Model</span> is <code class="inline">calculate_projection</code> + <code class="inline">FLEX ×1.05</code> + <code class="inline">wind&gt;15 → −0.02/mph (QB/WR/K)</code>. Bar shows estimated range (conformal-seeded, position &amp; star-scaled — not a formal 80% guarantee). Overlapping bars = toss-up.</p>
+      <p>Weekly projections. Bars show ±1 SD range; overlap = toss-up.</p>
     </div>
 
     ${hasComparison ? `
@@ -190,7 +218,7 @@ export async function renderProjections(root) {
       <div class="card-body" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between">
         <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center">
           <span class="kicker">Compare vs Market</span>
-          <button class="chip ${compareEnabled ? 'active' : ''}" id="toggleCompare">${compareEnabled ? '✓ Market + ECR visible' : 'Show Market & ECR'}</button>
+          <button class="chip ${compareEnabled ? 'active' : ''}" id="toggleCompare">${compareEnabled ? 'Market + ECR on' : 'Show Market & ECR'}</button>
           <div style="display:flex; gap:6px; margin-left:8px; flex-wrap:wrap">
             <button class="chip ${edgeFilter==='ALL' ? 'active' : ''}" data-edge="ALL">All (${compById.size})</button>
             <button class="chip ${edgeFilter==='BUY' ? 'active' : ''}" data-edge="BUY" style="${edgeFilter==='BUY' ? 'background:var(--emerald-dim); border-color:rgba(16,185,129,0.35); color:var(--emerald)' : ''}">▲ BUY (${buyCount})</button>
@@ -200,14 +228,14 @@ export async function renderProjections(root) {
         <span class="mono" style="font-size:11px; color:var(--text-faint)">Click row ▶ to see stat deltas (pass/rush/rec yds, TDs). Preseason: Sleeper pts empty until Week 1 publish — rank delta (ECR) works now.</span>
       </div>
     </div>
-    ` : `<div class="alert alert-info reveal in" style="margin-top:8px">Market comparison warming up — run refresh to populate Sleeper projections (pts+stats) + FantasyPros ECR/ADP. Until then this table shows Gridiron model only. Free sources: Sleeper <code class="inline">/projections/nfl/regular/{season}/{week}</code> + FantasyPros <code class="inline">/players?show=pos_rank</code> (both $0).</div>`}
+    ` : `<div class="alert alert-info reveal in" style="margin-top:8px">Market comparison not loaded. Showing model only.</div>`}
 
     <div class="card reveal in" style="margin-top:12px">
       <div class="card-body" style="display:flex; flex-direction:column; gap:12px">
         <div class="row">
           <label class="search-mini" style="flex:1; min-width:260px">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-            <input id="localSearch" placeholder="Try:  pos:WR wind>15  or  healthy:true  — chips: pos, team, opp, proj, wind, interval, trending" autocomplete="off" />
+            <input id="localSearch" placeholder="pos:WR wind>15 healthy:true" autocomplete="off" />
           </label>
           <span class="kicker" id="countLabel" style="white-space:nowrap"></span>
           <button class="chip" id="toggleProjSortDir" title="Flip sorting: highest ↔ lowest">↕ Highest → Lowest</button>
@@ -222,15 +250,15 @@ export async function renderProjections(root) {
           <button class="chip" data-chip="wind>15">Wind &gt;15</button>
           <button class="chip" data-chip="interval<3">Tight (±&lt;3)</button>
         </div>
-        ${meta.cold ? `<div class="alert alert-warn">Cache cold — showing DB snapshot or start-sit fallback. Run <code class="inline">curl -X POST http://127.0.0.1:8000/refresh</code> or start <code class="inline">hub/server.py</code>.</div>` : ``}
-        ${!allPlayers.length ? `<div class="alert alert-info">No projections yet. In-season you will see 300+ players here. For now this table shows demo/empty state — search still works once data lands.</div>` : ``}
+        ${meta.cold ? `<div class="alert alert-warn">No fresh data. Refresh to populate.</div>` : ``}
+        ${!allPlayers.length ? `<div class="alert alert-info">No projections yet. Search works once data loads.</div>` : ``}
       </div>
     </div>
 
     <div class="responsive-view">
     ${compareEnabled && hasComparison ? `
     <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; padding:8px 12px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; margin-bottom:10px; font:500 11px "Helvetica Neue", Helvetica,sans-serif; line-height:1.4">
-      <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--amber); border-radius:2px; display:inline-block"></span> <strong style="color:var(--amber)">Gridiron</strong> Model · weekly PPR (×17 for Auction)</span>
+      <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--amber); border-radius:2px; display:inline-block"></span> <strong style="color:var(--amber)">Model</strong> · weekly PPR (×17 for Auction)</span>
       <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--sky); border-radius:2px; display:inline-block"></span> <strong style="color:var(--sky)">Sleeper</strong> Market · free Sleeper projections</span>
       <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--emerald); border-radius:2px; display:inline-block"></span> BUY = Model ≥ +3 pts / ≥12 ranks better</span>
       <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--crimson); border-radius:2px; display:inline-block"></span> SELL = Market ≥ +3 / 12 better</span>
@@ -244,7 +272,7 @@ export async function renderProjections(root) {
             <th data-sort="player_name" tabindex="0" role="button" aria-label="Sort by Player">Player</th>
             <th data-sort="position" tabindex="0" role="button" aria-label="Sort by Position">Pos</th>
             <th data-sort="team" tabindex="0" role="button" aria-label="Sort by Team">Team</th>
-            <th data-sort="projected_points" tabindex="0" role="button" aria-label="Sort by Gridiron Model Points" style="${compareEnabled && hasComparison ? 'color:var(--amber); border-bottom:2px solid var(--amber)' : ''}">Gridiron<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:${compareEnabled && hasComparison ? 'var(--amber)' : 'var(--text-faint)'}; opacity:0.7">Model</span></th>
+            <th data-sort="projected_points" tabindex="0" role="button" aria-label="Sort by Model Points" style="${compareEnabled && hasComparison ? 'color:var(--amber); border-bottom:2px solid var(--amber)' : ''}">Model<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:${compareEnabled && hasComparison ? 'var(--amber)' : 'var(--text-faint)'}; opacity:0.7">proj</span></th>
             ${compareEnabled && hasComparison ? `
             <th data-sort="market_points" tabindex="0" role="button" aria-label="Sort by Sleeper Market Points" style="color:var(--sky); border-bottom:2px solid var(--sky)">Market<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--sky); opacity:0.7">Sleeper</span></th>
             <th data-sort="delta_points" tabindex="0" role="button" aria-label="Sort by Points Delta" style="border-bottom:2px solid var(--border)">Δ<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-faint)">Grid−Mkt</span></th>
@@ -263,8 +291,8 @@ export async function renderProjections(root) {
         <tbody id="projBody"></tbody>
       </table>
     </div>
-    <div class="player-cards-grid" id="projCards"></div>
     </div>
+    <div class="player-cards-grid" id="projCards"></div>
     <div id="paginationControls" style="display:flex; justify:space-between; align-items:center; margin-top:16px; flex-wrap:wrap; gap:8px"></div>
   `;
 
@@ -277,7 +305,7 @@ export async function renderProjections(root) {
     btn.addEventListener('click', ()=>{
       edgeFilter = btn.getAttribute('data-edge');
       currentPage = 1;
-      updateTable();
+      renderTable();
       // update active states
       root.querySelectorAll('[data-edge]').forEach(b=>{
         const e = b.getAttribute('data-edge');
@@ -290,7 +318,7 @@ export async function renderProjections(root) {
   const local = root.querySelector('#localSearch');
   if (local) {
     local.value = currentQuery;
-    local.addEventListener('input', debounce(()=>{ currentQuery = local.value; currentPage = 1; if(g) g.value = currentQuery; updateTable(); syncHash(); }, 150));
+    local.addEventListener('input', debounce(()=>{ currentQuery = local.value; currentPage = 1; if(g) g.value = currentQuery; renderTable(); syncHash(); }, 150));
   }
   root.querySelectorAll('[data-chip]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
@@ -300,7 +328,7 @@ export async function renderProjections(root) {
       currentPage = 1;
       if(local) local.value = currentQuery;
       if(g) g.value = currentQuery;
-      updateTable(); syncHash();
+      renderTable(); syncHash();
     });
   });
 
@@ -311,7 +339,7 @@ export async function renderProjections(root) {
       const k = th.getAttribute('data-sort');
       if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = k==='player_name' ? 1 : -1; }
       currentPage = 1;
-      updateTable();
+      renderTable();
       updateSortToggleLabel();
     };
     th.addEventListener('click', triggerSort);
@@ -327,7 +355,7 @@ export async function renderProjections(root) {
   root.querySelector('#toggleProjSortDir')?.addEventListener('click', ()=>{
     sortDir *= -1;
     currentPage = 1;
-    updateTable();
+    renderTable();
     updateSortToggleLabel();
   });
   updateSortToggleLabel();
@@ -351,7 +379,7 @@ export async function renderProjections(root) {
     return str.toLowerCase();
   }
 
-  function updateTable() {
+  function renderTable() {
     let rows = filteredWithEdge(allPlayers);
     // sort
     rows = [...rows].sort((a,b)=>{
@@ -504,10 +532,10 @@ export async function renderProjections(root) {
             <button class="chip" id="lastPageBtn" ${currentPage === totalPages ? 'disabled style="opacity:0.4; cursor:not-allowed"' : ''}>Last »</button>
           </div>
         `;
-        pag.querySelector('#firstPageBtn')?.addEventListener('click', ()=>{ if (currentPage > 1) { currentPage = 1; updateTable(); } });
-        pag.querySelector('#prevPageBtn')?.addEventListener('click', ()=>{ if (currentPage > 1) { currentPage--; updateTable(); } });
-        pag.querySelector('#nextPageBtn')?.addEventListener('click', ()=>{ if (currentPage < totalPages) { currentPage++; updateTable(); } });
-        pag.querySelector('#lastPageBtn')?.addEventListener('click', ()=>{ if (currentPage < totalPages) { currentPage = totalPages; updateTable(); } });
+        pag.querySelector('#firstPageBtn')?.addEventListener('click', ()=>{ if (currentPage > 1) { currentPage = 1; renderTable(); } });
+        pag.querySelector('#prevPageBtn')?.addEventListener('click', ()=>{ if (currentPage > 1) { currentPage--; renderTable(); } });
+        pag.querySelector('#nextPageBtn')?.addEventListener('click', ()=>{ if (currentPage < totalPages) { currentPage++; renderTable(); } });
+        pag.querySelector('#lastPageBtn')?.addEventListener('click', ()=>{ if (currentPage < totalPages) { currentPage = totalPages; renderTable(); } });
       }
     }
   }
@@ -517,8 +545,7 @@ export async function renderProjections(root) {
     location.hash = currentQuery ? `${base}?q=${encodeURIComponent(currentQuery)}` : base;
   }
 
-  updateTable();
+  renderTable();
 }
 
 function debounce(fn, ms=150){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
-function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'); }

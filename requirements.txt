@@ -1,9 +1,17 @@
+# pyproject.toml is canonical; this file is for quick-start only.
+# Edit dependencies in pyproject.toml and keep this file in sync if you need it.
+# Last-verified resolved versions (2026-09-03, from `.venv/bin/pip freeze`;
+# informational only — ranges below stay canonical, no bumps, no hashes/lockfile:
+# $0 local scope, CI installs fresh each run):
+#   fastapi==0.141.1, uvicorn==0.52.4, nflreadpy==0.1.5,
+#   requests==2.34.2, pydantic==2.13.4, python-dotenv==1.2.3
 fastapi>=0.115
 uvicorn>=0.30
 nflreadpy>=0.1
 requests>=2.32
 pydantic>=2.9
 pytest>=8.3
-xgboost>=2.0
-scikit-learn>=1.4
-numpy>=1.26
+# ml extras: pip install -e .[ml]
+# xgboost>=2.0
+# scikit-learn>=1.4
+# numpy>=1.26

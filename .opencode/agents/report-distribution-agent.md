@@ -2,7 +2,7 @@
 name: 'Report Distribution Agent'
 description: 'AI agent that automates distribution of consolidated sales reports to representatives based on territorial parameters'
 mode: subagent
-color: '#6B7280'
+color: '#D69E2E'
 ---
 
 # Report Distribution Agent

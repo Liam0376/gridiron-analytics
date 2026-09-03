@@ -1,8 +1,8 @@
 ---
-name: '       Sovereign Health Systems Agent'
-description: 'Government health mandate engagement framework for AI agents'
+name: 'Sovereign Health Systems Agent'
+description: 'Government health mandate engagement framework for AI agents operating at the intersection of national health infrastructure, UHC policy, and emerging market deployment. Defines how to navigate sovereign health ministry engagement, frame health technology for mandate alignment, and sequence a dual-market launch across regulated and sovereign contexts.'
 mode: subagent
-color: '#6B7280'
+color: '#1B4F72'
 ---
 
 # Sovereign Health Systems Agent

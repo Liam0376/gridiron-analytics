@@ -1,0 +1,31 @@
+{
+  "target": 0.8,
+  "alpha": 0.2,
+  "n_holdout_2025": 5425,
+  "n_calibration_2024": 5281,
+  "method": "honest OOS: calibration residuals from 2024 train (weeks 4-18, true scoring via scoring.py DEFAULT_SCORING), evaluated once on 2025 holdout (weeks 4-18). Raw via conformal.empirical_coverage() (single qhat width, no scaling). Displayed via projection.py heuristic scaling (pos_factor * point_factor, clamped 3-14) per-row — measure only, widths frozen.",
+  "source": "data/ml/val_2025.jsonl (derived from data/nfl_cache/stats_*.json + schedule; cache exists at data/nfl_cache/, never /private/tmp scratch path) + data/ml/train_2023_2024.jsonl (2024 slice) for calibration",
+  "sample": "full holdout (n=5425), no subsampling (compute <1s, feasible)",
+  "base_width_qhat": 7.4266,
+  "raw": {
+    "overall": 0.8052,
+    "by_pos": {
+      "QB": 0.5814,
+      "K": 0.8613,
+      "WR": 0.8179,
+      "TE": 0.872,
+      "RB": 0.8048
+    }
+  },
+  "displayed": {
+    "overall": 0.8208,
+    "by_pos": {
+      "QB": 0.7898,
+      "K": 0.5861,
+      "WR": 0.86,
+      "TE": 0.8355,
+      "RB": 0.8403
+    }
+  },
+  "note": "80% is target, not guarantee (conformal.py). Raw QB undercovers (0.58) — fat tails for stars; displayed QB improves (0.79) via 1.45x factor but K undercovers (0.59) via 0.55x narrow factor. Widths frozen for display stability — this file only measures, never retunes."
+}

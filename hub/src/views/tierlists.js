@@ -4,6 +4,8 @@ import { posBadge } from '../components/badges.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
 import { getTeamColor } from '../components/teamColors.js';
+import { escapeHtml } from '../lib/escape.js';
+import { openPlayerModal } from '../components/playerModal.js';
 
 const POSITIONS = ['QB','RB','WR','TE','FLEX'];
 
@@ -40,7 +42,7 @@ export async function renderTierlists(root) {
 
   root.innerHTML = `
     <div class="hero reveal in">
-      <h1>Tierlists <span class="badge" style="background:var(--color-primary); color:white; margin-left:8px; vertical-align:middle">${view==='season' ? 'SEASON ROS' : 'WEEK 10'}</span></h1>
+      <h1>Tiers <span class="badge" style="background:var(--color-primary); color:white; margin-left:8px; vertical-align:middle">${view==='season' ? 'SEASON ROS' : 'WEEK 10'}</span></h1>
       <p>Deterministic — sorted by <code class="inline">point_estimate</code> then cut when gap &gt; <code class="inline">max(${gap}, 0.7×median width)</code> or tier hits <code class="inline">cap=${cap}</code>. No LLM. <strong>Week</strong> = next game (star-aware ±${view==='season'?'~15-35':'~6-10'}). <strong>Season</strong> = ROS ` + (view==='season' ? `9 games (weeks 10-18) × weekly, width ×√9` : `weekly`) + ` — switch to <strong>FLEX</strong> for your 2-FLEX board (RB/WR/TE <code class="inline">×1.05</code>).</p>
     </div>
     <div class="card reveal in" style="margin-top:12px">
@@ -65,7 +67,7 @@ export async function renderTierlists(root) {
             <div class="tier-head"><strong style="color:${tierColor(idx)}">Tier ${idx+1}</strong><span class="micro faint">${tier.length} players · ${tier[0].projected_points?.toFixed(1)} → ${tier[tier.length-1].projected_points?.toFixed(1)} pts</span></div>
             <div class="tier-body">
               ${tier.map(p=>`
-                <div class="player-card" style="--team-accent:${getTeamColor((p.team||'').toUpperCase())}; border-left:3px solid var(--team-accent); background:linear-gradient(90deg, color-mix(in srgb, var(--team-accent) 7%, var(--surface-raised)) 0%, var(--surface-raised) 50%)">
+                <div class="player-card" data-pid="${escapeHtml(p.player_id || '')}" style="--team-accent:${getTeamColor((p.team||'').toUpperCase())}; border-left:3px solid var(--team-accent); background:linear-gradient(90deg, color-mix(in srgb, var(--team-accent) 7%, var(--surface-raised)) 0%, var(--surface-raised) 50%); cursor:pointer">
                   <div class="row" style="gap:8px">${playerAvatar(p, 28)} <div style="flex:1; min-width:0"><div class="row" style="gap:6px">${posBadge(p.position || p.position_group)} <span class="name">${escapeHtml(p.player_name || p.player_id)}</span></div><div class="meta">${teamLogo(p.team, 14)} ${escapeHtml(p.team||'—')} vs ${escapeHtml(p.opponent_team||'—')} · ${p.wind_mph ? `${Number(p.wind_mph).toFixed(0)} mph` : '—'}</div></div></div>
                   <div class="pts">${Number(p.projected_points ?? p.point_estimate ?? 0).toFixed(1)} <span style="font:500 11px ui-monospace, SFMono-Regular, monospace; color:var(--text-muted)">±${Number(p.width ?? 5).toFixed(1)}</span></div>
                 </div>
@@ -76,6 +78,14 @@ export async function renderTierlists(root) {
       </div>`
     }
   `;
+
+  root.querySelectorAll('[data-pid]').forEach(el => {
+    el.addEventListener('click', () => {
+      const pid = el.getAttribute('data-pid');
+      const found = players.find(p => String(p.player_id) === String(pid));
+      if (found) openPlayerModal(found, root);
+    });
+  });
 
   root.querySelectorAll('[data-pos]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
@@ -98,9 +108,8 @@ export async function renderTierlists(root) {
     const md = tiers.map((t,i)=>`### Tier ${i+1}\n` + t.map(p=>`- ${p.player_name || p.player_id} (${p.position || p.position_group}) — ${Number(p.projected_points ?? 0).toFixed(1)} pts`).join('\n')).join('\n\n');
     navigator.clipboard.writeText(md || 'No tiers yet');
     const btn = root.querySelector('#copyMd');
-    if(btn){ btn.textContent='Copied ✓'; setTimeout(()=>btn.textContent='Copy markdown', 1200); }
+    if(btn){ btn.textContent='Copied'; setTimeout(()=>btn.textContent='Copy markdown', 1200); }
   });
 }
 
 function tierColor(i){ const cols=['#F59E0B','#38BDF8','#10B981','#8B5CF6','#EC4899','#6B7280']; return cols[i % cols.length]; }
-function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }

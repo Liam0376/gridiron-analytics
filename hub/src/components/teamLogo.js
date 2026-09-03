@@ -1,9 +1,6 @@
 // NFL team logo via Sleeper CDN with colored-pill fallback
 import { getTeamColor } from './teamColors.js';
-
-function escapeAttr(s) {
-  return String(s || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
-}
+import { escapeAttr } from '../lib/escape.js';
 
 export function teamLogo(teamAbbr, size = 24) {
   const abbr = (teamAbbr || '').toUpperCase();

@@ -1,82 +1,28 @@
+// hub/src/views/auction.js — orchestrator. Public API: renderAuction(root).
+// Split from a 940-line monolith on 2026-09-01:
+//   - lib/auctionMath.js     pure math (VBD, replacement, $/VOR)
+//   - views/auction/state.js localStorage draft state
+//   - views/auction/bidAdvice.js  live bid advice
+//   - views/auction/table.js table render + sort + modals
+
 import { fetchProjections, fetchComparison } from '../api.js';
 import { posBadge } from '../components/badges.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
-import { playerCard } from '../components/playerCard.js';
 import { getTeamColor } from '../components/teamColors.js';
-
-const BUDGET = 200;
-const TEAMS = 12;
-const ROSTER_SIZE = 14; // 10 starters + 4 bench
-const SEASON_GAMES = 17;
-const STORE_KEY = 'ffba-auction-draft';
-
-function loadDraftState() {
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (_) {}
-  return { drafted: {}, myRoster: [], myBudget: BUDGET, nominations: [] };
-}
-
-function saveDraftState(state) {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (_) {}
-}
-
-function edgeBadgeAuction(edge) {
-  if (edge === 'BUY') return `<span class="badge" style="background:var(--emerald-dim); color:var(--emerald); border:1px solid rgba(16,185,129,0.22); font-size:10px">▲ BUY</span>`;
-  if (edge === 'SELL') return `<span class="badge" style="background:var(--crimson-dim); color:var(--crimson); border:1px solid rgba(239,68,68,0.22); font-size:10px">▼ SELL</span>`;
-  return `<span class="badge" style="background:rgba(0,0,0,0.05); color:var(--text-faint); border:1px solid var(--border); font-size:10px">—</span>`;
-}
-function deltaSeasonBadge(d) {
-  if (d == null) return `<span class="mono" style="color:var(--text-faint)">—</span>`;
-  const v = Number(d);
-  const color = v > 8 ? 'var(--emerald)' : v < -8 ? 'var(--crimson)' : 'var(--text-muted)';
-  const arrow = v > 8 ? '↑' : v < -8 ? '↓' : '·';
-  const sign = v > 0 ? '+' : '';
-  return `<span class="mono" style="color:${color}; font-weight:700; font-size:11px">${arrow} ${sign}${v.toFixed(0)}</span>`;
-}
-function liveAdviceFor(p, state, myRemaining, maxBid, myNeeds, slotsLeft){
-  const pos = (p.position||'').toUpperCase();
-  const need = myNeeds[pos] ?? 0;
-  const tier = p.fp_tier ?? p.tier ?? 5;
-  const edge = p.edge || 'NEUTRAL';
-  const width = Number(p.widthRos ?? p.width*4 ?? 20);
-  const auctionVal = p.auction ?? 1;
-  const delta = p.deltaRos;
-  let cap = Math.min(auctionVal + (edge==='BUY'?6: edge==='SELL'? -2 : 2), maxBid);
-  if (tier <=2 && edge==='BUY') cap = Math.min(cap+4, maxBid);
-  if (width > 40) cap = Math.max(1, cap - 2);
-  cap = Math.max(1, Math.min(cap, myRemaining - Math.max(0, slotsLeft-1)));
-  let title, color, text;
-  if (myRemaining < 5) {
-    title = 'BUDGET TIGHT — $1 only';
-    color = 'var(--crimson)';
-    text = `You have $${myRemaining} left. Only bid $1 unless ${p.player_name} is your last starter.`;
-  } else if (p.isDrafted) {
-    title = 'Already drafted';
-    color = 'var(--text-faint)';
-    text = `${p.player_name} is gone for $${p.draftedPrice ?? '?'} (${p.draftedBy}).`;
-    cap = 0;
-  } else if (edge==='BUY' && need>0) {
-    title = 'STRONG BUY — bid aggressively';
-    color = 'var(--emerald)';
-    text = `Gridiron sees +${delta!=null?Number(delta).toFixed(0):'?'} season vs Market (T${tier}, ${pos} need: ${need} left). Value $${auctionVal} → cap $${cap} (max $${maxBid}). Narrow interval ±${width.toFixed(0)} = floor play.`;
-  } else if (edge==='BUY') {
-    title = 'BUY — value but you\'re set at ' + pos;
-    color = 'var(--emerald)';
-    text = `Value says $${auctionVal} (+${delta!=null?Number(delta).toFixed(0):'?'} vs Market, T${tier}) but you have no ${pos} need (${need} left). Nominate to drain opponents, or cap $${cap} if you want depth.`;
-  } else if (edge==='SELL') {
-    title = 'CAUTION — Market overpay';
-    color = 'var(--crimson)';
-    text = `Market pays ${delta!=null?Math.abs(Number(delta)).toFixed(0):'?'} season more than Gridiron (T${tier}). Let others burn cash — cap $${cap} ($${auctionVal} sticker). Wide interval ±${width.toFixed(0)} = risky.`;
-  } else {
-    title = need>0 ? 'Fair value — fill need' : 'Fair value — depth';
-    color = need>0 ? 'var(--amber)' : 'var(--text-muted)';
-    text = `Neutral edge T${tier} — fair at $${auctionVal} (Δ ${delta!=null?(Number(delta)>0?'+':'')+Number(delta).toFixed(0):'—'}). ${need>0?`You need ${need} more ${pos} — cap $${cap}.`:`No ${pos} need — cap $${cap} for depth.`} Max $${maxBid}, $${myRemaining} left.`;
-  }
-  return { title, color, text, cap: Math.max(0, Math.round(cap)) };
-}
+import { trapFocus } from '../lib/focusTrap.js';
+import { escapeHtml, escapeAttr } from '../lib/escape.js';
+import {
+  BUDGET,
+  SEASON_GAMES,
+  edgeBadgeAuction,
+  deltaSeasonBadge,
+  computeAuctionMath,
+  mergeComparisonPlayers,
+} from '../lib/auctionMath.js';
+import { loadDraftState, resetDraftState } from './auction/state.js';
+import { liveAdviceFor } from './auction/bidAdvice.js';
+import { tableHeaders, tableBody, bindTableEvents, showDraftModal, parseSort, sortPlayers } from './auction/table.js';
 
 export async function renderAuction(root) {
   const params = new URLSearchParams(location.hash.split('?')[1] || '');
@@ -88,246 +34,47 @@ export async function renderAuction(root) {
     fetchComparison({ limit: 800 }).catch(() => ({ players: [], count: 0, fetched_at: null, meta: {} })),
   ]);
   let players = data.players || [];
-  const compById = new Map((compRaw.players || []).map(c => [String(c.player_id), c]));
-  // Secondary lookup by name+position (comparison uses synthetic IDs, projections use real IDs)
-  const compByNamePos = new Map();
-  for (const c of (compRaw.players || [])) {
-    const key = `${(c.player_name||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim()}|${(c.position||'').toUpperCase()}`;
-    compByNamePos.set(key, c);
-  }
-
-  // Merge any market-only or rookie players from compRaw into players list if missing
-  const existingIds = new Set(players.map(p => String(p.player_id)));
-  const existingByNamePos = new Set(players.map(p => `${(p.player_name||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim()}|${(p.position||'').toUpperCase()}`));
-  for (const c of (compRaw.players || [])) {
-    const cid = String(c.player_id);
-    const nkey = `${(c.player_name||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim()}|${(c.position||'').toUpperCase()}`;
-    if (!existingIds.has(cid) && !existingByNamePos.has(nkey)) {
-      players.push({
-        player_id: cid,
-        player_name: c.player_name,
-        position: c.position,
-        team: c.team,
-        projected_points: c.model_points || 0,
-        point_estimate: c.model_points || 0,
-        ...c,
-      });
-      existingIds.add(cid);
-      existingByNamePos.add(nkey);
-    }
-  }
+  mergeComparisonPlayers(players, compRaw);
 
   if (!players.length) {
     root.innerHTML = `
-      <div class="hero reveal in"><h1>Auction Draft</h1><p>No projection data. Run <code class="inline">bash hub/start.sh --auto</code> first.</p></div>`;
+      <div class="hero reveal in"><h1>Auction Draft</h1><p>No projection data. Run start.sh to populate.</p></div>`;
     return;
   }
+
+  const compById = new Map((compRaw.players || []).map(c => [String(c.player_id), c]));
+  const compByNamePos = new Map();
+  for (const c of (compRaw.players || [])) {
+    const key = `${(c.player_name || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim()}|${(c.position || '').toUpperCase()}`;
+    compByNamePos.set(key, c);
+  }
+
   const hasComparison = compById.size > 0;
   let compareAuctionEnabled = hasComparison;
-  // allow toggle via localStorage
-  try { const v = localStorage.getItem('ffba-auction-compare'); if (v === '0') compareAuctionEnabled = false; if (v === '1' && hasComparison) compareAuctionEnabled = true; } catch {}
+  try {
+    const v = localStorage.getItem('ffba-auction-compare');
+    if (v === '0') compareAuctionEnabled = false;
+    if (v === '1' && hasComparison) compareAuctionEnabled = true;
+  } catch (_) {
+    // localStorage unavailable in private mode
+  }
 
   const state = loadDraftState();
 
-  // Full-season ROS (17 games for pre-draft)
-  const remaining = SEASON_GAMES;
-  const rosPlayers = players.map(p => {
-    const nkey = `${(p.player_name||'').toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim()}|${(p.position||'').toUpperCase()}`;
-    const c = compByNamePos.get(nkey) || compById.get(String(p.player_id));
-    // Prefer backend's neutral, shrunk, weighted season totals (model_season_points) over weekly*17
-    // to avoid Vegas-extrapolation and scoring-alias bias (audit 2026-09-01)
-    const seasonFromBackend = c && c.model_season_points != null ? Number(c.model_season_points) : null;
-    const weeklyModel = c && c.model_points != null ? Number(c.model_points) : Number(p.projected_points ?? p.point_estimate ?? 0);
-    const weeklyMarket = c && c.market_points != null ? Number(c.market_points) : null;
-    const ros = seasonFromBackend != null ? seasonFromBackend : weeklyModel * remaining;
-    // Prefer FantasyPros season total (596 full stat season) over Sleeper weekly×17 (98 starters only)
-    const seasonMarketFromFP = c && c.market_season_points != null ? Number(c.market_season_points) : null;
-    const marketRos = seasonMarketFromFP != null ? seasonMarketFromFP : (weeklyMarket != null ? weeklyMarket * remaining : null);
-    const deltaRos = marketRos != null ? +(ros - marketRos).toFixed(1) : null;
-    // Season stat deltas — prefer FP season totals (full) over weekly×17 proxy
-    let seasonStatDeltas = null;
-    if (c && Array.isArray(c.season_stat_deltas) && c.season_stat_deltas.length) {
-      seasonStatDeltas = c.season_stat_deltas;
-    } else if (c && Array.isArray(c.stat_deltas) && c.stat_deltas.length) {
-      seasonStatDeltas = c.stat_deltas.map(s => ({
-        ...s,
-        modelSeason: s.model != null ? +(s.model * remaining).toFixed(1) : null,
-        marketSeason: s.market != null ? +(s.market * remaining).toFixed(1) : null,
-        deltaSeason: s.delta != null ? +(s.delta * remaining).toFixed(1) : null,
-      }));
-    }
-    return {
-      ...p,
-      // overwrite weekly with comparison model weekly for consistency
-      weekly: weeklyModel,
-      ros,
-      marketWeekly: weeklyMarket,
-      marketRos,
-      deltaRos,
-      seasonStatDeltas,
-      widthRos: Number(p.width ?? c?.width ?? 5) * Math.sqrt(remaining),
-      fp_ecr: c?.fp_ecr ?? null,
-      fp_ecr_pos: c?.fp_ecr_pos ?? null,
-      fp_adp: c?.fp_adp ?? null,
-      fp_tier: c?.fp_tier ?? null,
-      delta_rank: c?.delta_rank ?? null,
-      edge: c?.edge || 'NEUTRAL',
-      edge_score: c?.edge_score ?? 0,
-      isDrafted: !!state.drafted[p.player_id],
-      draftedBy: state.drafted[p.player_id]?.by || null,
-      draftedPrice: state.drafted[p.player_id]?.price || null,
-    };
-  });
+  const math = computeAuctionMath(players, compRaw, compById, compByNamePos, state, { budget });
+  const {
+    rosPlayers, allRanked, posGroups, posBudget, flexBudget, nominationTargets,
+    myRosterPlayers, myRosterCount, mySpent, myRemaining, maxBid, slotsLeft,
+    draftedCount, availablePlayers, budget: usedBudget,
+  } = math;
 
-  // Position buckets
-  const byPos = { QB:[], RB:[], WR:[], TE:[], K:[], DEF:[] };
-  rosPlayers.forEach(p => {
-    const pos = (p.position || 'UNK').toUpperCase();
-    if (byPos[pos]) byPos[pos].push(p);
-    else byPos[pos] = [p];
-  });
-  Object.values(byPos).forEach(arr => arr.sort((a, b) => b.ros - a.ros));
-
-  // Replacement levels — aligned with comparison.py/vbdAuction.js: QB12 RB28 WR32 TE12 (12-team 2-FLEX =72 starters)
-  // Audit: previous RB24/WR24 understated RB/WR scarcity; now 28/32 per 2026-09-01 audit
-  const replIdx = { QB: 12-1, RB: 28-1, WR: 32-1, TE: 12-1, K: 12-1, DEF: 12-1 };
-  const replPts = {};
-  for (const pos of Object.keys(byPos)) {
-    const arr = byPos[pos];
-    const idx = replIdx[pos] ?? 0;
-    replPts[pos] = arr[idx]?.ros ?? (arr[arr.length - 1]?.ros ?? 0);
-  }
-
-  // FLEX pool: remaining RB/WR/TE after positional starters (12*2=24 flex slots)
-  const flexPool = [
-    ...(byPos.RB.slice(28)),
-    ...(byPos.WR.slice(32)),
-    ...(byPos.TE.slice(12)),
-  ].sort((a, b) => b.ros - a.ros);
-  const flexRepl = flexPool[24 - 1]?.ros ?? 0;
-
-  // Positional weights to match backend (QB 0.65 overvalued pure VOR in 1QB)
-  const POS_WEIGHT = { QB: 0.65, RB: 1.10, WR: 0.92, TE: 0.78, K: 0, DEF: 0 };
-
-  // Compute VOR (weighted)
-  rosPlayers.forEach(p => {
-    const pos = (p.position || '').toUpperCase();
-    let baseRepl = replPts[pos] ?? 0;
-    if (['RB', 'WR', 'TE'].includes(pos)) baseRepl = Math.max(baseRepl, flexRepl);
-    p.repl = baseRepl;
-    const rawVor = Math.max(0, p.ros - baseRepl);
-    const w = POS_WEIGHT[pos] ?? 1;
-    p.vor = rawVor * w;
-    // K/DEF streamed $1 — cap
-    if (pos === 'K' || pos === 'DEF') p.vor = 0;
-  });
-
-  // Auction pricing — $2352 starter pool (12*200 -48 bench $1)
-  const benchSlots = TEAMS * 4;
-  const totalStarterBudget = TEAMS * budget - benchSlots * 1;
-  const starters = rosPlayers.filter(p => p.vor > 0).sort((a, b) => b.vor - a.vor).slice(0, TEAMS * 10);
-  const totalVor = starters.reduce((s, p) => s + p.vor, 0) || 1;
-  starters.forEach(p => {
-    if (p.position === 'K' || p.position === 'DEF') p.auction = 1;
-    else p.auction = Math.max(1, Math.round((p.vor / totalVor) * totalStarterBudget));
-  });
-  const benchPlayers = rosPlayers.filter(p => !starters.includes(p));
-  benchPlayers.forEach(p => p.auction = 1);
-  // Market $ — same weighted VOR on marketRos
-  const marketByPos = { QB:[], RB:[], WR:[], TE:[], K:[], DEF:[] };
-  rosPlayers.forEach(pp=>{ const pos=(pp.position||'').toUpperCase(); if(marketByPos[pos]) marketByPos[pos].push(pp); });
-  Object.values(marketByPos).forEach(arr=> arr.sort((a,b)=> (b.marketRos||0)-(a.marketRos||0)));
-  const marketReplPts={}; for(const pos of Object.keys(marketByPos)){ const arr=marketByPos[pos]; const idx=replIdx[pos]??0; marketReplPts[pos]=arr[idx]?.marketRos ?? (arr[arr.length-1]?.marketRos ?? 0); }
-  const marketFlexPool=[...(marketByPos.RB.slice(28)), ...(marketByPos.WR.slice(32)), ...(marketByPos.TE.slice(12))].sort((a,b)=> (b.marketRos||0)-(a.marketRos||0));
-  const marketFlexRepl=marketFlexPool[24-1]?.marketRos ?? 0;
-  rosPlayers.forEach(pp=>{ const pos=(pp.position||'').toUpperCase(); let base=marketReplPts[pos]??0; if(['RB','WR','TE'].includes(pos)) base=Math.max(base, marketFlexRepl); pp.marketRepl=base; const raw=Math.max(0, (pp.marketRos||0)-base); const w=POS_WEIGHT[pos]??1; pp.marketVor = (pos==='K'||pos==='DEF') ? 0 : raw*w; });
-  const marketStarters = rosPlayers.filter(pp=>pp.marketVor>0).sort((a,b)=>b.marketVor-a.marketVor).slice(0, TEAMS*10);
-  const totalMarketVor = marketStarters.reduce((s,pp)=>s+pp.marketVor,0)||1;
-  marketStarters.forEach(pp=>{ if(pp.position==='K'||pp.position==='DEF') pp.marketAuction=1; else pp.marketAuction=Math.max(1, Math.round((pp.marketVor/totalMarketVor)*totalStarterBudget)); });
-  rosPlayers.filter(pp=>!marketStarters.includes(pp)).forEach(pp=> pp.marketAuction=1);
-  // Blend with StatsGuy 60/40 where available
-  const topFpAuction = Math.max(...rosPlayers.map(x=> x.marketAuction||0)) || 45;
-  rosPlayers.forEach(pp=>{
-    if (pp.statsguy_value!=null) {
-      const sgAuction = Math.max(1, Math.round((pp.statsguy_value / 10000) * topFpAuction));
-      const blended = Math.round(pp.marketAuction * 0.6 + sgAuction * 0.4);
-      pp.marketAuctionFP = pp.marketAuction;
-      pp.marketAuctionSG = sgAuction;
-      pp.marketAuction = blended;
-    }
-    pp.deltaAuction = pp.auction - (pp.marketAuction||1);
-    if (pp.deltaAuction >= 5 && pp.edge!=='BUY') { pp.edge='BUY'; }
-    else if (pp.deltaAuction <= -5 && pp.edge!=='SELL') { pp.edge='SELL'; }
-  });
-  const allRanked = [...starters, ...benchPlayers].sort((a, b) => b.auction - a.auction || b.ros - a.ros);
-
-  // Assign tiers
-  allRanked.forEach((p, i) => {
-    if (i < 8) p.tier = 1;
-    else if (i < 20) p.tier = 2;
-    else if (i < 40) p.tier = 3;
-    else if (i < 70) p.tier = 4;
-    else p.tier = 5;
-  });
-
-  // Positional budget allocation (recommended spend per position)
-  const posGroups = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
-  const posBudget = {};
-  for (const pos of posGroups) {
-    const posStarters = starters.filter(p => (p.position || '').toUpperCase() === pos);
-    const posVor = posStarters.reduce((s, p) => s + p.vor, 0);
-    const share = posVor / totalVor;
-    const posSlots = pos === 'QB' ? 1 : pos === 'RB' ? 2 : pos === 'WR' ? 2 : pos === 'TE' ? 1 : 1;
-    posBudget[pos] = {
-      recommended: Math.round(share * budget),
-      slots: posSlots,
-      perSlot: Math.round(share * budget / posSlots),
-    };
-  }
-  // FLEX budget is shared across RB/WR/TE
-  const flexBudget = Math.round((budget - Object.values(posBudget).reduce((s, v) => s + v.recommended, 0)));
-
-  // Nomination strategy: players to nominate that drain opponents
-  const myRosterPositions = state.myRoster.map(id => {
-    const p = rosPlayers.find(x => x.player_id === id);
-    return p ? (p.position || '').toUpperCase() : '';
-  });
-  const myNeeds = {};
-  const targetSlots = { QB: 1, RB: 4, WR: 4, TE: 2, K: 1, DEF: 1 }; // starters + depth
-  for (const pos of posGroups) {
-    const have = myRosterPositions.filter(p => p === pos).length;
-    myNeeds[pos] = Math.max(0, (targetSlots[pos] || 1) - have);
-  }
-
-  const nominationTargets = allRanked
-    .filter(p => !p.isDrafted && p.auction >= 5)
-    .filter(p => {
-      const pos = (p.position || '').toUpperCase();
-      return myNeeds[pos] === 0 || p.tier >= 3;
-    })
-    .slice(0, 10);
-
-  // Draft tracker stats
-  const draftedCount = Object.keys(state.drafted).length;
-  const availablePlayers = allRanked.filter(p => !p.isDrafted);
-  const myRosterPlayers = state.myRoster.map(id => allRanked.find(p => p.player_id === id)).filter(Boolean);
-  const mySpent = myRosterPlayers.reduce((s, p) => s + (state.drafted[p.player_id]?.price || 0), 0);
-  const myRemaining = budget - mySpent;
-  const myRosterCount = state.myRoster.length;
-  const slotsLeft = ROSTER_SIZE - myRosterCount;
-  const maxBid = slotsLeft > 1 ? myRemaining - (slotsLeft - 1) : myRemaining;
-
-  // Comparison counts for header — season market is primary (FP CSV 596) with Sleeper weekly fallback
   const buyCount = [...compById.values()].filter(c => c.edge === 'BUY').length;
   const sellCount = [...compById.values()].filter(c => c.edge === 'SELL').length;
   const marketCovered = [...compById.values()].filter(c => c.market_season_points != null || c.market_points != null).length;
-  // Filters
+
   const activePos = params.get('pos') || 'ALL';
   const auctionEdge = params.get('edge') || 'ALL';
-  // Sorting: ?sort=auction&dir=-1  (default auction descending = highest to lowest)
-  const allowedSort = new Set(['player_name','position','weekly','ros','marketRos','deltaRos','fp_ecr','fp_adp','statsguy_rank','vor','auction','marketAuction','deltaAuction','edge_score','tier']);
-  const auctionSortKey = allowedSort.has(params.get('sort')) ? params.get('sort') : 'auction';
-  const auctionSortDir = params.get('dir') === '1' ? 1 : -1;
+  const { sortKey: auctionSortKey, sortDir: auctionSortDir } = parseSort(params);
 
   let filteredPlayers = activePos === 'ALL'
     ? [...availablePlayers]
@@ -335,26 +82,16 @@ export async function renderAuction(root) {
   if (hasComparison && compareAuctionEnabled && auctionEdge !== 'ALL') {
     filteredPlayers = filteredPlayers.filter(p => (p.edge || 'NEUTRAL') === auctionEdge);
   }
-  // Sort: numeric descending is highest to lowest; ascending is lowest to highest
-  filteredPlayers.sort((a,b)=>{
-    const av = a[auctionSortKey];
-    const bv = b[auctionSortKey];
-    // handle string vs number, nulls last
-    if (av == null && bv == null) return 0;
-    if (av == null) return 1;
-    if (bv == null) return -1;
-    if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * auctionSortDir;
-    if (typeof av === 'string' && typeof bv === 'string') return av.localeCompare(bv) * auctionSortDir;
-    return String(av).localeCompare(String(bv)) * auctionSortDir;
-  });
+  filteredPlayers = sortPlayers(filteredPlayers, auctionSortKey, auctionSortDir);
 
-  const focusedPlayer = focusPid ? allRanked.find(p=>String(p.player_id)===String(focusPid)) : null;
+  const focusedPlayer = focusPid ? allRanked.find(p => String(p.player_id) === String(focusPid)) : null;
+  const myNeeds = math.myNeeds;
   const liveAdvice = focusedPlayer ? liveAdviceFor(focusedPlayer, state, myRemaining, maxBid, myNeeds, slotsLeft) : null;
 
   root.innerHTML = `
     <div class="hero reveal in">
-      <h1>Auction Draft <span class="badge" style="background:var(--color-accent,#16A34A); color:white; margin-left:8px; vertical-align:middle">$${budget}</span></h1>
-      <p>Full-season VOR (${SEASON_GAMES}g) → auction $. 2-FLEX league inflates RB/WR/TE. Season totals = <span class="mono" style="color:var(--amber)">Gridiron wk×17</span> vs <span class="mono" style="color:var(--sky)">Market Season — FantasyPros projections (596 players, full stat season)</span> + <span class="mono" style="color:var(--violet)">FP ECR/ADP Tiers</span>. Use Market Δ &amp; Edge to find <strong>$ value leaks</strong> — BUY where Gridiron &gt; Market.</p>
+      <h1>Auction Draft <span class="badge" style="background:var(--color-accent,#16A34A); color:white; margin-left:8px; vertical-align:middle">$${usedBudget}</span></h1>
+      <p>Market season projections · ECR/ADP tiers.</p>
     </div>
 
     ${hasComparison ? `
@@ -362,35 +99,34 @@ export async function renderAuction(root) {
       <div class="kpi-card" style="border-left:3px solid var(--emerald)">
         <div class="kpi-label">BUY edges — season</div>
         <div class="kpi-value" style="color:var(--emerald)">${buyCount}</div>
-        <div class="kpi-bar"><div class="kpi-bar-fill good" style="width:${Math.min(100, Math.round((buyCount/Math.max(1, Math.min(40, compById.size/6)))*100))}%"></div></div>
+        <div class="kpi-bar"><div class="kpi-bar-fill good" style="width:${Math.min(100, Math.round((buyCount / Math.max(1, Math.min(40, compById.size / 6))) * 100))}%"></div></div>
         <div class="micro faint" style="font-size:11px; margin-top:6px">Model season ≥ +51 pts vs FantasyPros season (or rank ≥12 better than ECR)</div>
       </div>
       <div class="kpi-card" style="border-left:3px solid var(--crimson)">
         <div class="kpi-label">SELL flags — overpriced</div>
         <div class="kpi-value" style="color:var(--crimson)">${sellCount}</div>
-        <div class="kpi-bar"><div class="kpi-bar-fill bad" style="width:${Math.min(100, Math.round((sellCount/Math.max(1, Math.min(40, compById.size/6)))*100))}%"></div></div>
+        <div class="kpi-bar"><div class="kpi-bar-fill bad" style="width:${Math.min(100, Math.round((sellCount / Math.max(1, Math.min(40, compById.size / 6))) * 100))}%"></div></div>
         <div class="micro faint" style="font-size:11px; margin-top:6px">FantasyPros season ≥ +51 pts vs Model · avoid paying sticker</div>
       </div>
       <div class="kpi-card" style="border-left:3px solid var(--sky)">
         <div class="kpi-label">Market coverage (season)</div>
         <div class="kpi-value" style="color:var(--sky)">${marketCovered} / ${compById.size}</div>
-        <div class="kpi-bar"><div class="kpi-bar-fill" style="background:var(--sky); width:${Math.round((marketCovered/Math.max(1, compById.size))*100)}%"></div></div>
+        <div class="kpi-bar"><div class="kpi-bar-fill" style="background:var(--sky); width:${Math.round((marketCovered / Math.max(1, compById.size)) * 100)}%"></div></div>
         <div class="micro faint" style="font-size:11px; margin-top:6px">FantasyPros season projections (596, YDS/TDS) + ECR 519/ADP 695 CSVs · Sleeper weekly fallback 98 starters</div>
       </div>
       <div class="kpi-card" style="border-left:3px solid var(--amber)">
         <div class="kpi-label">Auction vs Market</div>
-        <div class="kpi-value" style="font-size:14px; line-height:1.2">VOR $ from Model<br><span style="font:600 11px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-muted); letter-spacing:0.04em; text-transform:uppercase">$${budget} × ${TEAMS} teams · ${compareAuctionEnabled ? 'Market Δ shown' : 'toggle Market to see Δ'}</span></div>
+        <div class="kpi-value" style="font-size:14px; line-height:1.2">VOR $ from Model<br><span style="font:600 11px Helvetica Neue, Helvetica,sans-serif; color:var(--text-muted); letter-spacing:0.04em; text-transform:uppercase">$${usedBudget} × ${math.posGroups.length} teams · ${compareAuctionEnabled ? 'Market Δ shown' : 'toggle Market to see Δ'}</span></div>
         <div style="display:flex; gap:6px; margin-top:8px"><button class="chip ${compareAuctionEnabled ? 'active' : ''}" id="toggleAuctionCompare" style="font-size:11px">${compareAuctionEnabled ? '✓ Market + ECR on' : 'Show Market + ECR'}</button><button class="chip" id="copyModelVsMarketCsv" style="font-size:11px">Copy Model vs Market CSV</button></div>
       </div>
     </div>
-    ` : `<div class="alert alert-info reveal in" style="margin-top:12px">Market comparison warming up — run refresh to populate Sleeper season (wk×17) + FP ECR/ADP. Auction currently shows Model only. Free sources: Sleeper <code class="inline">/projections</code> + FantasyPros limited (DST-only free) — Market_pts primary for season edges.</div>`}
+    ` : `<div class="alert alert-info reveal in" style="margin-top:12px">Market comparison not loaded. Showing model only.</div>`}
 
-    <!-- Draft Live Bar — 1h countdown + fullscreen/print for draft night -->
     <div class="card reveal in" style="margin-top:12px; border-left:3px solid var(--crimson); background: linear-gradient(90deg, rgba(239,68,68,0.08), transparent)">
       <div class="card-body" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 12px">
         <span class="kicker" style="color:var(--crimson)">● Draft Live</span>
         <span id="draftCountdown" class="mono" style="font-size:18px; font-weight:700; color:var(--crimson)">60:00</span>
-        <span class="micro faint">until draft — board frozen to FP season 596 + Gridiron Wk10 • <span class="mono" style="color:var(--text-muted)">VOR $200/12</span></span>
+        <span class="micro faint">until draft — board frozen to FP season 596 + Week 10 model • <span class="mono" style="color:var(--text-muted)">VOR $200/12</span></span>
         <span style="flex:1"></span>
         <button class="chip" id="fullscreenAuction" title="Fullscreen draft board (F)">⛶ Fullscreen</button>
         <button class="chip" id="printAuction" title="Print board (⌘P)">⎙ Print</button>
@@ -398,13 +134,12 @@ export async function renderAuction(root) {
       </div>
     </div>
 
-    <!-- My Draft Tracker -->
     <div class="kpi-row reveal in" style="margin-top:12px">
       <div class="kpi-card">
         <div class="kpi-label">My Budget</div>
         <div class="kpi-value mono" style="color:${myRemaining > 50 ? 'var(--color-accent)' : myRemaining > 20 ? 'var(--amber)' : 'var(--crimson)'}">$${myRemaining}</div>
-        <div class="kpi-bar"><div class="kpi-bar-fill ${myRemaining > 100 ? 'good' : myRemaining > 30 ? 'ok' : 'bad'}" style="width:${(myRemaining / budget * 100).toFixed(0)}%"></div></div>
-        <div class="micro faint">spent $${mySpent} / $${budget}</div>
+        <div class="kpi-bar"><div class="kpi-bar-fill ${myRemaining > 100 ? 'good' : myRemaining > 30 ? 'ok' : 'bad'}" style="width:${(myRemaining / usedBudget * 100).toFixed(0)}%"></div></div>
+        <div class="micro faint">spent $${mySpent} / $${usedBudget}</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Max Bid</div>
@@ -413,18 +148,17 @@ export async function renderAuction(root) {
       </div>
       <div class="kpi-card">
         <div class="kpi-label">My Roster</div>
-        <div class="kpi-value mono">${myRosterCount}/${ROSTER_SIZE}</div>
+        <div class="kpi-value mono">${myRosterCount}/14</div>
         <div class="micro faint">${myRosterPlayers.map(p => (p.position || '').toUpperCase()).join(', ') || 'empty'}</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Draft Progress</div>
-        <div class="kpi-value mono">${draftedCount}/${TEAMS * ROSTER_SIZE}</div>
-        <div class="kpi-bar"><div class="kpi-bar-fill ok" style="width:${(draftedCount / (TEAMS * ROSTER_SIZE) * 100).toFixed(0)}%"></div></div>
+        <div class="kpi-value mono">${draftedCount}/${12 * 14}</div>
+        <div class="kpi-bar"><div class="kpi-bar-fill ok" style="width:${(draftedCount / (12 * 14) * 100).toFixed(0)}%"></div></div>
         <div class="micro faint">${availablePlayers.length} available</div>
       </div>
     </div>
 
-    <!-- Positional Budget Guide -->
     <div class="card reveal in" style="margin-top:16px">
       <div class="card-header"><h3>Budget Allocation</h3><span class="kicker">recommended spend by position</span></div>
       <div class="card-body" style="display:flex; gap:12px; flex-wrap:wrap">
@@ -434,7 +168,7 @@ export async function renderAuction(root) {
           return `<div style="flex:1; min-width:100px; text-align:center; padding:8px; background:var(--surface-raised); border-radius:8px; border:1px solid var(--border)">
             ${posBadge(pos)}
             <div class="mono" style="font-size:18px; margin:4px 0; color:${pos === 'K' || pos === 'DEF' ? 'var(--text-muted)' : 'var(--text)'}">$${b.recommended}</div>
-            <div class="micro faint">${b.slots} slot${b.slots > 1 ? 's' : ''} @ ~$${b.perSlot}/ea</div>
+            <div class="micro faint">${b.slots} slot${b.slots > 1 ? 's' : ''} · $${b.perSlot}/slot</div>
             ${spent > 0 ? `<div class="micro" style="color:var(--amber)">spent $${spent}</div>` : ''}
           </div>`;
         }).join('')}
@@ -446,17 +180,16 @@ export async function renderAuction(root) {
       </div>
     </div>
 
-    <!-- Nomination Strategy -->
     <div class="card reveal in" style="margin-top:16px">
       <div class="card-header"><h3>Nomination Strategy</h3><span class="kicker">nominate these to drain opponents</span></div>
-      <div class="card-body" style="font:400 13px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-muted); line-height:1.6">
-        <div class="alert alert-ok" style="margin-bottom:12px">Nominate players at positions you've filled (or don't need yet). Force opponents to spend early while you save budget for YOUR targets. <strong>Prefer high Market $ but lower Model $</strong> — let others overpay where Market is hot but Gridiron is cool (SELL).</div>
+      <div class="card-body" style="font:400 13px Helvetica Neue, Helvetica,sans-serif; color:var(--text-muted); line-height:1.6">
+        <div class="alert alert-ok" style="margin-bottom:12px">Nominate players at positions you've filled (or don't need yet). Force opponents to spend early while you save budget for YOUR targets. <strong>Prefer high Market $ but lower Model $</strong> — let others overpay where Market is hot but Model is cool (SELL).</div>
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           ${nominationTargets.map(p => `
-            <div style="padding:6px 10px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; display:flex; align-items:center; gap:6px; ${p.edge==='BUY' ? 'border-left:3px solid var(--emerald)' : p.edge==='SELL' ? 'border-left:3px solid var(--crimson)' : ''}">
+            <div style="padding:6px 10px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; display:flex; align-items:center; gap:6px; ${p.edge === 'BUY' ? 'border-left:3px solid var(--emerald)' : p.edge === 'SELL' ? 'border-left:3px solid var(--crimson)' : ''}">
               ${playerAvatar(p, 24)}
               ${posBadge(p.position)}
-              <strong style="font:600 12px "Helvetica Neue", Helvetica,sans-serif">${escapeHtml(p.player_name)}</strong>
+              <strong style="font:600 12px Helvetica Neue, Helvetica,sans-serif">${escapeHtml(p.player_name)}</strong>
               ${teamLogo(p.team, 14)}
               <span class="badge" style="background:var(--amber-dim); color:var(--amber)">$${p.auction}</span>
               ${compareAuctionEnabled && hasComparison ? edgeBadgeAuction(p.edge) : ''}
@@ -468,21 +201,19 @@ export async function renderAuction(root) {
       </div>
     </div>
 
-    <!-- Draft Strategy -->
     <div class="card reveal in" style="margin-top:16px">
-      <div class="card-header"><h3>Draft Strategy</h3><span class="kicker">Fantasy Bahamas $200 auction</span></div>
-      <div class="card-body" style="font:400 13px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-muted); line-height:1.6">
+      <div class="card-header"><h3>Draft Strategy</h3><span class="kicker">$200 auction</span></div>
+      <div class="card-body" style="font:400 13px Helvetica Neue, Helvetica,sans-serif; color:var(--text-muted); line-height:1.6">
         <ol style="margin:0; padding-left:18px">
-          <li><strong>Stars & Scrubs:</strong> Spend 60-70% ($150-175) on 4-5 elite starters. Your 2-FLEX league means 7 RB/WR/TE start — premium on volume backs and target hogs.</li>
-          <li><strong>Gridiron > Market = value:</strong> Filter <code class="inline">BUY</code> in Auction to see where Model season total beats Market season by ≥51 pts — bid up to Model $ there.</li>
+          <li><strong>Stars &amp; Scrubs:</strong> Spend 60-70% ($150-175) on 4-5 elite starters. Your 2-FLEX league means 7 RB/WR/TE start — premium on volume backs and target hogs.</li>
+          <li><strong>Model &gt; Market = value:</strong> Filter <code class="inline">BUY</code> in Auction to see where Model season total beats Market season by ≥51 pts — bid up to Model $ there.</li>
           <li><strong>K/DEF = $1 always.</strong> MAE on kickers is 4+ pts — pure noise. Stream them.</li>
-          <li><strong>$1 bench:</strong> Fill bench last at $1. Waiver wire value > draft bench value in 12-team.</li>
-          <li><strong>Nominate positions you've filled</strong> — prefer SELL-flagged players so opponents burn cash where you’re cold.</li>
+          <li><strong>$1 bench:</strong> Fill bench last at $1. Waiver wire value &gt; draft bench value in 12-team.</li>
+          <li><strong>Nominate positions you've filled</strong> — prefer SELL-flagged players so opponents burn cash where you're cold.</li>
         </ol>
       </div>
     </div>
 
-    <!-- My Roster -->
     ${myRosterCount > 0 ? `
     <div class="card reveal in" style="margin-top:16px">
       <div class="card-header"><h3>My Drafted Players</h3>
@@ -490,12 +221,12 @@ export async function renderAuction(root) {
       </div>
       <div class="table-wrap" style="border:0; border-radius:0">
         <table>
-          <thead><tr><th>Player</th><th>Pos</th><th>Paid</th><th>Value</th><th>+/-</th>${compareAuctionEnabled && hasComparison ? '<th>Season Δ</th><th>Edge</th>' : ''}</tr></thead>
+          <thead><tr><th aria-sort="none">Player</th><th aria-sort="none">Pos</th><th aria-sort="none">Paid</th><th aria-sort="none">Value</th><th aria-sort="none">+/-</th>${compareAuctionEnabled && hasComparison ? '<th aria-sort="none">Season Δ</th><th aria-sort="none">Edge</th>' : ''}</tr></thead>
           <tbody>
             ${myRosterPlayers.map(p => {
               const paid = state.drafted[p.player_id]?.price || 0;
               const diff = p.auction - paid;
-              return `<tr data-team="${p.team || ''}" style="--team-accent:${getTeamColor((p.team||'').toUpperCase())}; ${p.edge==='BUY' ? 'background:rgba(16,185,129,0.06)' : p.edge==='SELL' ? 'background:rgba(239,68,68,0.06)' : ''}">
+              return `<tr data-team="${p.team || ''}" style="--team-accent:${getTeamColor((p.team || '').toUpperCase())}; ${p.edge === 'BUY' ? 'background:rgba(16,185,129,0.06)' : p.edge === 'SELL' ? 'background:rgba(239,68,68,0.06)' : ''}">
                 <td><div class="player-cell">${playerAvatar(p, 28)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(p.player_name)}</div><div class="player-cell-sub">${teamLogo(p.team, 14)} ${escapeHtml(p.team || '')}</div></div></div></td>
                 <td>${posBadge(p.position)}</td>
                 <td class="mono">$${paid}</td>
@@ -509,28 +240,26 @@ export async function renderAuction(root) {
       </div>
     </div>` : ''}
 
-    <!-- Live Auction — visual on-the-block (photo, value, stat graphs) — stays uncluttered when no focus -->
     <div class="card reveal in" id="liveAuctionCard" style="margin-top:16px; ${focusedPlayer ? `border-left:3px solid ${liveAdvice.color}; background: linear-gradient(90deg, ${liveAdvice.color}14, transparent)` : ''}">
-      <div class="card-header"><h3 style="color:${focusedPlayer ? liveAdvice.color : 'var(--text-muted)'}">${focusedPlayer ? `On the Block — ${escapeHtml(focusedPlayer.player_name)}` : 'Live Auction — select the player being auctioned'}</h3><span class="kicker">${focusedPlayer ? liveAdvice.title : 'Click 👁 Focus on any row for instant bid advice'}</span>${focusedPlayer ? `<button class="chip" id="clearFocus" style="margin-left:auto">✕ Clear</button>` : ''}</div>
+      <div class="card-header"><h3 style="color:${focusedPlayer ? liveAdvice.color : 'var(--text-muted)'}">${focusedPlayer ? `On the Block — ${escapeHtml(focusedPlayer.player_name)}` : 'Live Auction — select the player being auctioned'}</h3><span class="kicker">${focusedPlayer ? liveAdvice.title : 'Click 👁 to focus a row'}</span>${focusedPlayer ? `<button class="chip" id="clearFocus" style="margin-left:auto">✕ Clear</button>` : ''}</div>
       <div class="card-body" style="display:flex; flex-direction:column; gap:12px">
         ${focusedPlayer ? `
         <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:center">
-          <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:260px">${playerAvatar(focusedPlayer, 56)}<div><div style="font:700 16px "Helvetica Neue", Helvetica,sans-serif; display:flex; gap:8px; align-items:center; flex-wrap:wrap">${escapeHtml(focusedPlayer.player_name)} ${posBadge(focusedPlayer.position)} ${teamLogo(focusedPlayer.team,20)} <span class="mono" style="font-size:11px; color:var(--text-muted)">T${focusedPlayer.fp_tier ?? focusedPlayer.tier} · ECR #${focusedPlayer.fp_ecr ?? '—'} · ADP #${focusedPlayer.fp_adp ?? '—'}${focusedPlayer.statsguy_value!=null ? ` · <span style="color:var(--violet)">SG ${focusedPlayer.statsguy_value.toFixed(0)} (#${focusedPlayer.statsguy_rank})</span>` : ''}</span></div><div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:2px">Gridiron ${focusedPlayer.weekly.toFixed(1)} wk → <span style="color:var(--amber); font-weight:700">${focusedPlayer.ros.toFixed(0)} season</span> · Market <span style="color:var(--sky); font-weight:700">${focusedPlayer.marketRos!=null?focusedPlayer.marketRos.toFixed(0):'—'}</span> · Δ ${focusedPlayer.deltaRos!=null?(Number(focusedPlayer.deltaRos)>0?'+':'')+Number(focusedPlayer.deltaRos).toFixed(0):'—'} · VOR +${focusedPlayer.vor.toFixed(0)} · <span style="color:var(--amber)">$${focusedPlayer.auction} val</span></div></div></div>
+          <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:260px">${playerAvatar(focusedPlayer, 56)}<div><div style="font:700 16px Helvetica Neue, Helvetica,sans-serif; display:flex; gap:8px; align-items:center; flex-wrap:wrap">${escapeHtml(focusedPlayer.player_name)} ${posBadge(focusedPlayer.position)} ${teamLogo(focusedPlayer.team, 20)} <span class="mono" style="font-size:11px; color:var(--text-muted)">T${focusedPlayer.fp_tier ?? focusedPlayer.tier} · ECR #${focusedPlayer.fp_ecr ?? '—'} · ADP #${focusedPlayer.fp_adp ?? '—'}${focusedPlayer.statsguy_value != null ? ` · <span style="color:var(--violet)">SG ${focusedPlayer.statsguy_value.toFixed(0)} (#${focusedPlayer.statsguy_rank})</span>` : ''}</span></div><div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:2px">Model ${focusedPlayer.weekly.toFixed(1)} wk → <span style="color:var(--amber); font-weight:700">${focusedPlayer.ros.toFixed(0)} season</span> · Market <span style="color:var(--sky); font-weight:700">${focusedPlayer.marketRos != null ? focusedPlayer.marketRos.toFixed(0) : '—'}</span> · Δ ${focusedPlayer.deltaRos != null ? (Number(focusedPlayer.deltaRos) > 0 ? '+' : '') + Number(focusedPlayer.deltaRos).toFixed(0) : '—'} · VOR +${focusedPlayer.vor.toFixed(0)} · <span style="color:var(--amber)">$${focusedPlayer.auction} val</span></div></div></div>
           <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end">
-            <span class="badge" style="background:${focusedPlayer.edge==='BUY'?'var(--emerald-dim)':'var(--crimson-dim)'}; color:${focusedPlayer.edge==='BUY'?'var(--emerald)':'var(--crimson)'}; font-size:12px; padding:6px 10px">${focusedPlayer.edge} ${deltaSeasonBadge(focusedPlayer.deltaRos)}</span>
-            ${focusedPlayer.statsguy_value!=null ? `<span class="mono" style="font-size:11px; color:var(--violet)">StatsGuy market #${focusedPlayer.statsguy_rank} · ${focusedPlayer.statsguy_value.toFixed(0)}/10000</span>` : '<span class="mono" style="font-size:11px; color:var(--text-faint)">StatsGuy — no rank</span>'}
+            <span class="badge" style="background:${focusedPlayer.edge === 'BUY' ? 'var(--emerald-dim)' : 'var(--crimson-dim)'}; color:${focusedPlayer.edge === 'BUY' ? 'var(--emerald)' : 'var(--crimson)'}; font-size:12px; padding:6px 10px">${focusedPlayer.edge} ${deltaSeasonBadge(focusedPlayer.deltaRos)}</span>
+            ${focusedPlayer.statsguy_value != null ? `<span class="mono" style="font-size:11px; color:var(--violet)">StatsGuy market #${focusedPlayer.statsguy_rank} · ${focusedPlayer.statsguy_value.toFixed(0)}/10000</span>` : '<span class="mono" style="font-size:11px; color:var(--text-faint)">StatsGuy — no rank</span>'}
           </div>
         </div>
         <div class="alert" style="background:${liveAdvice.color}14; border:1px solid ${liveAdvice.color}33; color:var(--text)"><strong style="color:${liveAdvice.color}">${liveAdvice.title}</strong> — ${liveAdvice.text}</div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; font:500 11px "Helvetica Neue", Helvetica,sans-serif">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; font:500 11px Helvetica Neue, Helvetica,sans-serif">
           <span class="kicker">Cap</span> <span class="mono" style="font-size:18px; font-weight:700; color:${liveAdvice.color}">$${liveAdvice.cap}</span> <span class="micro faint">(max $${maxBid} · $${myRemaining} left · ${slotsLeft} slots)</span>
           <span style="flex:1"></span>
           <button class="btn btn-primary btn-sm" data-pid="${focusedPlayer.player_id}" id="liveDraftBtn">Draft ${escapeHtml(focusedPlayer.player_name)} for $${liveAdvice.cap}</button>
           <button class="btn btn-ghost btn-sm" data-pid="${focusedPlayer.player_id}" id="livePassBtn">Pass — nominate next</button>
         </div>
-        ${(()=>{ const stats = focusedPlayer.seasonStatDeltas && focusedPlayer.seasonStatDeltas.length ? focusedPlayer.seasonStatDeltas : []; if(!stats.length) return ''; const maxAbs = Math.max(...stats.map(s=> Math.max(Math.abs(s.model), Math.abs(s.market||0), 10))); return `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:8px; margin-top:4px; padding-top:10px; border-top:1px solid var(--border)">${stats.slice(0,6).map(s=>{ const pctM = Math.min(100, Math.round(Math.abs(s.model)/maxAbs*100)); const pctK = s.market!=null ? Math.min(100, Math.round(Math.abs(s.market)/maxAbs*100)) : 0; const dColor = s.delta!=null ? (s.delta>0?'var(--emerald)': s.delta<0?'var(--crimson)':'var(--text-faint)') : 'var(--text-faint)'; return `<div style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:8px"><div style="display:flex; justify-content:space-between; align-items:center"><span class="mono" style="font-size:10px; color:var(--text-faint)">${s.label} season</span><span class="mono" style="font-size:11px; color:${dColor}; font-weight:700">${s.delta!=null?(s.delta>0?'+':'')+s.delta.toFixed(0):''}</span></div><div style="display:flex; gap:6px; align-items:center; margin-top:6px"><span class="mono" style="font-size:11px; min-width:36px; text-align:right; color:var(--amber)">${s.model.toFixed(0)}</span><div style="flex:1; height:6px; background:rgba(0,0,0,0.06); border-radius:999px; position:relative; overflow:hidden"><div style="position:absolute; left:0; top:0; bottom:0; width:${pctM}%; background:var(--amber); opacity:0.95; border-radius:999px"></div><div style="position:absolute; left:0; top:0; bottom:0; width:${pctK}%; background:var(--sky); opacity:0.45; border-radius:999px"></div></div><span class="mono" style="font-size:11px; min-width:36px; color:var(--text-muted)">${s.market!=null?s.market.toFixed(0):'—'}</span></div><div class="mono" style="font-size:10px; color:var(--text-faint); margin-top:4px"><span style="color:var(--amber)">● Gridiron</span> <span style="color:var(--sky)">● Market</span> (FP season)</div></div>`}).join('')}</div>`; })()}
-        ` : `<div class="micro faint">Type a name in the search box (e.g. “Gibbs”) then click <span class="mono" style="background:var(--surface-raised); padding:2px 6px; border-radius:6px">👁 Focus</span> on the row being auctioned. Board sorting Highest↔Lowest stays — use the “↕ Highest → Lowest” toggle.</div>
-          <div style="display:flex; gap:8px; margin-top:4px"><input id="liveSearch" placeholder="Quick focus: type player name… (Enter to focus first match)" style="flex:1; background:var(--surface-raised); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px; font:400 13px "Helvetica Neue", Helvetica,sans-serif" /></div>
+        ` : `<div class="micro faint">Search a name, then click <span class="mono" style="background:var(--surface-raised); padding:2px 6px; border-radius:6px">👁 Focus</span> on the row.</div>
+          <div style="display:flex; gap:8px; margin-top:4px"><input id="liveSearch" placeholder="Search player to focus…" style="flex:1; background:var(--surface-raised); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px; font:400 13px Helvetica Neue, Helvetica,sans-serif" /></div>
         `}
       </div>
     </div>
@@ -545,18 +274,18 @@ export async function renderAuction(root) {
           `).join('')}
           ${hasComparison ? `
             <span style="border-left:1px solid var(--border); margin:0 4px"></span>
-            ${['ALL','BUY','SELL'].map(e=>`<button class="btn btn-sm ${auctionEdge===e ? '' : 'btn-ghost'} edgeFilter" data-edge="${e}" style="${auctionEdge===e ? (e==='BUY' ? 'background:var(--emerald); color:white' : e==='SELL' ? 'background:var(--crimson); color:white' : 'background:var(--color-accent); color:white') : ''}">${e==='ALL' ? 'All' : e==='BUY' ? '▲ BUY' : '▼ SELL'}</button>`).join('')}
+            ${['ALL', 'BUY', 'SELL'].map(e => `<button class="btn btn-sm ${auctionEdge === e ? '' : 'btn-ghost'} edgeFilter" data-edge="${e}" style="${auctionEdge === e ? (e === 'BUY' ? 'background:var(--emerald); color:white' : e === 'SELL' ? 'background:var(--crimson); color:white' : 'background:var(--color-accent); color:white') : ''}">${e === 'ALL' ? 'All' : e === 'BUY' ? '▲ BUY' : '▼ SELL'}</button>`).join('')}
           ` : ''}
           <span style="border-left:1px solid var(--border); margin:0 4px"></span>
           <button class="btn btn-ghost btn-sm" id="copyAuction">Copy CSV</button>
-          <label class="faint" style="font:500 12px "Helvetica Neue", Helvetica,sans-serif">
+          <label class="faint" style="font:500 12px Helvetica Neue, Helvetica,sans-serif">
             <input type="checkbox" id="hideDrafted" ${params.get('hide') === '1' ? 'checked' : ''}> hide drafted
           </label>
         </div>
       </div>
       ${compareAuctionEnabled && hasComparison ? `
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; padding:8px 12px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; margin-bottom:10px; font:500 11px "Helvetica Neue", Helvetica,sans-serif; line-height:1.4">
-        <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--amber); border-radius:2px; display:inline-block"></span> <strong style="color:var(--amber)">Gridiron</strong> Model · Wk ×17 = season</span>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; padding:8px 12px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; margin-bottom:10px; font:500 11px Helvetica Neue, Helvetica,sans-serif; line-height:1.4">
+        <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--amber); border-radius:2px; display:inline-block"></span> <strong style="color:var(--amber)">Model</strong> · Wk ×17 = season</span>
         <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--sky); border-radius:2px; display:inline-block"></span> <strong style="color:var(--sky)">Market</strong> · FantasyPros season projections (596, full YDS/TDS) + Sleeper weekly fallback</span>
         <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--emerald); border-radius:2px; display:inline-block"></span> BUY = Model ≥ +51 pts vs Market (3/wk)</span>
         <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--crimson); border-radius:2px; display:inline-block"></span> SELL = Market ≥ +51 pts vs Model</span>
@@ -565,34 +294,18 @@ export async function renderAuction(root) {
       ` : ''}
       <div class="card" style="padding:8px 12px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center">
         <span class="kicker">Sort</span>
-        <span class="mono" style="font-size:11px; color:var(--text-muted)">Click any header to sort — </span>
-        <button class="chip ${auctionSortKey==='auction' ? 'active' : ''}" data-sort="auction" title="Sort by Auction $">Auction $ ${auctionSortKey==='auction' ? (auctionSortDir===-1 ? '▼ Highest → Lowest' : '▲ Lowest → Highest') : '↕'}</button>
-        <button class="chip ${auctionSortKey==='ros' ? 'active' : ''}" data-sort="ros">Gridiron Season ${auctionSortKey==='ros' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</button>
-        ${compareAuctionEnabled && hasComparison ? `<button class="chip ${auctionSortKey==='marketRos' ? 'active' : ''}" data-sort="marketRos">Market Season ${auctionSortKey==='marketRos' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</button><button class="chip ${auctionSortKey==='deltaRos' ? 'active' : ''}" data-sort="deltaRos">Δ ${auctionSortKey==='deltaRos' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</button>` : ''}
-        <button class="chip" id="toggleSortDir" title="Flip highest↔lowest">↕ ${auctionSortDir===-1 ? 'Highest → Lowest' : 'Lowest → Highest'}</button>
-        <span class="mono" style="font-size:11px; color:var(--text-faint); margin-left:auto">Tip: click headers to sort any column both ways</span>
+        <span class="mono" style="font-size:11px; color:var(--text-muted)">Click header to sort — </span>
+        <button class="chip ${auctionSortKey === 'auction' ? 'active' : ''}" data-sort="auction" title="Sort by Auction $">Auction $ ${auctionSortKey === 'auction' ? (auctionSortDir === -1 ? '▼ Highest → Lowest' : '▲ Lowest → Highest') : '↕'}</button>
+        <button class="chip ${auctionSortKey === 'ros' ? 'active' : ''}" data-sort="ros">Model season ${auctionSortKey === 'ros' ? (auctionSortDir === -1 ? '▼' : '▲') : '↕'}</button>
+        ${compareAuctionEnabled && hasComparison ? `<button class="chip ${auctionSortKey === 'marketRos' ? 'active' : ''}" data-sort="marketRos">Market Season ${auctionSortKey === 'marketRos' ? (auctionSortDir === -1 ? '▼' : '▲') : '↕'}</button><button class="chip ${auctionSortKey === 'deltaRos' ? 'active' : ''}" data-sort="deltaRos">Δ ${auctionSortKey === 'deltaRos' ? (auctionSortDir === -1 ? '▼' : '▲') : '↕'}</button>` : ''}
+        <button class="chip" id="toggleSortDir" title="Flip highest↔lowest">↕ ${auctionSortDir === -1 ? 'Highest → Lowest' : 'Lowest → Highest'}</button>
+        <span class="mono" style="font-size:11px; color:var(--text-faint); margin-left:auto">Click headers to sort</span>
       </div>
       <div class="table-wrap" style="border:0; border-radius:0; overflow-x:auto; margin-top:10px">
-        <table style="min-width:${compareAuctionEnabled && hasComparison ? '1340px' : '720px'}">
+        <table style="width:100%; table-layout:fixed;">
           <thead>
             <tr>
-              <th style="width:32px">#</th>
-              <th data-sort="player_name" tabindex="0" role="button" aria-label="Sort by Player" style="cursor:pointer">Player ${auctionSortKey==='player_name' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
-              <th data-sort="position" tabindex="0" role="button" aria-label="Sort by Pos" style="cursor:pointer">Pos ${auctionSortKey==='position' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
-              ${compareAuctionEnabled && hasComparison ? `
-              <th data-sort="weekly" tabindex="0" role="button" aria-label="Sort by Gridiron Wk" style="color:var(--amber); border-bottom:2px solid var(--amber); cursor:pointer" title="Gridiron weekly projection (stat_projector)">Gridiron Wk ${auctionSortKey==='weekly' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--amber); opacity:0.7">Season 17g</span></th>
-              <th data-sort="ros" tabindex="0" role="button" aria-label="Sort by Gridiron Season" style="color:var(--amber); border-bottom:2px solid var(--amber); cursor:pointer" title="Gridiron season = weekly ×17">Gridiron<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--amber); opacity:0.7">Season 17g ${auctionSortKey==='ros' ? (auctionSortDir===-1 ? '▼' : '▲') : ''}</span></th>
-              <th data-sort="marketRos" tabindex="0" role="button" aria-label="Sort by Market Season" style="color:var(--sky); border-bottom:2px solid var(--sky); cursor:pointer" title="Market season — FantasyPros season projections (596, full YDS/TDS) — fallback Sleeper weekly ×17">Market<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--sky); opacity:0.7">Season 17g ${auctionSortKey==='marketRos' ? (auctionSortDir===-1 ? '▼' : '▲') : ''}</span></th>
-              <th data-sort="deltaRos" tabindex="0" role="button" aria-label="Sort by Season Δ" style="border-bottom:2px solid var(--border); cursor:pointer" title="Season Δ = Gridiron Season − Market Season">Season Δ<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-faint)">Grid−Mkt ${auctionSortKey==='deltaRos' ? (auctionSortDir===-1 ? '▼' : '▲') : ''}</span></th>
-              <th data-sort="fp_ecr" tabindex="0" role="button" aria-label="Sort by ECR" style="cursor:pointer" title="FantasyPros ECR 519 + Tiers via CSV">ECR ${auctionSortKey==='fp_ecr' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
-              <th data-sort="fp_adp" tabindex="0" role="button" aria-label="Sort by ADP" style="cursor:pointer" title="FantasyPros ADP 695 via CSV">ADP ${auctionSortKey==='fp_adp' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
-              <th data-sort="statsguy_rank" tabindex="0" role="button" aria-label="Sort by StatsGuy rank" style="cursor:pointer; color:var(--violet)" title="StatsGuy real-trade value 0-10000 (211 ranked)">SG ${auctionSortKey==='statsguy_rank' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
-              ` : `<th data-sort="weekly" tabindex="0" role="button" style="cursor:pointer">Model Wk ${auctionSortKey==='weekly' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th><th data-sort="ros" tabindex="0" role="button" style="cursor:pointer">Season (17g) ${auctionSortKey==='ros' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>`}
-              <th data-sort="vor" tabindex="0" role="button" aria-label="Sort by VOR" style="cursor:pointer">VOR ${auctionSortKey==='vor' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
-              <th data-sort="auction" tabindex="0" role="button" aria-label="Sort by Gridiron $" style="cursor:pointer; color:var(--amber)" title="Gridiron $ — VOR $200/12">Gridiron $ ${auctionSortKey==='auction' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th>
-              ${compareAuctionEnabled && hasComparison ? '<th data-sort="marketAuction" tabindex="0" role="button" aria-label="Sort by Market $" style="cursor:pointer; color:var(--sky)" title="Market $ — Consensus 60% FP VOR + 40% SG $200/12">Market $ ' + (auctionSortKey==='marketAuction' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕') + '</th><th data-sort="deltaAuction" tabindex="0" role="button" aria-label="Sort by $ Delta" style="cursor:pointer" title="Δ $ = Gridiron $ − Market $">Δ $ ' + (auctionSortKey==='deltaAuction' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕') + '</th>' : ''}
-              ${compareAuctionEnabled && hasComparison ? '<th data-sort="edge_score" tabindex="0" role="button" aria-label="Sort by Edge" style="cursor:pointer">Edge ↕</th>' : ''}
-              <th>Interval</th><th data-sort="tier" tabindex="0" role="button" style="cursor:pointer">T ${auctionSortKey==='tier' ? (auctionSortDir===-1 ? '▼' : '▲') : '↕'}</th><th>Draft</th>
+              ${tableHeaders(compareAuctionEnabled && hasComparison, auctionSortKey, auctionSortDir)}
             </tr>
           </thead>
           <tbody>
@@ -601,80 +314,33 @@ export async function renderAuction(root) {
               if (hasComparison && compareAuctionEnabled && auctionEdge !== 'ALL') {
                 list = list.filter(p => (p.edge || 'NEUTRAL') === auctionEdge);
               }
-              return list.slice(0, 120).map((p, i) => `
-              <tr style="${p.isDrafted ? 'opacity:0.35; text-decoration:line-through' : ''};--team-accent:${getTeamColor((p.team||'').toUpperCase())}; ${p.edge==='BUY' ? 'background:rgba(16,185,129,0.06)' : p.edge==='SELL' ? 'background:rgba(239,68,68,0.06)' : ''}" data-pid="${p.player_id}" data-team="${p.team || ''}">
-                <td class="mono-muted" style="font-size:11px">${i + 1}</td>
-                <td>
-                  <div class="player-cell">${playerAvatar(p, 28)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(p.player_name)}</div><div class="player-cell-sub">${teamLogo(p.team, 14)} ${escapeHtml(p.team || '')}${p.opponent_team ? ' vs ' + escapeHtml(p.opponent_team) : ''}</div></div></div>
-                </td>
-                <td>${posBadge(p.position)}</td>
-                <td class="mono" style="color:var(--amber)">${p.weekly.toFixed(1)}</td>
-                <td class="mono" style="font-weight:700">${p.ros.toFixed(0)}</td>
-                ${compareAuctionEnabled && hasComparison ? `
-                <td class="mono" style="color:var(--sky)">${p.marketRos != null ? p.marketRos.toFixed(0) : '—'}</td>
-                <td>${deltaSeasonBadge(p.deltaRos)}</td>
-                <td class="mono" style="font-size:11px; color:var(--text-muted)">${p.fp_ecr != null ? `#${p.fp_ecr}${p.fp_tier ? ` <span style="background:var(--violet-dim); color:var(--violet); border:1px solid rgba(168,85,247,0.18); border-radius:999px; padding:1px 5px; font:700 10px ui-monospace, SFMono-Regular,monospace">T${p.fp_tier}</span>` : ''}` : '—'}</td>
-                <td class="mono" style="font-size:11px; color:var(--text-muted)">${p.fp_adp != null ? '#'+p.fp_adp : '—'}</td>
-                <td class="mono" style="font-size:11px; color:var(--violet)">${p.statsguy_rank!=null ? `#${p.statsguy_rank} <span style="color:var(--text-faint)">(${p.statsguy_value.toFixed(0)})</span>` : '—'}</td>
-                ` : ''}
-                <td class="mono" style="color:${p.vor > 30 ? '#10B981' : p.vor > 15 ? 'var(--amber)' : 'var(--text-muted)'}">+${p.vor.toFixed(0)}</td>
-                <td><span class="badge" style="background:${p.auction >= 15 ? '#16A34A' : p.auction >= 5 ? 'var(--amber-dim)' : 'var(--surface-raised)'}; color:${p.auction >= 15 ? 'white' : p.auction >= 5 ? 'var(--amber)' : 'var(--text-muted)'}; border:1px solid ${p.auction >= 15 ? '#16A34A' : 'var(--border)'}">$${p.auction}</span></td>
-                ${compareAuctionEnabled && hasComparison ? `<td class="mono" style="color:var(--sky)"><span class="badge" style="background:var(--sky-dim); color:var(--sky); border:1px solid rgba(56,189,248,0.2)">$${p.marketAuction}</span></td><td class="mono" style="font-weight:700; color:${p.deltaAuction>4?'var(--emerald)':p.deltaAuction<-4?'var(--crimson)':'var(--text-muted)'}">${p.deltaAuction>0?'+':''}$${p.deltaAuction}</td>` : ''}
-                ${compareAuctionEnabled && hasComparison ? `<td>${edgeBadgeAuction(p.edge)}</td>` : ''}
-                <td class="mono-muted" style="font-size:11px">${(p.ros - p.widthRos).toFixed(0)}–${(p.ros + p.widthRos).toFixed(0)}</td>
-                <td class="faint" style="font:600 11px "Helvetica Neue", Helvetica,sans-serif">T${p.tier}</td>
-                <td>
-                  <div style="display:flex; gap:4px; align-items:center">
-                    <button class="btn btn-ghost btn-sm focusBtn" data-pid="${p.player_id}" title="Focus for live advice" style="font-size:11px; padding:2px 6px">👁</button>
-                    ${p.isDrafted
-                      ? `<span class="micro faint">${p.draftedBy === 'me' ? 'MINE' : 'gone'}${p.draftedPrice ? ' $' + p.draftedPrice : ''}</span>`
-                      : `<button class="btn btn-ghost btn-sm draftBtn" data-pid="${p.player_id}" data-name="${escapeHtml(p.player_name)}" data-val="${p.auction}" style="font-size:11px; padding:2px 8px">Draft</button>`
-                    }
-                  </div>
-                </td>
-              </tr>
-            `).join('');
+              const { rows } = tableBody(list, compareAuctionEnabled && hasComparison, escapeHtml);
+              return rows;
             })()}
           </tbody>
         </table>
       </div>
     </div>
-    <div class="player-cards-grid">
+    </div>
+    <div class="player-cards-grid" id="auctionCards">
       ${(() => {
         let list = filteredPlayers.filter(p => !p.isDrafted);
         if (hasComparison && compareAuctionEnabled && auctionEdge !== 'ALL') list = list.filter(p => (p.edge || 'NEUTRAL') === auctionEdge);
-        return list.slice(0, 50).map(p => {
-          const base = playerCard(p, { showDraftBtn: true, showTeamLogo: true });
-          if (!compareAuctionEnabled || !hasComparison) return base;
-          // inject auction + market footer
-          const seasonDelta = p.deltaRos != null ? `<span class="mono" style="font-size:10px; color:${Number(p.deltaRos) > 8 ? 'var(--emerald)' : Number(p.deltaRos) < -8 ? 'var(--crimson)' : 'var(--text-faint)'}">${Number(p.deltaRos)>0?'+':''}${Number(p.deltaRos).toFixed(0)} season Δ</span>` : `<span class="mono" style="font-size:10px; color:var(--text-faint)">season Δ —</span>`;
-          return base.replace('</div>\\n', `  <div style="margin-top:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--border)"><button class="btn btn-ghost btn-sm focusBtn" data-pid="${p.player_id}" title="Focus for live advice" style="font-size:11px; padding:2px 6px">👁</button><span class="mono" style="font-size:10px; color:var(--text-muted)">Mkt ${p.marketRos != null ? p.marketRos.toFixed(0) : '—'}</span>${seasonDelta}<span class="spacer"></span>${edgeBadgeAuction(p.edge)}</div></div>\\n`);
-        }).join('');
+        const { cards } = tableBody(list, compareAuctionEnabled && hasComparison, escapeHtml);
+        return cards;
       })()}
-    </div>
     </div>
     <div id="playerDetailModal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.7); backdrop-filter:blur(8px); align-items:center; justify-content:center; padding:16px"><div id="playerDetailContent" style="background:var(--surface); border:1px solid var(--border); border-radius:16px; max-width:640px; width:100%; max-height:90vh; overflow:auto"></div></div>
   `;
 
-  // --- Event handlers ---
+  // --- Event handlers (view-level, not table-level) ---
 
-  // Toggle auction compare
   root.querySelector('#toggleAuctionCompare')?.addEventListener('click', () => {
     const next = !compareAuctionEnabled;
-    try { localStorage.setItem('ffba-auction-compare', next ? '1' : '0'); } catch {}
+    try { localStorage.setItem('ffba-auction-compare', next ? '1' : '0'); } catch (_) {
+      // localStorage unavailable in private mode
+    }
     renderAuction(root);
-  });
-  root.querySelector('#copyModelVsMarketCsv')?.addEventListener('click', () => {
-    let list = filteredPlayers;
-    if (hasComparison && compareAuctionEnabled && auctionEdge !== 'ALL') list = list.filter(p => (p.edge || 'NEUTRAL') === auctionEdge);
-    const rows = [['rank','player','pos','team','model_wk','model_season','market_season','season_delta','fp_ecr','fp_adp','vor','auction','edge']];
-    list.slice(0,150).forEach((p,i)=>{
-      rows.push([i+1, `"${p.player_name}"`, p.position, p.team, p.weekly.toFixed(1), p.ros.toFixed(1), p.marketRos != null ? p.marketRos.toFixed(1) : '', p.deltaRos != null ? p.deltaRos.toFixed(1) : '', p.fp_ecr ?? '', p.fp_adp ?? '', p.vor.toFixed(1), p.auction, p.edge]);
-    });
-    const csv = rows.map(r=>r.join(',')).join('\n');
-    navigator.clipboard.writeText(csv);
-    const b = root.querySelector('#copyModelVsMarketCsv');
-    if (b) { const t=b.textContent; b.textContent='Copied ✓'; setTimeout(()=>b.textContent=t,1200); }
   });
 
   // Draft countdown (60 min, persists in localStorage so reloads keep time)
@@ -683,37 +349,40 @@ export async function renderAuction(root) {
     const STORAGE_KEY = 'ffba-draft-target';
     let target = Number(localStorage.getItem(STORAGE_KEY) || 0);
     if (!target || target < Date.now()) {
-      target = Date.now() + 60*60*1000;
-      try { localStorage.setItem(STORAGE_KEY, String(target)); } catch {}
+      target = Date.now() + 60 * 60 * 1000;
+      try { localStorage.setItem(STORAGE_KEY, String(target)); } catch (_) {
+        // localStorage unavailable in private mode
+      }
     }
     const tick = () => {
       const remain = Math.max(0, target - Date.now());
       const m = Math.floor(remain / 60000);
       const s = Math.floor((remain % 60000) / 1000);
-      countdownEl.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-      countdownEl.style.color = remain < 5*60*1000 ? 'var(--crimson)' : remain < 15*60*1000 ? 'var(--amber)' : 'var(--crimson)';
-      if (remain === 0) countdownEl.textContent = '00:00 — Draft now!';
+      countdownEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      countdownEl.style.color = remain < 5 * 60 * 1000 ? 'var(--crimson)' : remain < 15 * 60 * 1000 ? 'var(--amber)' : 'var(--crimson)';
+      if (remain === 0) countdownEl.textContent = '00:00 — Draft now';
     };
     tick();
-    const iv = setInterval(tick, 1000);
-    // store interval on root so re-render clears prior
     if (root._draftInterval) clearInterval(root._draftInterval);
-    root._draftInterval = iv;
-    root.querySelector('#resetCountdown')?.addEventListener('click', ()=>{
-      const nt = Date.now() + 60*60*1000;
-      try { localStorage.setItem(STORAGE_KEY, String(nt)); } catch {}
+    root._draftInterval = setInterval(tick, 1000);
+    root.querySelector('#resetCountdown')?.addEventListener('click', () => {
+      const nt = Date.now() + 60 * 60 * 1000;
+      try { localStorage.setItem(STORAGE_KEY, String(nt)); } catch (_) {
+        // localStorage unavailable in private mode
+      }
       target = nt;
       tick();
     });
   }
-  root.querySelector('#fullscreenAuction')?.addEventListener('click', ()=>{
+
+  root.querySelector('#fullscreenAuction')?.addEventListener('click', () => {
     const el = root.querySelector('.table-wrap');
     if (document.fullscreenElement) document.exitFullscreen?.();
     else el?.requestFullscreen?.();
   });
-  root.querySelector('#printAuction')?.addEventListener('click', ()=> window.print());
+  root.querySelector('#printAuction')?.addEventListener('click', () => window.print());
 
-  // Position filter buttons
+  // Position + edge filters
   root.querySelectorAll('.posFilter').forEach(btn => {
     btn.addEventListener('click', () => {
       const pos = btn.dataset.pos;
@@ -723,9 +392,8 @@ export async function renderAuction(root) {
       location.hash = 'auction?' + p.toString();
     });
   });
-  // Edge filter
-  root.querySelectorAll('.edgeFilter').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
+  root.querySelectorAll('.edgeFilter').forEach(btn => {
+    btn.addEventListener('click', () => {
       const e = btn.dataset.edge;
       const p = new URLSearchParams(location.hash.split('?')[1] || '');
       if (e === 'ALL') p.delete('edge');
@@ -742,28 +410,20 @@ export async function renderAuction(root) {
     location.hash = 'auction?' + p.toString();
   });
 
-  // Live Auction focus (select player being auctioned for instant advice)
-  root.querySelectorAll('.focusBtn').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const pid = btn.dataset.pid;
-      const p = new URLSearchParams(location.hash.split('?')[1] || '');
-      p.set('focus', pid);
-      location.hash = 'auction?' + p.toString();
-    });
-  });
-  root.querySelector('#clearFocus')?.addEventListener('click', ()=>{
+  // Live Auction focus
+  root.querySelector('#clearFocus')?.addEventListener('click', () => {
     const p = new URLSearchParams(location.hash.split('?')[1] || '');
     p.delete('focus');
     location.hash = 'auction?' + p.toString();
   });
   const liveSearch = root.querySelector('#liveSearch');
   if (liveSearch) {
-    liveSearch.addEventListener('keydown', e=>{
-      if (e.key==='Enter') {
+    liveSearch.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
         e.preventDefault();
         const q = liveSearch.value.trim().toLowerCase();
         if (!q) return;
-        const m = allRanked.find(pl=> pl.player_name.toLowerCase().includes(q) && !pl.isDrafted) || allRanked.find(pl=> pl.player_name.toLowerCase().includes(q));
+        const m = allRanked.find(pl => pl.player_name.toLowerCase().includes(q) && !pl.isDrafted) || allRanked.find(pl => pl.player_name.toLowerCase().includes(q));
         if (m) {
           const p = new URLSearchParams(location.hash.split('?')[1] || '');
           p.set('focus', m.player_id);
@@ -772,169 +432,28 @@ export async function renderAuction(root) {
       }
     });
   }
-  root.querySelector('#liveDraftBtn')?.addEventListener('click', ()=>{
+  root.querySelector('#liveDraftBtn')?.addEventListener('click', () => {
     const pid = root.querySelector('#liveDraftBtn')?.dataset.pid;
     if (!pid) return;
-    const pl = allRanked.find(p=>String(p.player_id)===String(pid));
+    const pl = allRanked.find(p => String(p.player_id) === String(pid));
     if (!pl) return;
     const cap = liveAdvice ? liveAdvice.cap : pl.auction;
-    showDraftModal(root, pid, pl.player_name, cap, state, allRanked);
+    showDraftModal(root, pid, pl.player_name, cap, state, allRanked, escapeHtml, () => renderAuction(root));
   });
-  root.querySelector('#livePassBtn')?.addEventListener('click', ()=>{
+  root.querySelector('#livePassBtn')?.addEventListener('click', () => {
     const p = new URLSearchParams(location.hash.split('?')[1] || '');
     p.delete('focus');
     location.hash = 'auction?' + p.toString();
   });
 
-  // Draftea-style separate player modal (photo + values + stat graphs) — click any player cell/avatar
-  const _modal = root.querySelector('#playerDetailModal');
-  const _modalContent = root.querySelector('#playerDetailContent');
-  function openPlayerModal(pid){
-    const pl = allRanked.find(p=>String(p.player_id)===String(pid));
-    if (!pl || !_modal || !_modalContent) return;
-    _modalContent.innerHTML = `
-      <div style="padding:16px; display:flex; gap:16px; align-items:center; border-bottom:1px solid var(--border)">
-        ${playerAvatar(pl, 72)}
-        <div style="flex:1">
-          <div style="font:700 18px "Helvetica Neue", Helvetica,sans-serif; display:flex; gap:8px; align-items:center; flex-wrap:wrap">${escapeHtml(pl.player_name)} ${posBadge(pl.position)} ${teamLogo(pl.team,20)}</div>
-          <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:4px">T${pl.fp_tier ?? pl.tier} · ECR #${pl.fp_ecr ?? '—'} · ADP #${pl.fp_adp ?? '—'} · <span style="color:var(--violet)">${pl.statsguy_value!=null?`SG ${pl.statsguy_value.toFixed(0)} (#${pl.statsguy_rank})`:'SG — outside top 211'}</span> · VOR +${pl.vor.toFixed(0)} · $${pl.auction} val · ${pl.edge}</div>
-          <div class="mono" style="font-size:11px; color:var(--text-muted)">Gridiron ${pl.weekly.toFixed(1)} wk → ${pl.ros.toFixed(0)} season · Market ${pl.marketRos!=null?pl.marketRos.toFixed(0):'—'} season</div>
-        </div>
-        <button id="closePlayerModal" style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:8px; color:var(--text); cursor:pointer">✕</button>
-      </div>
-      <div style="padding:16px; display:flex; flex-direction:column; gap:12px">
-        <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px">
-          <div style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:10px; text-align:center"><div class="kicker">Gridiron $</div><div class="mono" style="font-size:20px; font-weight:700; color:var(--amber)">$${pl.auction}</div><div class="micro faint">VOR ${pl.vor.toFixed(0)} · ${pl.edge}</div></div>
-          <div style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:10px; text-align:center"><div class="kicker">StatsGuy Market</div><div class="mono" style="font-size:20px; font-weight:700; color:var(--violet)">${pl.statsguy_value!=null?pl.statsguy_value.toFixed(0):'—'}</div><div class="micro faint">${pl.statsguy_rank?`#${pl.statsguy_rank} real trades`:'outside top 211'}</div></div>
-        </div>
-        ${(()=>{ const stats = pl.seasonStatDeltas && pl.seasonStatDeltas.length ? pl.seasonStatDeltas : []; if(!stats.length) return '<div class="micro faint">No season stat deltas for this player.</div>'; const maxAbs = Math.max(...stats.map(s=> Math.max(Math.abs(s.model), Math.abs(s.market||0), 10))); return `<div style="display:flex; flex-direction:column; gap:8px">${stats.slice(0,6).map(s=>{ const pctM=Math.min(100, Math.round(Math.abs(s.model)/maxAbs*100)); const pctK=s.market!=null?Math.min(100, Math.round(Math.abs(s.market)/maxAbs*100)):0; const dColor=s.delta!=null?(s.delta>0?'var(--emerald)':'var(--crimson)'):'var(--text-faint)'; return `<div style="background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; padding:8px"><div style="display:flex; justify-content:space-between"><span class="mono" style="font-size:11px; color:var(--text-faint)">${s.label} season</span><span class="mono" style="font-size:11px; color:${dColor}; font-weight:700">${s.delta!=null?(s.delta>0?'+':'')+s.delta.toFixed(0):''}</span></div><div style="display:flex; gap:8px; align-items:center; margin-top:6px"><span class="mono" style="font-size:11px; min-width:40px; text-align:right; color:var(--amber)">${s.model.toFixed(0)}</span><div style="flex:1; height:8px; background:rgba(0,0,0,0.06); border-radius:999px; position:relative; overflow:hidden"><div style="position:absolute; left:0; top:0; bottom:0; width:${pctM}%; background:var(--amber); border-radius:999px"></div><div style="position:absolute; left:0; top:0; bottom:0; width:${pctK}%; background:var(--sky); opacity:0.6; border-radius:999px"></div></div><span class="mono" style="font-size:11px; min-width:40px; color:var(--text-muted)">${s.market!=null?s.market.toFixed(0):'—'}</span></div><div class="mono" style="font-size:10px; color:var(--text-faint); margin-top:4px"><span style="color:var(--amber)">● Gridiron</span> <span style="color:var(--sky)">● Market (FP season)</span></div></div>`}).join('')}</div>`; })()}
-        <div style="display:flex; gap:8px; margin-top:4px"><button class="btn btn-primary btn-sm" style="flex:1" id="modalFocusBtn" data-pid="${pl.player_id}">👁 Focus for live advice</button><button class="btn btn-ghost btn-sm" id="modalCloseBtn2">Close</button></div>
-      </div>
-    `;
-    _modal.style.display = 'flex';
-    _modal.querySelector('#closePlayerModal')?.addEventListener('click', ()=> _modal.style.display='none');
-    _modal.querySelector('#modalCloseBtn2')?.addEventListener('click', ()=> _modal.style.display='none');
-    _modal.querySelector('#modalFocusBtn')?.addEventListener('click', ()=>{
-      const p = new URLSearchParams(location.hash.split('?')[1] || '');
-      p.set('focus', pl.player_id);
-      location.hash = 'auction?' + p.toString();
-      _modal.style.display='none';
-    });
-    _modal.addEventListener('click', e=>{ if(e.target===_modal) _modal.style.display='none'; }, {once:true});
-  }
-  root.querySelectorAll('.player-cell').forEach(cell=>{
-    cell.style.cursor='pointer';
-    cell.title='Open Draftea-style details';
-    cell.addEventListener('click', ()=>{
-      const tr = cell.closest('tr');
-      const pid = tr?.dataset.pid || tr?.getAttribute('data-pid');
-      if (pid) openPlayerModal(pid);
-    });
-  });
-
-  // Sort: click header or sort chips to order highest↔lowest
-  root.querySelectorAll('[data-sort]').forEach(th=>{
-    th.addEventListener('click', ()=>{
-      const key = th.getAttribute('data-sort');
-      const p = new URLSearchParams(location.hash.split('?')[1] || '');
-      const curKey = p.get('sort') || 'auction';
-      const curDir = p.get('dir') === '1' ? 1 : -1;
-      let nextDir = -1;
-      if (curKey === key) nextDir = curDir * -1;
-      else nextDir = (key === 'player_name' ? 1 : -1);
-      p.set('sort', key);
-      p.set('dir', String(nextDir));
-      location.hash = 'auction?' + p.toString();
-    });
-    th.addEventListener('keydown', e=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); th.click(); }});
-  });
-  root.querySelector('#toggleSortDir')?.addEventListener('click', ()=>{
-    const p = new URLSearchParams(location.hash.split('?')[1] || '');
-    const curDir = p.get('dir') === '1' ? 1 : -1;
-    p.set('sort', p.get('sort') || 'auction');
-    p.set('dir', String(curDir * -1));
-    location.hash = 'auction?' + p.toString();
-  });
-
-  // Draft buttons
-  root.querySelectorAll('.draftBtn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const pid = btn.dataset.pid;
-      const name = btn.dataset.name;
-      const suggestedVal = btn.dataset.val;
-      showDraftModal(root, pid, name, suggestedVal, state, allRanked);
-    });
-  });
-
-  // Copy CSV (original)
-  root.querySelector('#copyAuction')?.addEventListener('click', () => {
-    let list = filteredPlayers;
-    if (hasComparison && compareAuctionEnabled && auctionEdge !== 'ALL') list = list.filter(p => (p.edge || 'NEUTRAL') === auctionEdge);
-    const csvPlayers = list.filter(p => !p.isDrafted);
-    const csv = ['rank,player,pos,team,weekly,ros,vor,auction,market_season,season_delta,fp_ecr,fp_adp,edge,interval,tier']
-      .concat(csvPlayers.slice(0, 120).map((p, i) =>
-        `${i + 1},"${p.player_name}",${p.position},${p.team},${p.weekly.toFixed(1)},${p.ros.toFixed(1)},${p.vor.toFixed(1)},${p.auction},${p.marketRos != null ? p.marketRos.toFixed(0) : ''},${p.deltaRos != null ? p.deltaRos.toFixed(0) : ''},${p.fp_ecr ?? ''},${p.fp_adp ?? ''},${p.edge},${(p.ros - p.widthRos).toFixed(0)}-${(p.ros + p.widthRos).toFixed(0)},T${p.tier}`
-      )).join('\n');
-    navigator.clipboard.writeText(csv);
-    const b = root.querySelector('#copyAuction');
-    if (b) { b.textContent = 'Copied'; setTimeout(() => b.textContent = 'Copy CSV', 1200); }
-  });
-
   // Reset draft
   root.querySelector('#clearDraft')?.addEventListener('click', () => {
-    if (confirm('Reset entire draft tracker? This clears all drafted players and your roster.')) {
-      localStorage.removeItem(STORE_KEY);
+    if (confirm('Clear all drafted players?')) {
+      resetDraftState();
       location.hash = 'auction';
     }
   });
-}
 
-function showDraftModal(root, pid, name, suggestedVal, state, allRanked) {
-  const existing = root.querySelector('#draftModal');
-  if (existing) existing.remove();
-
-  const modal = document.createElement('div');
-  modal.id = 'draftModal';
-  modal.style.cssText = 'position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.6)';
-  modal.innerHTML = `
-    <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; min-width:300px; max-width:400px">
-      <h3 style="margin:0 0 16px 0">${name}</h3>
-      <div style="margin-bottom:12px">
-        <label style="font:500 13px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-muted)">Price paid</label>
-        <input type="number" id="draftPrice" value="${suggestedVal}" min="1" max="200" style="width:100%; background:var(--surface-raised); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px; font-size:16px; margin-top:4px">
-      </div>
-      <div style="margin-bottom:16px">
-        <label style="font:500 13px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-muted)">Who got them?</label>
-        <div style="display:flex; gap:8px; margin-top:8px">
-          <button class="btn btn-sm draftWho" data-who="me" style="flex:1; background:var(--color-accent); color:white">ME</button>
-          <button class="btn btn-sm btn-ghost draftWho" data-who="other" style="flex:1">Other team</button>
-        </div>
-      </div>
-      <div style="display:flex; gap:8px; justify-content:flex-end">
-        <button class="btn btn-ghost btn-sm" id="draftCancel">Cancel</button>
-      </div>
-    </div>
-  `;
-  root.appendChild(modal);
-
-  modal.querySelector('#draftCancel').addEventListener('click', () => modal.remove());
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-
-  modal.querySelectorAll('.draftWho').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const who = btn.dataset.who;
-      const price = Number(modal.querySelector('#draftPrice').value) || 1;
-      state.drafted[pid] = { by: who, price };
-      if (who === 'me') {
-        if (!state.myRoster.includes(pid)) state.myRoster.push(pid);
-      }
-      saveDraftState(state);
-      modal.remove();
-      renderAuction(root);
-    });
-  });
-}
-
-function escapeHtml(s) {
-  return String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  // Table-area events (sort, draft buttons, modals, copy)
+  bindTableEvents(root, allRanked, filteredPlayers, compareAuctionEnabled && hasComparison, state, escapeHtml, () => renderAuction(root));
 }

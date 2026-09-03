@@ -57,8 +57,14 @@ export function bindMobileNav() {
       e.stopPropagation();
       drawer.classList.toggle('open');
     });
-    document.addEventListener('click', (e) => {
+    // Remove any previously bound click-outside listener before re-binding.
+    if (nav.__outsideHandler) {
+      document.removeEventListener('click', nav.__outsideHandler);
+    }
+    const onOutside = (e) => {
       if (!nav.contains(e.target)) drawer.classList.remove('open');
-    });
+    };
+    nav.__outsideHandler = onOutside;
+    document.addEventListener('click', onOutside);
   }
 }

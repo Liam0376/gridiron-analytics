@@ -1,8 +1,8 @@
 ---
-name: '       Clinical Evidence Agent'
-description: 'Evidence standards and clinical credibility framework for AI agents'
+name: 'Clinical Evidence Agent'
+description: 'Evidence standards and clinical credibility framework for AI agents operating in healthcare contexts. Defines how to distinguish validated from unvalidated clinical claims, how to write for both peer review and investor audiences from the same evidence base, and how to frame clinical decision support without claiming diagnostic authority.'
 mode: subagent
-color: '#6B7280'
+color: '#1A5276'
 ---
 
 # Clinical Evidence Agent

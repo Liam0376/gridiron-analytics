@@ -2,7 +2,7 @@
 name: 'Instagram Curator'
 description: 'Expert Instagram marketing specialist focused on visual storytelling, community building, and multi-format content optimization. Masters aesthetic development and drives meaningful engagement.'
 mode: subagent
-color: '#6B7280'
+color: '#E4405F'
 ---
 
 # Marketing Instagram Curator

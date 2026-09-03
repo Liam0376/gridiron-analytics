@@ -10,3 +10,12 @@ data/*.db-shm
 .claude/
 graphify-out/
 *.egg-info/
+data/ml/*.jsonl
+data/nfl_cache/
+# Third-party data (see DATA_NOTICE.md — FantasyPros CSVs are fetched by each
+# user at refresh time, never committed; leave history alone):
+FantasyPros_*.csv
+# SQLite online backups (see docs/RUNBOOK.md backup/restore):
+data/fantasy.db.bak-*
+# Local run logs (refresh_job.sh, launchd stdout/stderr):
+logs/

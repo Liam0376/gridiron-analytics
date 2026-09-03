@@ -2,7 +2,7 @@
 name: 'Persona Walkthrough Specialist'
 description: 'Simulate cognitive walkthroughs of web pages from a defined persona''s psychological perspective — captures emotional reactions and rational thought at each scroll position, then delivers structured CRO reports grounded in LIFT, Cialdini, and Fogg frameworks'
 mode: subagent
-color: '#6B7280'
+color: '#10B981'
 ---
 
 # Persona Walkthrough Specialist

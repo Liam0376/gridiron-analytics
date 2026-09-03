@@ -16,11 +16,22 @@ export async function renderDashboard(root) {
   const scoring = meta.scoring_settings || {};
   const rosterPos = meta.roster_positions || [];
 
+  // Trust banners: consume /hub-api/meta data_source + weather_status (server crew names).
+  // Defensive: hide gracefully if fields absent (older server).
+  const dataSource = meta?.data_source ?? null;
+  const weatherStatus = meta?.weather_status ?? null;
+  const isDemoData = typeof dataSource === 'string' && dataSource.toLowerCase() === 'demo';
+  const isWeatherPlaceholder = (typeof weatherStatus === 'string' && weatherStatus.toLowerCase() === 'placeholder')
+    || meta?.weather_placeholder === true;
+
   root.innerHTML = `
     <div class="hero reveal in">
-      <h1>Command Center</h1>
-      <p>Fantasy Bahamas analytical hub powered by local SQLite WAL &amp; Sleeper API projections.</p>
+      <h1>Dashboard</h1>
+      <p>12-team analytical hub powered by local SQLite WAL &amp; Sleeper API projections.</p>
     </div>
+
+    ${isDemoData ? `<div class="alert alert-warn reveal in" role="status" style="margin-top:12px">Demo data — run refresh to load live Sleeper data.</div>` : ''}
+    ${isWeatherPlaceholder ? `<div class="reveal in" style="margin-top:8px"><span class="badge badge-faint">Weather placeholder — forecast not yet live</span></div>` : ''}
 
     <div class="grid grid-3 reveal in" style="margin-top:16px">
       <div class="card">
@@ -38,7 +49,7 @@ export async function renderDashboard(root) {
       </div>
 
       <div class="card">
-        <div class="card-header"><h3>League Settings</h3><span class="kicker">Fantasy Bahamas</span></div>
+        <div class="card-header"><h3>League Settings</h3><span class="kicker">12-Team League</span></div>
         <div class="card-body">
           <div class="row" style="gap:16px">
             <div class="stat"><div class="stat-value mono">${rosterPos.length ? rosterPos.length : '16'}</div><div class="stat-label">Roster slots</div></div>
@@ -66,7 +77,7 @@ export async function renderDashboard(root) {
     ${teams.length ? `
     <div class="card reveal in" style="margin-top:16px">
       <div class="card-header row align-between">
-        <h3>Fantasy Bahamas — League Directory</h3>
+        <h3>12-Team League — League Directory</h3>
         <span class="badge badge-amber mono">${teams.length} Teams</span>
       </div>
       <div class="card-body" style="padding:12px">

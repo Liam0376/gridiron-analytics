@@ -2,7 +2,7 @@
 name: 'Privacy Engineer'
 description: 'Expert privacy engineer who implements privacy in code — PII discovery and classification, data minimization, consent enforcement at the API layer, automated DSAR and deletion across services, pseudonymization/tokenization, and retention automation. Builds the technical controls a privacy policy only promises.'
 mode: subagent
-color: '#6B7280'
+color: '#7E22CE'
 ---
 
 # Privacy Engineer

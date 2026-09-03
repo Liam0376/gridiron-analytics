@@ -1,10 +1,10 @@
 # Hub Warm-Boot — Link Hub Start to Fully-Ready Model (Plan Only, No Build)
 
-> **Status:** PLAN — do not implement until user says `build`. This doc graphs the dependency chain for "hub up = model warm, not just listening".
+> **Status:** PLAN — do not implement until user says `build`. Graphs the dependency chain for "hub up = model warm, not just listening".
 
 ## Goal
 
-When the user runs `bash hub/start.sh` (or double-clicks `hub/FantasyHub.command`), the whole system — not just the HTTP listeners — is **verified warm** before the browser opens. Warm = SQLite WAL has this week's data, `_CACHE` is populated, and the hub's staleness badge will show `fresh`.
+When the user runs `bash hub/start.sh` (or double-clicks `hub/FantasyHub.command`), the whole system (not just the HTTP listeners) is **verified warm** before the browser opens. Warm = SQLite WAL has this week's data, `_CACHE` is populated, staleness badge shows fresh.
 
 Today `hub/start.sh` only waits for `GET /health = 200`. That proves the processes are alive, not that the *data* is usable. In preseason/sleep-wake, the user otherwise sees empty tables until they remember `curl -X POST /refresh`.
 
@@ -35,7 +35,7 @@ Planned (data-warm):
 ## Staleness Decision (mirrors spec's "visible stale as of [timestamp]")
 
 - **Fresh:** `lastUpdated` within 24h AND `week == _compute_nfl_week()` → no refresh.
-- **Stale:** `lastUpdated` 24–72h ago OR `week` mismatch (e.g., DB has week 2, now week 3) → prompt `Refresh now? [Y/n]` (default Y). With `bash hub/start.sh --auto` it auto-confirms.
+- **Stale:** `lastUpdated` 24–72h ago OR `week` mismatch (e.g., DB has week 2, now week 3) → prompt `Refresh now? [Y/n]` (default Y); `bash hub/start.sh --auto` auto-confirms.
 - **Cold:** no `league_settings` / `player_stats` rows, or `_CACHE` empty and `player_stats.count == 0` → prompt `No data for week X — fetch now? [Y/n]`.
 
 Prompt respects rate limits: check `refresh_log` — if last attempt < 1h ago, show `Last refresh 23m ago (sleeper=ok) — skip?` and default to N. Sleeper `players/nfl` is once/day per `adapters/sleeper.py:24`.

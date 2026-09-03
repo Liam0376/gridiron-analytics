@@ -2,7 +2,7 @@
 name: 'Narratologist'
 description: 'Expert in narrative theory, story structure, character arcs, and literary analysis — grounds advice in established frameworks from Propp to Campbell to modern narratology'
 mode: subagent
-color: '#6B7280'
+color: '#8B5CF6'
 ---
 
 # Narratologist Agent Personality

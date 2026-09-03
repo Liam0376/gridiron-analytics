@@ -1,24 +1,57 @@
 // hub/src/views/team.js — Team Hub Executive Command Center
-import { fetchRoster, fetchComparison } from '../api.js';
-import { getSelectedTeamId, setSelectedTeamId, renderTeamSelector, bindTeamSelector } from '../components/teamSelector.js';
-import { posBadge, injuryBadge } from '../components/badges.js';
+import { fetchRoster, fetchRostersFull, fetchComparison } from '../api.js';
+import { getSelectedTeamId, setSelectedTeamId, renderTeamSelector, bindTeamSelector } from '../components/teamSelector.js';import { posBadge, injuryBadge } from '../components/badges.js';
 import { intervalBar } from '../components/intervalBar.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
 import { getTeamColor } from '../components/teamColors.js';
 import { openPlayerModal } from '../components/playerModal.js';
-import { computeVbdParams, vbdAuction, vbdAuctionUncapped } from '../components/vbdAuction.js';
+import { computeVbdParams } from '../components/vbdAuction.js';
+import { assignStarterSlots } from '../lib/slots.js';
+import { enrichPlayer } from '../lib/enrichPlayer.js';
+import { escapeHtml, escapeAttr, safeAvatarUrl } from '../lib/escape.js';
 
 export async function renderTeam(root) {
-  const selectedId = getSelectedTeamId();
+  // Bulk-first: single /rosters-full pass; single-fetch only when bulk misses (no N+1).
+  const bulkData = await fetchRostersFull().catch(() => null);
+  const bulkRosters = bulkData?.rosters || bulkData?.teams || null;
+  const bulkLeagueRosters = bulkData?.leagueRosters || bulkData?.allTeams || [];
 
-  // Load selected team roster data, full league rosters, and market consensus
-  const [rosterData, compData] = await Promise.all([
-    fetchRoster({ roster_id: selectedId }),
-    fetchComparison({ limit: 800 }).catch(() => ({ players: [] })),
-  ]);
+  // Derive selected team from stored value or leagueRosters[0] — no hardcoded id.
+  let selectedId = getSelectedTeamId();
+  if (!selectedId && bulkLeagueRosters.length) {
+    selectedId = String(bulkLeagueRosters[0].roster_id);
+    setSelectedTeamId(selectedId);
+  }
 
-  const leagueRosters = rosterData.leagueRosters || rosterData.allTeams || [];
+  // Resolve rosterData from bulk when available; otherwise single-fetch.
+  let rosterData = null;
+  if (bulkRosters && selectedId && (bulkRosters[selectedId] || bulkRosters[Number(selectedId)])) {
+    const full = bulkRosters[selectedId] || bulkRosters[Number(selectedId)];
+    rosterData = {
+      starters: full.starters || [],
+      bench: full.bench || [],
+      reserve: full.reserve || [],
+      myRoster: full.starters || [],
+      teamMeta: full.team_info || full.teamMeta || {},
+      team_info: full.team_info || full.teamMeta || {},
+      leagueRosters: bulkLeagueRosters,
+      allTeams: bulkLeagueRosters,
+    };
+  } else {
+    rosterData = await fetchRoster(selectedId ? { roster_id: selectedId } : {}).catch(() => ({ starters: [], bench: [], reserve: [], leagueRosters: [], allTeams: [] }));
+    if (!selectedId) {
+      const lr = rosterData.leagueRosters || rosterData.allTeams || [];
+      if (lr.length) {
+        selectedId = String(lr[0].roster_id);
+        setSelectedTeamId(selectedId);
+      }
+    }
+  }
+
+  const compData = await fetchComparison({ limit: 800 }).catch(() => ({ players: [] }));
+
+  const leagueRosters = (bulkLeagueRosters.length ? bulkLeagueRosters : (rosterData.leagueRosters || rosterData.allTeams || []));
   const teamMeta = rosterData.teamMeta || rosterData.team_info || {};
 
   // Build lookup map for market comparison data
@@ -29,140 +62,42 @@ export async function renderTeam(root) {
   });
   // Compute dynamic VBD auction params from comparison data (mirrors comparison.py + auction.js)
   const vbdParams = computeVbdParams(compData.players || []);
+  const slotOpts = { vbdParams, compPlayers: compData.players || [] };
 
-  // Helper to enrich player objects with rich data
-  const enrichPlayer = (p, defaultSlot = 'BENCH') => {
-    const pid = String(p.player_id || '');
-    const pname = (p.player_name || p.name || pid).toLowerCase();
-    const c = compMap.get(pid) || compMap.get(pname) || {};
-
-    const weekly = Number(p.projected_points ?? c.projected_points ?? c.weekly ?? 0);
-    const season = Number(c.ros ?? c.marketRos ?? (weekly * 17));
-    const width = Number(p.width ?? c.width ?? 5.0);
-    const lower = Number(p.projection_lower ?? p.lower ?? (weekly - width / 2));
-    const upper = Number(p.projection_upper ?? p.upper ?? (weekly + width / 2));
-
-    const pos = (p.position || p.position_group || 'UNK').toUpperCase();
-    const modelSeason = Number(p.model_season_points ?? c.model_season_points ?? (p._neutral_points != null ? p._neutral_points * 17 : weekly * 17));
-    // Dynamic VBD: capped $1 bench, plus uncapped true VOR $ for tooltip
-    const gridironAuction = Number(p.gridironAuction ?? c.auction ?? (c.model_season_points != null ? vbdAuction(Number(c.model_season_points), pos, vbdParams) : vbdAuction(modelSeason, pos, vbdParams)) ?? 1);
-    const gridironUncapped = Number(c.auctionUncapped ?? (c.model_season_points != null ? vbdAuctionUncapped(Number(c.model_season_points), pos, vbdParams) : vbdAuctionUncapped(modelSeason, pos, vbdParams)) ?? gridironAuction);
-    // Market $ = VBD market auction or actual paid price (paid takes precedence for drafted players)
-    const marketVbd = c.market_season_points != null ? vbdAuction(Number(c.market_season_points), pos, vbdParams) : null;
-    const marketUncapped = c.marketAuctionUncapped ?? (c.market_season_points != null ? vbdAuctionUncapped(Number(c.market_season_points), pos, vbdParams) : null);
-    const marketAuction = Number(p.auction_price_paid ?? p.marketAuction ?? c.marketAuction ?? marketVbd ?? Math.max(1, Math.round(gridironAuction * 0.9)));
-    const replPts = vbdParams.replPts[pos] ?? 0;
-    const vor = Math.max(0, modelSeason - replPts);
-    const deltaAuction = gridironAuction - marketAuction;
-
-    const slot = p.slot || defaultSlot;
-    const ecr = c.fp_ecr ?? p.fp_ecr ?? null;
-    const ecrPos = c.fp_ecr_pos ?? p.fp_ecr_pos ?? null;
-    const adp = c.fp_adp ?? p.fp_adp ?? null;
-    const tier = c.fp_tier ?? c.tier ?? p.tier ?? null;
-    const edge = (p.edge || c.edge || 'NEUTRAL').toUpperCase();
-    const status = p.injury_status || c.injury_status || null;
-
-    let rec = 'START';
-    if (slot.startsWith('BN') || slot === 'BENCH' || slot === 'IR') {
-      rec = weekly >= 12.0 ? 'POTENTIAL START' : 'BENCH';
-    } else {
-      rec = width > 7.0 ? 'TOSS-UP' : weekly >= 10.0 ? 'CONFIDENT' : 'RISK';
-    }
-
-    const passYd = Math.round(c.market_season_stats?.passing_yards ?? (p.pass_yd ? p.pass_yd * 17 : (pos === 'QB' ? weekly * 16.5 * 17 : 0)));
-    const rushYd = Math.round(c.market_season_stats?.rushing_yards ?? (p.rush_yd ? p.rush_yd * 17 : (pos === 'RB' ? weekly * 5.2 * 17 : pos === 'QB' ? weekly * 1.4 * 17 : 0)));
-    const recYd = Math.round(c.market_season_stats?.receiving_yards ?? (p.rec_yd ? p.rec_yd * 17 : ((pos === 'WR' || pos === 'TE') ? weekly * 5.6 * 17 : pos === 'RB' ? weekly * 2.1 * 17 : 0)));
-    const recs = Math.round(c.market_season_stats?.receptions ?? (p.receptions ? p.receptions * 17 : ((pos === 'WR' || pos === 'TE') ? weekly * 0.46 * 17 : pos === 'RB' ? weekly * 0.28 * 17 : 0)));
-    const tds = Number((c.market_season_stats?.total_tds ?? (weekly * 0.52 * 17 / 10)).toFixed(1));
-
-    return {
-      ...p,
-      player_id: pid,
-      player_name: p.player_name || p.name || pid,
-      position: pos,
-      team: (p.team || '').toUpperCase(),
-      opponent_team: p.opponent_team || '',
-      weekly,
-      season,
-      width,
-      lower,
-      upper,
-      vor,
-      gridironAuction,
-      gridironUncapped,
-      marketAuction,
-      marketUncapped,
-      deltaAuction,
-      ecr,
-      ecrPos,
-      adp,
-      tier,
-      edge,
-      injury_status: status,
-      slot,
-      recommendation: rec,
-      season_pass_yd: passYd,
-      season_rush_yd: rushYd,
-      season_rec_yd: recYd,
-      season_rec: recs,
-      season_tds: tds,
-    };
-  };
-
-  // Map 10 starter slots explicitly (QB, RB1, RB2, WR1, WR2, TE, FLEX1, FLEX2, K, DEF)
   const rawStarters = rosterData.starters || rosterData.myRoster || [];
   const rawBench = rosterData.bench || [];
   const rawReserve = rosterData.reserve || [];
 
-  const starterSlotLabels = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'TE', 'FLEX1', 'FLEX2', 'K', 'DEF'];
-  const posCounts = { QB: 0, RB: 0, WR: 0, TE: 0, FLEX: 0, K: 0, DEF: 0 };
-
-  const starters = rawStarters.map((p, idx) => {
-    const pos = (p.position || 'UNK').toUpperCase();
-    let slot = starterSlotLabels[idx] || `STARTER ${idx + 1}`;
-    if (pos === 'QB') {
-      posCounts.QB++;
-      slot = posCounts.QB === 1 ? 'QB' : `FLEX${++posCounts.FLEX}`;
-    } else if (pos === 'RB') {
-      posCounts.RB++;
-      slot = posCounts.RB <= 2 ? `RB${posCounts.RB}` : `FLEX${++posCounts.FLEX}`;
-    } else if (pos === 'WR') {
-      posCounts.WR++;
-      slot = posCounts.WR <= 2 ? `WR${posCounts.WR}` : `FLEX${++posCounts.FLEX}`;
-    } else if (pos === 'TE') {
-      posCounts.TE++;
-      slot = posCounts.TE === 1 ? 'TE' : `FLEX${++posCounts.FLEX}`;
-    } else if (pos === 'K') {
-      slot = 'K';
-    } else if (pos === 'DEF') {
-      slot = 'DEF';
-    }
-    return enrichPlayer({ ...p, slot }, slot);
-  });
-
-  const bench = rawBench.map((p, i) => enrichPlayer({ ...p, slot: `BN${i + 1}` }, `BN${i + 1}`));
-  const reserve = rawReserve.map((p, i) => enrichPlayer({ ...p, slot: `IR${i + 1}` }, `IR${i + 1}`));
+  const { starters, bench: rawBenchEnriched } = assignStarterSlots(rawStarters, rawBench, slotOpts);
+  // IR/reserve not part of canonical starter/bench ordering — enrich inline with same opts.
+  const reserve = rawReserve.map((p, i) =>
+    enrichPlayer({ ...p, slot: `IR${i + 1}` }, null, { ...slotOpts, defaultSlot: `IR${i + 1}` })
+  );
+  const bench = rawBenchEnriched;
   const allPlayers = [...starters, ...bench, ...reserve];
 
-  // Fetch all 12 rosters concurrently to calculate true League Rank
+  // League rank via single bulk pass (no N+1 fan-out); graceful fallback when bulk misses.
   let rankText = '#— of 12';
   try {
-    const allRostersData = await Promise.all(
-      leagueRosters.map(t => fetchRoster({ roster_id: t.roster_id }).catch(() => null))
-    );
-    const rankedTeams = allRostersData
-      .filter(Boolean)
-      .map(rd => {
-        const teamStarters = rd.starters || rd.myRoster || [];
-        const fpts = teamStarters.reduce((s, p) => s + Number(p.projected_points || 0), 0);
-        return { roster_id: String(rd.teamMeta?.roster_id || rd.team_info?.roster_id || ''), fpts };
-      })
-      .sort((a, b) => b.fpts - a.fpts);
-
-    const myRankIdx = rankedTeams.findIndex(t => String(t.roster_id) === String(selectedId));
-    if (myRankIdx !== -1) {
-      rankText = `#${myRankIdx + 1} of 12`;
+    if (bulkRosters && typeof bulkRosters === 'object') {
+      const rankedTeams = Object.entries(bulkRosters)
+        .map(([rid, full]) => {
+          const teamStarters = full?.starters || full?.myRoster || [];
+          const fpts = teamStarters.reduce((s, p) => s + Number(p.projected_points || 0), 0);
+          const meta = full?.team_info || full?.teamMeta || {};
+          return { roster_id: String(meta.roster_id || rid || ''), fpts };
+        })
+        .sort((a, b) => b.fpts - a.fpts);
+      const myRankIdx = rankedTeams.findIndex(t => String(t.roster_id) === String(selectedId));
+      if (myRankIdx !== -1) {
+        rankText = `#${myRankIdx + 1} of 12`;
+      }
+    } else if (Array.isArray(bulkData?.league_leaderboard) && bulkData.league_leaderboard.length) {
+      const idx = bulkData.league_leaderboard.findIndex(e => String(e.roster_id) === String(selectedId));
+      if (idx !== -1) rankText = `#${idx + 1} of 12`;
+    } else if (Array.isArray(rosterData.league_leaderboard) && rosterData.league_leaderboard.length) {
+      const idx = rosterData.league_leaderboard.findIndex(e => String(e.roster_id) === String(selectedId));
+      if (idx !== -1) rankText = `#${idx + 1} of 12`;
     }
   } catch (_) {}
 
@@ -240,18 +175,16 @@ export async function renderTeam(root) {
         <div class="team-hero-top">
           <div class="team-owner-info">
             <div class="team-owner-avatar">
-              ${teamMeta.avatar_url
-                ? `<img src="${teamMeta.avatar_url}" alt="${escapeHtml(teamMeta.display_name)}" class="owner-img" />`
-                : `<div class="owner-avatar-fallback">${escapeHtml((teamMeta.display_name || teamMeta.owner_name || 'T').charAt(0).toUpperCase())}</div>`}
+              ${(() => { const av = safeAvatarUrl(teamMeta.avatar_url); return av ? `<img src="${escapeAttr(av)}" alt="${escapeHtml(teamMeta.display_name)}" class="owner-img" />` : `<div class="owner-avatar-fallback">${escapeHtml((teamMeta.display_name || teamMeta.owner_name || 'T').charAt(0).toUpperCase())}</div>`; })()}
             </div>
             <div>
               <div class="team-title-row">
                 <h1 class="team-name">${escapeHtml(teamMeta.team_name || teamMeta.display_name || 'Team Hub')}</h1>
                 <span class="badge badge-owner">Owner: @${escapeHtml(teamMeta.display_name || teamMeta.owner_name || 'user')}</span>
-                <span class="badge badge-amber mono" style="font-size:12px; font-weight:700">Rank ${rankText}</span>
+                <span class="badge badge-amber mono" style="font-size:12px; font-weight:700" aria-live="polite">Rank ${rankText}</span>
               </div>
               <div class="team-sub-row faint" style="margin-top:4px">
-                Sleeper Roster #${teamMeta.roster_id || selectedId} · 12-Team Full PPR · 2 FLEX
+                Roster #${teamMeta.roster_id || selectedId} · 12-team PPR · 2 FLEX
               </div>
             </div>
           </div>
@@ -269,7 +202,7 @@ export async function renderTeam(root) {
             <span class="micro faint">12-Team Starter FPTS Leaderboard</span>
           </div>
           <div class="kpi-card">
-            <span class="kicker">Total Gridiron $ VOR</span>
+            <span class="kicker">Total Model $</span>
             <div class="mono kpi-val" style="color:var(--emerald)">$${totalGridironValue}</div>
             <span class="micro faint">Sum of VBD auction values</span>
           </div>
@@ -281,9 +214,9 @@ export async function renderTeam(root) {
             </div>
           </div>
           <div class="kpi-card">
-            <span class="kicker">Starter Projected FPTS</span>
+            <span class="kicker">Starter pts/wk</span>
             <div class="mono kpi-val" style="color:var(--amber)">${totalStarterFPTS.toFixed(1)} <span class="kpi-unit">pts/wk</span></div>
-            <span class="micro faint">17-Game: ~${totalSeasonProj.toFixed(0)} pts</span>
+            <span class="micro faint">17-Game: ${totalSeasonProj.toFixed(0)} pts</span>
           </div>
         </div>
 
@@ -322,7 +255,7 @@ export async function renderTeam(root) {
     <div class="card reveal in" style="margin-top:16px; border:1px solid ${tossups.length ? 'rgba(245,158,11,0.35)' : 'var(--border)'}; background:${tossups.length ? 'rgba(245,158,11,0.03)' : 'var(--surface)'}">
       <div class="card-header" style="border-bottom:1px solid ${tossups.length ? 'rgba(245,158,11,0.2)' : 'var(--border)'}">
         <div style="display:flex; align-items:center; gap:8px">
-          <span class="badge ${tossups.length ? 'badge-amber' : 'badge-emerald'}" style="font-size:12px">START/SIT TOSS-UP ADVISOR</span>
+          <span class="badge ${tossups.length ? 'badge-amber' : 'badge-emerald'}" style="font-size:12px">Start/Sit Advisor</span>
           <span class="micro faint">${tossups.length ? `${tossups.length} Ceiling-Over-Floor Decision(s)` : 'Optimal Lineup Configured'}</span>
         </div>
       </div>
@@ -374,14 +307,15 @@ export async function renderTeam(root) {
       <div class="card-body" style="padding:0">
         <div class="responsive-view">
           <div class="table-wrap" style="border:0; border-radius:0">
-            <table>
+            <table aria-label="Starters">
+              <caption class="sr-only">Starting lineup with projections and auction values</caption>
               <thead>
                 <tr>
                   <th>Slot</th>
                   <th>Player</th>
                   <th>Matchup</th>
                   <th style="color:var(--amber)">Projected FPTS (Wk/17G)</th>
-                  <th style="color:var(--amber)">Gridiron $</th>
+                  <th style="color:var(--amber)">Model $</th>
                   <th style="color:var(--sky)">Market $</th>
                   <th>Δ $</th>
                   <th>Edge</th>
@@ -416,14 +350,15 @@ export async function renderTeam(root) {
       <div class="card-body" style="padding:0">
         <div class="responsive-view">
           <div class="table-wrap" style="border:0; border-radius:0">
-            <table>
+            <table aria-label="Bench roster">
+              <caption class="sr-only">Bench players with projections and auction values</caption>
               <thead>
                 <tr>
                   <th>Slot</th>
                   <th>Player</th>
                   <th>Matchup</th>
                   <th style="color:var(--amber)">Projected FPTS (Wk/17G)</th>
-                  <th style="color:var(--amber)">Gridiron $</th>
+                  <th style="color:var(--amber)">Model $</th>
                   <th style="color:var(--sky)">Market $</th>
                   <th>Δ $</th>
                   <th>Edge</th>
@@ -459,14 +394,15 @@ export async function renderTeam(root) {
         <div class="card-body" style="padding:0">
           <div class="responsive-view">
             <div class="table-wrap" style="border:0; border-radius:0">
-              <table>
+              <table aria-label="Injured reserve">
+                <caption class="sr-only">Injured reserve players</caption>
                 <thead>
                   <tr>
                     <th>Slot</th>
                     <th>Player</th>
                     <th>Matchup</th>
                     <th>Projected FPTS</th>
-                    <th>Gridiron $</th>
+                    <th>Model $</th>
                     <th>Market $</th>
                     <th>Δ $</th>
                     <th>Edge</th>
@@ -493,13 +429,20 @@ export async function renderTeam(root) {
     renderTeam(root);
   });
 
-  // Bind Player Row & Card Clicks to open Draftea Player Detail Modal
+  // Bind Player Row & Card Clicks to open Draftea Player Detail Modal (mouse + keyboard)
   root.querySelectorAll('[data-player-id]').forEach(el => {
-    el.addEventListener('click', () => {
+    const openForEl = () => {
       const pid = el.getAttribute('data-player-id');
       const targetPlayer = allPlayers.find(p => String(p.player_id) === String(pid));
       if (targetPlayer) {
         openPlayerModal(targetPlayer, root);
+      }
+    };
+    el.addEventListener('click', openForEl);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openForEl();
       }
     });
   });
@@ -509,6 +452,7 @@ function renderPlayerRow(p, isReserve = false) {
   const deltaCls = p.deltaAuction > 0 ? 'text-good' : p.deltaAuction < 0 ? 'text-bad' : 'faint';
   const deltaSign = p.deltaAuction > 0 ? '+' : '';
   const edgeCls = p.edge === 'BUY' ? 'badge-emerald' : p.edge === 'SELL' ? 'badge-crimson' : 'badge-faint';
+  const edgeIcon = p.edge === 'BUY' ? '▲ ' : p.edge === 'SELL' ? '▼ ' : '';
 
   let statText = '—';
   if (p.position === 'QB') statText = `${p.season_pass_yd} PassYd · ${p.season_tds} TD`;
@@ -517,7 +461,7 @@ function renderPlayerRow(p, isReserve = false) {
   else statText = `${p.season_tds} TD`;
 
   return `
-    <tr data-player-id="${escapeHtml(p.player_id)}" data-team="${p.team || ''}" class="clickable-row" style="cursor:pointer; --team-accent:${getTeamColor((p.team||'').toUpperCase())}">
+    <tr data-player-id="${escapeHtml(p.player_id)}" data-team="${p.team || ''}" class="clickable-row" tabindex="0" role="button" aria-label="Open details for ${escapeAttr(p.player_name || p.player_id)}" style="cursor:pointer; --team-accent:${getTeamColor((p.team||'').toUpperCase())}">
       <td class="micro faint mono" style="font-weight:700">${escapeHtml(p.slot)}</td>
       <td>
         <div class="player-cell">
@@ -533,10 +477,10 @@ function renderPlayerRow(p, isReserve = false) {
         <span style="color:var(--amber); font-weight:700">${p.weekly.toFixed(1)}</span>
         <span class="micro faint"> / ${p.season.toFixed(0)}</span>
       </td>
-      <td class="mono"><span class="badge badge-amber" title="${p.gridironUncapped!=null && p.gridironUncapped!==p.gridironAuction ? `True VOR $${p.gridironUncapped}` : ''}">$${p.gridironAuction}${p.gridironUncapped!=null && p.gridironUncapped!==p.gridironAuction ? ` <span class="micro faint">($${p.gridironUncapped})</span>` : ''}</span></td>
-      <td class="mono"><span class="badge badge-sky" title="${p.marketUncapped!=null && p.marketUncapped!==p.marketAuction ? `True $${p.marketUncapped}` : ''}">$${p.marketAuction}${p.marketUncapped!=null && p.marketUncapped!==p.marketAuction ? ` <span class="micro faint">($${p.marketUncapped})</span>` : ''}</span></td>
+      <td class="mono"><span class="badge badge-amber" title="${p.gridironUncapped!=null && p.gridironUncapped!==p.gridironAuction ? `Uncapped VOR $${p.gridironUncapped}` : ''}">$${p.gridironAuction}${p.gridironUncapped!=null && p.gridironUncapped!==p.gridironAuction ? ` <span class="micro faint">($${p.gridironUncapped})</span>` : ''}</span></td>
+      <td class="mono"><span class="badge badge-sky" title="${p.marketUncapped!=null && p.marketUncapped!==p.marketAuction ? `Uncapped $${p.marketUncapped}` : ''}">$${p.marketAuction}${p.marketUncapped!=null && p.marketUncapped!==p.marketAuction ? ` <span class="micro faint">($${p.marketUncapped})</span>` : ''}</span></td>
       <td class="mono ${deltaCls}">${deltaSign}$${p.deltaAuction}</td>
-      <td><span class="badge ${edgeCls}">${p.edge}</span></td>
+      <td><span class="badge ${edgeCls}" aria-label="${escapeAttr(p.edge)}">${edgeIcon}${p.edge}</span></td>
       <td class="mono micro">${p.ecr ? `#${p.ecr}${p.ecrPos ? ` (${p.ecrPos})` : ''}` : '—'}</td>
       <td class="mono micro faint">${p.adp ? `#${p.adp}` : '—'}</td>
       <td>${p.tier ? `<span class="badge badge-violet">T${p.tier}</span>` : '—'}</td>
@@ -551,7 +495,7 @@ function renderPlayerRow(p, isReserve = false) {
 
 function renderPlayerCardItem(p) {
   return `
-    <div class="player-card clickable-card" data-player-id="${escapeHtml(p.player_id)}" style="cursor:pointer">
+    <div class="player-card clickable-card" data-player-id="${escapeHtml(p.player_id)}" tabindex="0" role="button" aria-label="Open details for ${escapeAttr(p.player_name || p.player_id)}" style="cursor:pointer">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px">
         <div style="display:flex; align-items:center; gap:8px">
           ${playerAvatar(p, 36)}
@@ -562,19 +506,15 @@ function renderPlayerCardItem(p) {
             </div>
           </div>
         </div>
-        <span class="badge badge-amber mono" style="font-size:13px" title="${p.gridironUncapped!==p.gridironAuction ? `True $${p.gridironUncapped}`:''}">$${p.gridironAuction}${p.gridironUncapped!==p.gridironAuction ? `<span style="font-size:10px; color:var(--text-faint)"> ($${p.gridironUncapped})</span>`:''}</span>
+        <span class="badge badge-amber mono" style="font-size:13px" title="${p.gridironUncapped!==p.gridironAuction ? `Uncapped $${p.gridironUncapped}`:''}">$${p.gridironAuction}${p.gridironUncapped!==p.gridironAuction ? `<span style="font-size:10px; color:var(--text-faint)"> ($${p.gridironUncapped})</span>`:''}</span>
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; margin-bottom:8px" class="mono">
-        <div><span class="faint">Gridiron:</span> <strong style="color:var(--amber)">${p.weekly.toFixed(1)} wk</strong></div>
+        <div><span class="faint">Model:</span> <strong style="color:var(--amber)">${p.weekly.toFixed(1)} wk</strong></div>
         <div><span class="faint">Market:</span> <span style="color:var(--sky)">$${p.marketAuction}${p.marketUncapped!==p.marketAuction ? `<span style="font-size:10px; color:var(--text-faint)"> ($${p.marketUncapped})</span>`:''}</span></div>
         <div><span class="faint">ECR:</span> ${p.ecr ? `#${p.ecr}` : '—'}</div>
-        <div><span class="faint">Edge:</span> <strong style="color:${p.edge==='BUY'?'var(--emerald)':p.edge==='SELL'?'var(--crimson)':'var(--text-muted)'}">${p.edge}</strong></div>
+        <div><span class="faint">Edge:</span> <strong style="color:${p.edge==='BUY'?'var(--emerald)':p.edge==='SELL'?'var(--crimson)':'var(--text-muted)'}">${p.edge==='BUY'?'▲ ':p.edge==='SELL'?'▼ ':''}${p.edge}</strong></div>
       </div>
       <div>${intervalBar({ point: p.weekly, low: p.lower, high: p.upper, width: p.width, min: 0, max: 35 })}</div>
     </div>
   `;
-}
-
-function escapeHtml(s) {
-  return String(s || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 }

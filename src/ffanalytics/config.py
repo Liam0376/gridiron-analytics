@@ -1,7 +1,8 @@
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
 
-LEAGUE_ID = os.environ.get("SLEEPER_LEAGUE_ID", "1397736035240173568")
+LEAGUE_ID = os.environ["SLEEPER_LEAGUE_ID"]
 if not LEAGUE_ID:
     raise RuntimeError(
         "SLEEPER_LEAGUE_ID env var must be set — this project never "
@@ -53,17 +54,68 @@ def get_feature_status(name: str) -> str:
 
 
 def get_current_nfl_season() -> int:
-    """The NFL season we're preparing for or playing in (2026 in Aug 2026).
-    Always the current calendar year — Sleeper leagues, schedules, and
-    the DB are indexed by this."""
     from datetime import datetime
     return datetime.now().year
 
 
+# Max season with published nflverse weekly player stats.
+# why: in preseason (e.g. Sep 2026 before Week 1 kicks off) live nflreadpy has
+# no 2026 weekly rows yet, so unclamped stats_season=2026 makes refresh log
+# nflverse/ratings failures by design (2/5 red). Clamping to the last complete
+# season keeps refresh green; bump to 2026 once Week 1 stats publish.
+# tested and REJECTED: probing nflreadpy at import to auto-detect max season —
+# adds network I/O to config import (breaks offline unit tests + cold start).
+MAX_STATS_SEASON = 2025
+
+
 def get_stats_season() -> int:
-    """The most recent season with completed player stats in nflreadpy.
-    Before September = prior year (season hasn't started).
-    During/after September = current year (games being played)."""
     from datetime import datetime
     now = datetime.now()
-    return now.year if now.month >= 9 else now.year - 1
+    computed = now.year if now.month >= 9 else now.year - 1
+    # why: clamp to last season with published data (see MAX_STATS_SEASON).
+    return min(computed, MAX_STATS_SEASON)
+
+
+# Replacement-level starters used by VBD/VOR auction math. 12-team full-PPR with
+# 2 FLEX slots: QB 1*12=12, RB 2*12 + flex share = 28, WR 2*12 + flex share = 32,
+# TE 1*12=12, K/DEF streamed at $1 in practice but VBD still allocates 12 each
+# before clamping.
+POS_REPL_COUNTS = {"QB": 12, "RB": 28, "WR": 32, "TE": 12, "K": 12, "DEF": 12}
+
+# Empirical fallback for positional scarcity weights when market/model share is
+# too thin to derive a weight. K/DEF streamed at $1 -> weight 0.
+POS_WEIGHT_FALLBACK = {"QB": 0.65, "RB": 1.10, "WR": 0.92, "TE": 0.78, "K": 0.0, "DEF": 0.0}
+
+# 12-team $200 auction pool ($2400) minus 48 bench spots at $1 each = $2352
+# starter budget (10 starters * 12 teams). Aligned with auction.js / vbdAuction.js.
+STARTER_BUDGET_POOL = 2352.0
+
+
+def compute_nfl_week(now: datetime | None = None) -> int:
+    """Approximate NFL week (1-18) for a given date.
+
+    Season starts the Monday after Labor Day (first Monday in September).
+    Preseason returns 1 (unified with hub/server.py compute_nfl_week which
+    never returns 0 — callers already do max(1, week) / target_wk fallbacks,
+    so returning 0 only forced every consumer to special-case it).
+    In-season clamps to 1..18. For logging only.
+    """
+    if now is None:
+        now = datetime.now()
+    september_first = datetime(now.year, 9, 1)
+    offset_to_monday = (0 - september_first.weekday()) % 7
+    labor_day = september_first + timedelta(days=offset_to_monday)
+    season_start = labor_day + timedelta(days=7)
+    if now < season_start:
+        # why: hub returns 1 preseason; config returned 0 caused divergence
+        # (refresh rating_weeks range(1,19) vs hub week-1 assumptions).
+        # tested and REJECTED: keeping 0 + documenting divergence — every
+        # caller already branches on 0, so unifying to 1 removes dead code.
+        return 1
+    days_since = (now - season_start).days
+    week_num = days_since // 7 + 1
+    if week_num < 1:
+        return 1
+    if week_num > 18:
+        return 18
+    return week_num

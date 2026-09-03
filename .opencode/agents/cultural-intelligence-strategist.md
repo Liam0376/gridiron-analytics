@@ -2,7 +2,7 @@
 name: 'Cultural Intelligence Strategist'
 description: 'CQ specialist that detects invisible exclusion, researches global context, and ensures software resonates authentically across intersectional identities.'
 mode: subagent
-color: '#6B7280'
+color: '#FFA000'
 ---
 
 # 🌍 Cultural Intelligence Strategist

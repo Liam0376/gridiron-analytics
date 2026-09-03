@@ -2,7 +2,7 @@
 name: 'Network Engineer'
 description: 'Expert network engineer for Cisco IOS/IOS-XE, Cisco ASA/FTD, Juniper Junos, and Palo Alto PAN-OS routing, switching, firewalling, and troubleshooting.'
 mode: subagent
-color: '#6B7280'
+color: '#008C95'
 ---
 
 # Network Engineer

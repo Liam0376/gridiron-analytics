@@ -1,6 +1,7 @@
 """Projection engine: converts raw player stats into point projections
 using features, ratings, and heuristic intervals (conformal-informed)."""
 
+import warnings
 from typing import Dict, List, Optional
 from ffanalytics import config
 from ffanalytics.rating import Rating, update, decay_for_inactivity
@@ -8,9 +9,15 @@ from ffanalytics.conformal import interval, qhat
 from ffanalytics.scoring import calculate_fantasy_points, apply_flex_adjustment, count_flex_slots
 import math
 
+# Opponent-rating adjustment gate — default OFF.
+# tested and REJECTED — evidence: stat_projector.py:22-24 opponent defense
+# factors hurt correlation (0.690→0.687) even with multi-season shrinkage;
+# defense rankings don't persist year-to-year (Spearman rho=0.05-0.34).
+# Kept behind this flag for research only; production path leaves it OFF.
+ENABLE_OPPONENT_RATING = False
+
 
 def calculate_target_share_feature(stats: Dict) -> float:
-    """Calculate target share feature from raw stats."""
     targets = stats.get("targets", 0)
     receptions = stats.get("receptions", 0)
     # Simple approximation - in reality would need more sophisticated calculation
@@ -20,11 +27,8 @@ def calculate_target_share_feature(stats: Dict) -> float:
 
 
 def calculate_snap_pct_feature(stats: Dict) -> float:
-    """Calculate snap percentage feature from raw stats."""
     snaps = stats.get("snaps", 0)
-    # Would need total team snaps for proper calculation
-    # For now, return a placeholder based on available data
-    return min(snaps / 100.0, 1.0)  # Normalize to 0-1 range
+    return min(snaps / 100.0, 1.0)
 
 
 def calculate_opponent_positional_rating_feature(
@@ -32,18 +36,16 @@ def calculate_opponent_positional_rating_feature(
     opponent_team: str,
     position_group: str
 ) -> float:
-    """Get opponent positional matchup rating."""
     if not opponent_team or opponent_team not in team_ratings:
-        return 1500.0  # Default rating
+        return 1500.0
 
-    # Try to get position-specific rating, fall back to overall
     position_key = f"vs_{position_group}"
     if position_key in team_ratings[opponent_team]:
         return team_ratings[opponent_team][position_key].value
     elif "overall" in team_ratings[opponent_team]:
         return team_ratings[opponent_team]["overall"].value
     else:
-        return 1500.0  # Default
+        return 1500.0
 
 
 def calculate_projection(
@@ -55,20 +57,37 @@ def calculate_projection(
     scoring_settings: Dict = None,
     use_features: bool = True,
 ) -> Dict[str, float]:
+    """Score stats into projected points.
+
+    use_features=True is for retroactive scoring of ACTUAL game stats only
+    (targets/snaps/opponent from the same game just played; MAE≈0.98 on
+    actuals). use_features=False is for real predictions on PROJECTED stats
+    (stat_projector output) — feature adjustments are off because they were
+    tested and add bias when applied to projected (not actual) stats.
+
+    LEAKAGE GUARD: do not call with use_features=True on projected stats.
+    Projected inputs lack actuals (targets/snaps/attempts); if detected below
+    a warning is emitted and adjustments should be treated as invalid.
     """
-    Calculate point projection for a player.
-
-    When use_features=True (retroactive mode): applies feature adjustments
-    for actual-stat scoring (MAE=0.98 on backtest).
-
-    When use_features=False (prediction mode): stats already come from
-    stat_projector with TD regression/recency/trend baked in. Feature
-    adjustments tested and REJECTED for prediction — they add systematic
-    bias when operating on projected (not actual) stats.
-
-    Returns:
-        Dict with 'point_estimate', 'lower_bound', 'upper_bound', 'width'
-    """
+    # use_features=True → retroactive scoring of actual stats (MAE≈0.98).
+    # use_features=False → real predictions on projected stats; feature
+    # adjustments are off (tested and REJECTED — add bias on projected stats).
+    # assert: use_features=True requires actual-game keys (targets/snaps/etc.);
+    # projected-stat dicts (stat_projector output) must use use_features=False.
+    if use_features and (
+        "targets" not in player_stats
+        and "snaps" not in player_stats
+        and "attempts" not in player_stats
+        and "pass_attempts" not in player_stats
+    ):
+        warnings.warn(
+            "use_features=True called without actual-game keys "
+            "(targets/snaps/attempts missing) — likely projected stats; "
+            "feature adjustments add bias on projected inputs, "
+            "use use_features=False for predictions",
+            UserWarning,
+            stacklevel=2,
+        )
     if feature_weights is None:
         feature_weights = {
             "target_share": 0.4,
@@ -142,7 +161,12 @@ def calculate_projection(
             if snap_pct > 0:
                 feature_adjustment += feature_weights["snap_pct"] * (snap_pct - 0.6) * 8
 
-        feature_adjustment += feature_weights["opponent_positional_rating"] * ((opponent_rating - 1500) / 100)
+        # Opponent-rating term gated OFF by default (see ENABLE_OPPONENT_RATING).
+        # tested and REJECTED — evidence: stat_projector.py:22-24, opponent
+        # defense factors hurt correlation even with shrinkage; do not enable
+        # in production without re-running honest OOS backtest.
+        if ENABLE_OPPONENT_RATING:
+            feature_adjustment += feature_weights["opponent_positional_rating"] * ((opponent_rating - 1500) / 100)
 
     point_estimate = base_points + feature_adjustment
 
@@ -168,8 +192,6 @@ def calculate_projection(
         return m.get((pos or "UNK").upper(), 1.0)
 
     def _point_factor(pts: float) -> float:
-        # 12 pts is WR3/RB3 baseline; every point above 12 widens 2.2% up to +60% cap
-        # 20 pts → 1.18x, 30 pts → 1.40x, 35 pts → 1.51x
         if pts <= 12:
             return 1.0
         return min(1.60, 1.0 + (pts - 12) * 0.022)
@@ -199,7 +221,6 @@ def calculate_projection(
         "lower_bound": lower_bound,
         "upper_bound": upper_bound,
         "width": width,
-        "blowup_prob": None,  # hub can derive from width/point if needed
     }
 
 
@@ -209,23 +230,6 @@ def calculate_weekly_projections(
     historical_data: List[Dict] = None,
     use_features: bool = True,
 ) -> List[Dict]:
-    """
-    Calculate projections for all players in a week.
-
-    When use_features=True (default): retroactive mode, applies feature
-    adjustments to actual stats.
-    When use_features=False: prediction mode, stats come from stat_projector
-    with adjustments already baked in.
-
-    Args:
-        weekly_stats: List of player stats dicts (actual or projected)
-        team_ratings: Dictionary of team ratings by team and position group
-        historical_data: Optional historical data for conformal calibration
-        use_features: Whether to apply feature adjustments (False for prediction)
-
-    Returns:
-        List of player stats with added projection fields
-    """
     historical_residuals = []
     if historical_data:
         for historical_week in historical_data:

@@ -2,7 +2,7 @@
 name: 'Data Visualization Engineer'
 description: 'Expert data visualization engineer — chart-type selection by data and question, perceptually honest encodings, colorblind-safe data palettes, accessible and interactive charts, and rendering large datasets performantly with D3, Vega, and charting libraries.'
 mode: subagent
-color: '#6B7280'
+color: '#0F766E'
 ---
 
 # Data Visualization Engineer

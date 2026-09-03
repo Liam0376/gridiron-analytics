@@ -25,18 +25,8 @@ FLEX_SCARCITY_MULTIPLIER = 1.05  # 5% uplift for flex-eligible in 2+ flex league
 
 
 def calculate_fantasy_points(stats: dict, scoring_settings: dict | None = None) -> float:
-    """Calculate fantasy points from raw stats using league scoring settings.
-
-    stats keys map to Sleeper scoring setting keys:
-    - receptions -> rec
-    - receiving_yards -> rec_yd
-    - rushing_yards -> rush_yd
-    - passing_yards -> pass_yd
-    - passing_tds -> pass_td
-    - rushing_tds -> rush_td
-    - receiving_tds -> rec_td
-    - interceptions -> pass_int
-    """
+    """Sum stat_value * scoring_multiplier across all stat keys, with NaN
+    guards. stats keys map 1:1 to Sleeper scoring settings (e.g. rec_yd)."""
     settings = scoring_settings or DEFAULT_SCORING
 
     # Normalize nflverse/stat_projector aliases before scoring (audit C1: missing keys)
@@ -45,14 +35,12 @@ def calculate_fantasy_points(stats: dict, scoring_settings: dict | None = None) 
         stats = {**stats, "interceptions": stats.get("passing_interceptions")}
     if "fumbles_lost_total" in stats and "fumbles_lost" not in stats:
         stats = {**stats, "fumbles_lost": stats.get("fumbles_lost_total")}
-    # Sleeper raw aliases (pass_int/fum_lost variants)
     if "passing_interceptions" not in stats and "pass_int" in stats:
         stats = {**stats, "interceptions": stats.get("pass_int")}
     if "fumbles_lost_total" not in stats and "fum_lost" in stats:
         stats = {**stats, "fumbles_lost": stats.get("fum_lost")}
 
     stat_to_scoring_key = {
-        # Core scoring
         "receptions": "rec",
         "receiving_yards": "rec_yd",
         "rushing_yards": "rush_yd",
@@ -62,19 +50,15 @@ def calculate_fantasy_points(stats: dict, scoring_settings: dict | None = None) 
         "receiving_tds": "rec_td",
         "interceptions": "pass_int",
         "fumbles_lost": "fum_lost",
-        # 2pt conversions
         "passing_2pt": "pass_2pt",
         "rushing_2pt": "rush_2pt",
         "receiving_2pt": "rec_2pt",
-        # 40+ yard play bonuses (Sleeper: pass_cmp_40p, rush_40p, rec_40p at 1.0)
         "passing_40": "pass_cmp_40p",
         "rushing_40": "rush_40p",
         "receiving_40": "rec_40p",
-        # 40+ TD bonuses (if source stats provide them; 0 if missing — settings.get defaults to 0)
         "passing_td_40": "pass_td_40p",
         "rushing_td_40": "rush_td_40p",
         "receiving_td_40": "rec_td_40p",
-        # Kicking
         "fg_made_0_19": "fgm_0_19",
         "fg_made_20_29": "fgm_20_29",
         "fg_made_30_39": "fgm_30_39",
@@ -117,8 +101,6 @@ def calculate_fantasy_points(stats: dict, scoring_settings: dict | None = None) 
 
 
 def apply_flex_adjustment(points: float, position: str, num_flex_slots: int = 2) -> float:
-    """Apply scarcity adjustment for leagues with extra flex slots.
-    More flex slots = more demand for RB/WR/TE = higher relative value."""
     if position in FLEX_ELIGIBLE_POSITIONS and num_flex_slots >= 2:
         extra_flex = num_flex_slots - 1  # standard is 1 flex
         adjustment = 1.0 + (FLEX_SCARCITY_MULTIPLIER - 1.0) * extra_flex
@@ -127,7 +109,6 @@ def apply_flex_adjustment(points: float, position: str, num_flex_slots: int = 2)
 
 
 def count_flex_slots(roster_positions: list[str]) -> int:
-    """Count flex slots from Sleeper roster positions list."""
     return sum(1 for pos in roster_positions if pos == "FLEX")
 
 

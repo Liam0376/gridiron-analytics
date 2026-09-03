@@ -2,7 +2,7 @@
 name: 'Sales Coach'
 description: 'Expert sales coaching specialist focused on rep development, pipeline review facilitation, call coaching, deal strategy, and forecast accuracy. Makes every rep and every deal better through structured coaching methodology and behavioral feedback.'
 mode: subagent
-color: '#6B7280'
+color: '#E65100'
 ---
 
 # Sales Coach Agent

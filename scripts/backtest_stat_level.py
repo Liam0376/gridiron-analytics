@@ -5,7 +5,11 @@ Mirrors scripts/backtest_ml.py but for stat-level:
 For each val row, predict each stat via its booster (or fallback to stat_projector's *_proj if booster missing),
 build predicted stats dict, score via calculate_fantasy_points(..., SCORING) to get predicted points,
 compare to actual target. Compute MAE/corr/pairwise/bias overall and per-position (QB/RB/WR/TE/K) weeks 4-18.
-Compare to baseline 4.163/0.6918/77.7% and to point-level ensemble (4.45). Write data/ml/backtest_stat_level_results.json with gates.
+NESTED PROTOCOL: gate on HOLDOUT (2025 val) only — combined 2024-2025 incl.
+train is diagnostic (in-sample leakage for per-stat boosters trained on
+2023-2024). Compare holdout to production freeze 4.563/0.648/0.741 and to
+point-level ensemble legacy w=0.40 (val-tuned, leaky — documented, NOT
+re-tuned). Write data/ml/backtest_stat_level_results.json with gates.
 
 No network, no opponent defense/home/away/rest/EWMA — same disciplined feature set.
 """
@@ -22,11 +26,21 @@ SRC_DIR = REPO_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-# Baselines per spec
-BASELINE = {"mae": 4.163, "corr": 0.6918, "pairwise": 0.777}
-POINT_LEVEL_ENSEMBLE_MAE = 4.45  # from rejected point-level best w=0.40
+# Production freeze baseline (true scoring, 2024-2025 weeks 4-18, n=10351):
+# MAE 4.563 / Corr 0.648 / Pairwise 0.741. Early scratch 4.163/0.6918/0.777
+# was K-zeroed (old_map ignored fg_* → K MAE 0.001, -0.416 bias) — SUPERSEDED.
+BASELINE = {"mae": 4.563, "corr": 0.648, "pairwise": 0.741}
+POINT_LEVEL_ENSEMBLE_MAE = 4.45  # from rejected point-level legacy w=0.40 (val-tuned, leaky — documented, NOT re-tuned)
 
-# Feature list must match train_stat_level.py
+# Feature list must match train_stat_level.py.
+# Canonical training code reference (REJECTED, no behavior change):
+#   src/ffanalytics/ml/ is intentionally empty (XGBoost stat-level rejected).
+#   Canonical training code lives at docs/rejected-ml-evidence/ml_train_stat_level.py
+#   (verbatim from src/ffanalytics/ml/train_stat_level.py) + ml_features.py.
+#   Explicit commented import path (do NOT resurrect training, no new deps):
+#   # from docs.rejected_ml_evidence.ml_train_stat_level import FEATURE_COLS, STAT_LIST, KICKER_STATS_SET  # REJECTED — evidence: data/models/stat_level/meta.json val 4.463 narrow win not worth risk, combined 4.307 in-sample overfit gap 0.316
+#   tested and REJECTED — evidence: data/models/stat_level/meta.json (val 4.463 vs freeze 4.563 narrow win, combined 4.307 in-sample overfit gap 0.316).
+#   Backtests below use hardcoded FEATURE_COLS fallback only.
 try:
     from ffanalytics.ml.train_stat_level import FEATURE_COLS, STAT_LIST, KICKER_STATS_SET
 except Exception:
@@ -47,12 +61,16 @@ try:
     from ffanalytics.scoring import calculate_fantasy_points, DEFAULT_SCORING
     SCORING = DEFAULT_SCORING
 except Exception:
+    # Fallback includes fg_*/xpm (K-zero bug class already fixed here; guard below prevents regression).
     SCORING = {
         "rec": 1.0, "rec_yd": 0.1, "rush_yd": 0.1, "pass_yd": 0.04,
         "pass_td": 5.0, "rush_td": 6.0, "rec_td": 6.0, "pass_int": -1.0,
         "fum_lost": -2.0, "fgm_0_19": 3.0, "fgm_20_29": 3.0, "fgm_30_39": 3.0,
         "fgm_40_49": 4.0, "fgm_50_59": 5.0, "fgmiss": -1.0, "xpm": 1.0,
     }
+    # K-zero guard: fallback must contain kicking keys or scoring silently zeroes K (early 4.163 bug).
+    assert all(k in SCORING for k in ("fgm_0_19", "fgm_20_29", "fgm_30_39", "fgm_40_49", "fgm_50_59", "fgmiss", "xpm")), \
+        "SCORING fallback missing fg_*/xpm keys — K would score 0 (K-zero bug class, see stat_projector.py:8-13)"
     def calculate_fantasy_points(stats, scoring_settings=None):
         return 0.0
 
@@ -372,22 +390,25 @@ def main():
     stat_2024_m, sl_2024_m = eval_set("2024", y_2024, stat_2024, stat_level_2024, rows_2024)
     stat_2025_m, sl_2025_m = eval_set("2025", y_val, stat_val, stat_level_val, val_rows_filt)
 
-    # Gates: stat-level must beat ALL THREE of baseline absolute and also be better than point-level
-    # Per spec: only if stat-level MAE <4.163 AND corr >0.6918 AND pairwise >77.7% => ACCEPTED else REJECTED
-    sl_mae = sl_2425_m["mae"]
-    sl_corr = sl_2425_m["corr"]
-    sl_pw = sl_2425_m["pairwise"]
+    # Gates (NESTED PROTOCOL): stat-level must beat ALL THREE on HOLDOUT (2025)
+    # vs production freeze 4.563/0.648/0.741 => ACCEPTED else REJECTED.
+    # Combined 2024-2025 incl. train is diagnostic only (in-sample overfit for
+    # boosters trained on 2023-2024; gap reported as overfit_gap below).
+    sl_mae = sl_2025_m["mae"]
+    sl_corr = sl_2025_m["corr"]
+    sl_pw = sl_2025_m["pairwise"]
 
     absolute_gate = (sl_mae is not None and sl_corr is not None and sl_pw is not None and sl_mae < BASELINE["mae"] and sl_corr > BASELINE["corr"] and sl_pw > BASELINE["pairwise"])
-    local_gate = (sl_2425_m["mae"] < stat_2425_m["mae"] and sl_2425_m["corr"] > stat_2425_m["corr"] and sl_2425_m["pairwise"] > stat_2425_m["pairwise"])
+    local_gate = (sl_2025_m["mae"] < stat_2025_m["mae"] and sl_2025_m["corr"] > stat_2025_m["corr"] and sl_2025_m["pairwise"] > stat_2025_m["pairwise"])
     beats_point_level = (sl_mae is not None and sl_mae < POINT_LEVEL_ENSEMBLE_MAE)
 
-    print(f"[backtest_stat] absolute gate (stat-level beats baseline 4.163/0.6918/77.7%) ? {absolute_gate}")
-    print(f"  stat-level 2425 MAE {sl_mae:.4f} vs baseline {BASELINE['mae']} {'PASS' if sl_mae<BASELINE['mae'] else 'FAIL'}")
+    print(f"[backtest_stat] honest absolute gate (holdout 2025 beats freeze 4.563/0.648/74.1%) ? {absolute_gate}")
+    print(f"  stat-level holdout MAE {sl_mae:.4f} vs baseline {BASELINE['mae']} {'PASS' if sl_mae<BASELINE['mae'] else 'FAIL'}")
     print(f"  corr {sl_corr:.4f} vs {BASELINE['corr']} {'PASS' if sl_corr>BASELINE['corr'] else 'FAIL'}")
     print(f"  pw {sl_pw:.4%} vs {BASELINE['pairwise']:.1%} {'PASS' if sl_pw>BASELINE['pairwise'] else 'FAIL'}")
-    print(f"[backtest_stat] local gate (stat-level beats stat on all 3) ? {local_gate}")
-    print(f"[backtest_stat] beats point-level ensemble {POINT_LEVEL_ENSEMBLE_MAE} ? {beats_point_level} (stat-level {sl_mae:.4f})")
+    print(f"[backtest_stat] honest local gate (holdout beats local stat, all 3) ? {local_gate}")
+    print(f"[backtest_stat] diagnostic combined 2024-2025 (in-sample, NOT for gating): stat-level {sl_2425_m['mae']:.4f} vs stat {stat_2425_m['mae']:.4f}")
+    print(f"[backtest_stat] beats point-level legacy ensemble {POINT_LEVEL_ENSEMBLE_MAE} ? {beats_point_level} (stat-level holdout {sl_mae:.4f})")
 
     # Also check per-position
     try:
@@ -415,6 +436,11 @@ def main():
     results = {
         "status": status,
         "reason": reason,
+        "protocol": "nested: gate on holdout 2025 only; combined 2024-2025 diagnostic (in-sample)",
+        "holdout_2025": {
+            "stat": stat_2025_m,
+            "stat_level": sl_2025_m,
+        },
         "baseline": BASELINE,
         "point_level_ensemble_mae": POINT_LEVEL_ENSEMBLE_MAE,
         "absolute_gate_pass": absolute_gate,
@@ -445,7 +471,9 @@ def main():
         json.dump(results, f, indent=2)
     print(f"[backtest_stat] wrote {out_path} with status {status}")
 
-    # Also update meta.json with backtest summary if exists
+    # Also update meta.json with backtest summary if exists.
+    # Nested backtest.* is combined_diagnostic (in-sample, NOT val) — honest holdout
+    # top-level val_* remains canonical (see data/models/stat_level/meta.json).
     if meta_path.exists():
         try:
             with open(meta_path) as f:
@@ -453,11 +481,14 @@ def main():
             meta["backtest"] = {
                 "status": status,
                 "reason": reason,
-                "val_mae": sl_mae,
-                "val_corr": sl_corr,
-                "pairwise": sl_pw,
-                "absolute_gate": absolute_gate,
+                "combined_diagnostic_mae": sl_2425_m["mae"],
+                "combined_diagnostic_corr": sl_2425_m["corr"],
+                "combined_diagnostic_pairwise": sl_2425_m["pairwise"],
+                "combined_diagnostic_absolute_gate": (sl_2425_m["mae"] < BASELINE["mae"] and sl_2425_m["corr"] > BASELINE["corr"] and sl_2425_m["pairwise"] > BASELINE["pairwise"]),
                 "local_gate": local_gate,
+                "overfit_gap": overfit_gap,
+                "overfit_gap_note": "overfit_gap = |2024 in-sample MAE - 2025 holdout MAE|; combined win is 2024 overfit, honest OOS gate is holdout top-level val_* only.",
+                "protocol_note": "nested: gate on honest holdout 2025 top-level val_* only; combined_diagnostic incl. train is in-sample diagnostic (see nested protocol)",
             }
             with open(meta_path, "w") as out:
                 json.dump(meta, out, indent=2)

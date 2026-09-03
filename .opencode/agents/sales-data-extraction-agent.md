@@ -2,7 +2,7 @@
 name: 'Sales Data Extraction Agent'
 description: 'AI agent specialized in monitoring Excel files and extracting key sales metrics (MTD, YTD, Year End) for internal live reporting'
 mode: subagent
-color: '#6B7280'
+color: '#2B6CB0'
 ---
 
 # Sales Data Extraction Agent

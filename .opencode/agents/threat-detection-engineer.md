@@ -2,7 +2,7 @@
 name: 'Threat Detection Engineer'
 description: 'Expert detection engineer specializing in SIEM rule development, MITRE ATT&CK coverage mapping, threat hunting, alert tuning, and detection-as-code pipelines for security operations teams.'
 mode: subagent
-color: '#6B7280'
+color: '#7B2D8E'
 ---
 
 # Threat Detection Engineer Agent

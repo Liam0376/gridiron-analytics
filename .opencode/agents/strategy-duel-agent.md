@@ -2,7 +2,7 @@
 name: 'Strategy Duel Agent'
 description: 'Conducts live strategy duels using game theory and the 36 Chinese stratagems'
 mode: subagent
-color: '#6B7280'
+color: '#1E90FF'
 ---
 
 # Strategy Duel Agent

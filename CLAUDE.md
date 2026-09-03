@@ -5,7 +5,7 @@ Personal, single-user analytics tool for one Sleeper league ("Fantasy Bahamas",
 
 ## Hard constraints
 
-- **$0 cost, forever.** No paid tiers, no cards-on-file trials, no paid hosting/DB.
+- **$0 cost, forever.** No paid tiers, no trials, no paid hosting/DB.
   Flag free-tier limits (rate limits, quotas, cold starts) explicitly instead of
   assuming they're fine.
 - **Fully local. No cloud, no public exposure, ever.** FastAPI binds
@@ -21,17 +21,18 @@ Personal, single-user analytics tool for one Sleeper league ("Fantasy Bahamas",
 
 ## Primary interface: ask Claude directly
 
-The user does not want to build/run a separate CLI or dashboard to query
-this. **Claude Code, working in this project directory, is the interface.**
+**Claude Code, working in this project directory, is the interface.**
+The user does not want a separate CLI/dashboard.
 When the user asks "who should I start this week" or similar, query the
 local SQLite DB (`data/fantasy.db`) and/or call the local API directly via
 Bash — don't tell the user to go run a curl command themselves. Treat every
 recommendation question as "read the project's current data and answer,"
 the same as reading any other file in this repo.
 
-## Engineering discipline (reused from `~/projects/sports-analytics` tennis-ml)
+## Engineering discipline (reused from a reference tennis-ml repo)
 
-Reference implementation: `~/projects/sports-analytics/.claude/worktrees/tennis-analytics-web/backend/`
+Reference implementation: the tennis-ml backend under
+`.claude/worktrees/tennis-analytics-web/backend/`
 (tennis ATP/WTA pipeline — sport-specific math is NOT reusable, architecture is):
 
 - `core/elo.py` — Elo/Glicko rating engine w/ time-decay, K-factor decay,
@@ -48,16 +49,28 @@ Reference implementation: `~/projects/sports-analytics/.claude/worktrees/tennis-
 - Config-as-single-source-of-truth — one file, every constant commented with
   its origin. No magic numbers scattered through the codebase.
 
-Match the reference repo's comment discipline: a rejected feature/heuristic gets
-`# tested and REJECTED — evidence: ...` inline, not silent deletion.
+Match the reference repo's discipline: rejected features get `# tested and REJECTED — evidence: ...` inline, not silently deleted.
 
-## League specifics (verify programmatically via Sleeper API, don't hardcode — official Reglamento 2026 at ~/Downloads/Reglas\ Fantasy\ Bahamas.md)
+## League specifics
 
-Sleeper ID `1397736035240173568`, 12 teams, auction draft ($200 budget), full PPR (`rec=1.0`). Roster: 1 QB / 2 RB / 2 WR / 1 TE /
-2 FLEX(WR-RB-TE) / 1 K / 1 DEF, 4 bench + 2 IR via `settings.reserve_slots=2` (IR not in `roster_positions`; Sleeper returns `['QB','RB','RB','WR','WR','TE','FLEX','FLEX','K','DEF','BN','BN','BN','BN']` + `reserve_slots=2`). Two extra flex slots vs. standard
-league → receiving volume at RB/WR/TE worth more here than generic PPR rankings
-assume. Pull exact scoring settings from Sleeper API and verify against league
-notes each season (scoring can be edited — includes 40+ bonuses `pass_cmp_40p/rush_40p/rec_40p=1.0`, `pass_td_40p/rec_td_40p/rush_td_40p=1.0`, `fgm_*/fgmiss`, `fum_lost=-2.0`, etc.). Trades: deadline week 11, 2-day review, majority vote (6 needed, involved managers excluded per Reglamento); waivers: FAAB $100, 2-day clear. Entry $750 MXN, prizes $5,500/$2,500/$1,000.
+Sleeper ID `1397736035240173568`, 12 teams, auction draft ($200 budget), full
+PPR (`rec=1.0`). Roster: 1 QB / 2 RB / 2 WR / 1 TE / 2 FLEX(WR-RB-TE) / 1 K /
+1 DEF, 4 bench + 2 IR via `settings.reserve_slots=2` (IR not in
+`roster_positions`; Sleeper returns `['QB','RB','RB','WR','WR','TE','FLEX','FLEX','K','DEF','BN','BN','BN','BN']`
++ `reserve_slots=2`). Two extra flex slots vs. standard league → receiving
+volume at RB/WR/TE worth more here than generic PPR rankings assume. Pull
+exact scoring settings from Sleeper API and verify against league notes each
+season (scoring can be edited — includes 40+ bonuses
+`pass_cmp_40p/rush_40p/rec_40p=1.0`, `pass_td_40p/rec_td_40p/rush_td_40p=1.0`,
+`fgm_*/fgmiss`, `fum_lost=-2.0`, etc.). Trades: deadline week 11, 2-day
+review, majority vote (6 needed, involved managers excluded per Reglamento);
+waivers: FAAB $100, 2-day clear. Entry $750 MXN, prizes
+$5,500/$2,500/$1,000.
+
+Official Reglamento 2026 is checked into this repo at
+[`docs/reglamento-2026.md`](docs/reglamento-2026.md) — never hardcode scoring
+or roster settings; `sleeper.get_league_settings()` is the source of truth
+(league scoring can be edited mid-season).
 
 User is experienced at fantasy sports generally, new to NFL specifics — any
 NL output should explain football context concisely, not fantasy fundamentals.

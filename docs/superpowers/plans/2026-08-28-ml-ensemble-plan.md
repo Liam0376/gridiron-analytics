@@ -1,6 +1,6 @@
 # Plan: Play-by-Play + XGBoost Ensemble (behind `use_ml` flag)
 
-> For agentic workers: use `superpowers:subagent-driven-development` or `superpowers:executing-plans` task-by-task. Checkboxes track progress. **Stop for user confirmation after Task 2** (spec + install gate) before writing model code — per `CLAUDE.md: Process`.
+> For agentic workers: use `superpowers:subagent-driven-development` or `superpowers:executing-plans` task-by-task. Checkboxes track progress. **Stop for user confirmation after Task 2** (spec + install gate) before writing model code, per `CLAUDE.md: Process`.
 
 **Goal:** Add opportunity features (target/rush share, red zone, air yards) from nflverse PBP, train time-series-clean XGBoost to predict `actual fantasy points`, ensemble with statistical model (`MAE=4.163` baseline), keep only if it beats MAE/corr/pairwise head-to-head. Zero-dep fallback stays.
 

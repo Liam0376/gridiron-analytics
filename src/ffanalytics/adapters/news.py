@@ -1,9 +1,13 @@
-"""News and detailed injury adapter. Aggregates trending player adds from
-Sleeper and practice participation from nflreadpy injuries."""
+"""News and detailed injury adapter: trending player adds from Sleeper and
+practice participation from nflreadpy injuries."""
 
+import logging
+import random
 import time
 import requests
 from ffanalytics.adapters.sleeper import _get_with_retry
+
+logger = logging.getLogger(__name__)
 
 
 SLEEPER_TRENDING_URL = "https://api.sleeper.app/v1/players/nfl/trending/add"
@@ -13,15 +17,20 @@ def _call_with_retry(fn, max_retries=3, backoff_base=1.5):
     for attempt in range(max_retries):
         try:
             return fn()
-        except Exception:
+        except Exception as exc:
             if attempt == max_retries - 1:
                 raise
-            time.sleep(backoff_base * (attempt + 1))
+            # why log+jitter: prior bare-Except retry was silent (failures
+            # invisible until refresh_log) and thundering-herd prone; keep
+            # 3x/backoff semantics, jitter is additive only.
+            logger.warning(
+                "news: attempt %d/%d failed (%s); retrying",
+                attempt + 1, max_retries, exc,
+            )
+            time.sleep(backoff_base * (attempt + 1) + random.uniform(0, 0.5))
 
 
 def get_trending_adds(limit: int = 25, session=None) -> list[dict]:
-    """Fetch trending player adds from Sleeper. Free, no auth needed.
-    Returns [{"player_id": str, "player_name": str, "count": int}, ...]"""
     http = session or requests
     url = f"{SLEEPER_TRENDING_URL}?limit={limit}"
     resp = _get_with_retry(http, url, timeout=10)
@@ -43,11 +52,7 @@ def get_trending_adds(limit: int = 25, session=None) -> list[dict]:
 
 
 def get_injury_with_practice(season: int, nfl_module=None) -> list[dict]:
-    """Fetch injuries with practice participation from nflreadpy.
-    Returns [{player_id, full_name, team, injury_status, practice_status,
-              report_status, date_modified}, ...]
-
-    practice_status values: Full, Limited, DNP (Did Not Practice), None"""
+    # practice_status values: Full, Limited, DNP, None
     nfl = nfl_module if nfl_module is not None else __import__("nflreadpy")
     frame = _call_with_retry(lambda: nfl.load_injuries(seasons=[season]))
     rows = frame.to_dicts()

@@ -2,7 +2,7 @@
 name: 'Aging Parent Care Companion'
 description: 'Compassionate, HIPAA-aligned care coordination and decision-support agent for family caregivers managing an aging parent''s appointments, medications, care team communication, and their own caregiver wellbeing'
 mode: subagent
-color: '#6B7280'
+color: '#0D9488'
 ---
 
 # 🧡 Aging Parent Care Companion

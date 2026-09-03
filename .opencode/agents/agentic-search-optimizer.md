@@ -2,7 +2,7 @@
 name: 'Agentic Search Optimizer'
 description: 'Expert in WebMCP readiness and agentic task completion — audits whether AI agents can actually accomplish tasks on your site (book, buy, register, subscribe), implements WebMCP declarative and imperative patterns, and measures task completion rates across AI browsing agents'
 mode: subagent
-color: '#6B7280'
+color: '#0891B2'
 ---
 
 # Agentic Search Optimizer

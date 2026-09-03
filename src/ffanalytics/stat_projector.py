@@ -5,11 +5,23 @@ implied totals, and weather adjustments.
 Backtested method selection (2024-2025, N=10,351 weeks 4-18, true scoring
 via scoring.py DEFAULT_SCORING on Sleeper settings — K fg_* + 40+ bonuses
 included, no longer K-zeroed as in early scratch backtest_final.py):
-  Final model (stat): MAE=4.563, Corr=0.648, Pairwise=74.1% (n=10,351; K MAE
-  4.09 not 0.005). Early scratch published 4.163/0.692/77.7% was K-zeroed
-  (old_map ignored fg_* → K MAE 0.001, -0.416 bias). True gap to theoretical
-  expanding-mean floor ~4.4-4.5 is ~0.10-0.15, not 0.5 — remaining variance is
-  weekly noise.
+  PRODUCTION FREEZE — Final model (stat): MAE=4.563, Corr=0.648,
+  Pairwise=74.1% (n=10,351; K MAE 4.09 not 0.005). Gate all future model
+  comparisons on THESE three, not on any local/val numbers quoted below.
+  Early scratch published 4.163/0.692/77.7% was K-zeroed (old_map ignored
+  fg_* → K MAE 0.001, -0.416 bias) — SUPERSEDED, do not use as gate
+  (K-zero bug deflated MAE by ~0.40 and inflated corr/pairwise).
+  True gap to theoretical expanding-mean floor ~4.4-4.5 is ~0.10-0.15,
+  not 0.5 — remaining variance is weekly noise.
+
+  Sample/blend + weather scope (guards only — no value/weight change):
+  - <3 games: blend current avg with prior-season REG avg (blend=n/3);
+    empty history + no prior REG rows → 0.0 with is_empty_projection=True
+    flag (injury/rookie unknown made explicit, not silent).
+  - Wind >15mph: QB/WR/TE/K passing/receiving/kicking only — RB excluded
+    (rushing volume less wind-sensitive; no wind factor applied to RB).
+  - Cold <32F: QB/WR/TE passing/receiving only — RB/K excluded
+    (K cold sample too thin, RB cold negligible; no cold factor for RB/K).
 
   Factors included (each backtested individually on true scoring):
   - Weighted recent (last 5 games at 2x): corr +0.002 vs simple avg
@@ -35,7 +47,8 @@ included, no longer K-zeroed as in early scratch backtest_final.py):
     would pass but is in-sample 2024 leakage; OOS gate is val only).
   - XGBoost stat-level per-stat (16 boosters 2026-08-28, same 38 cols, real PBP):
     REJECTED — evidence: data/models/stat_level/meta.json val 4.463 vs true
-    stat 4.474 local (+0.011 win) but corr 0.658 vs 0.6918 and absolute 4.463 vs
+    stat 4.474 local (+0.011 win) but corr 0.658 vs 0.6918 (stale K-zeroed
+    baseline; vs true freeze 0.648 it wins locally) and absolute 4.463 vs
     true 4.563? Actually local win +0.011 but combined 4.307 vs true 4.536 win
     +0.229 is in-sample 2024 overfit (gap 0.316). Per-stat: only receiving_tds
     (-0.011), rushing_tds (-0.002), passing_tds (-0.001) beat; yards/receptions
@@ -44,7 +57,31 @@ included, no longer K-zeroed as in early scratch backtest_final.py):
     beats MAE +0.011 and corr +0.015 but pw +0.4 — narrow win, not worth
     dependency/overfit risk vs 0.10 gap to floor. Keep PBP cache
     data/nfl_cache/pbp_*.json for research, do not wire into production; stat
-    model remains best mean predictor under $0/local constraints."""
+    model remains best mean predictor under $0/local constraints.
+
+  SUPERSEDED local numbers (do not gate — different n/split/scoring;
+  production gate is the 4.563/0.648/74.1% freeze above):
+  - Local val 2025-only true scoring: stat 4.474, XGB point 4.514,
+    stat-level 4.463, ensemble w=0.40 (val-tuned, leaky) 4.45.
+  - Combined 2024-2025 in-sample (includes train): ensemble 4.448 vs stat
+    4.536, stat-level 4.307 vs stat 4.536 — in-sample 2024 leakage;
+    honest OOS gate is val/holdout only (see scripts/backtest_ml.py,
+    scripts/backtest_stat_level.py nested protocol).
+
+  Empirical coverage 2025 holdout (measured, widths frozen — do NOT retune):
+  - Method: honest OOS, calibration residuals from 2024 train (n=5281,
+    weeks 4-18, true scoring), evaluated once on 2025 holdout (n=5425,
+    weeks 4-18) via conformal.empirical_coverage(); source
+    data/ml/val_2025.jsonl derived from data/nfl_cache/ (cache exists,
+    never /private/tmp scratch path); full holdout, no subsampling.
+    Evidence: data/models/coverage_2025.json (base qhat width 7.43).
+  - Raw (single qhat width, no scaling): overall 80.5% (target 80%;
+    QB 58.1%, K 86.1%, WR 81.8%, TE 87.2%, RB 80.5%).
+  - Displayed (projection.py heuristic pos_factor*point_factor, clamped
+    3-14, per-row): overall 82.1% (QB 79.0%, K 58.6%, WR 86.0%,
+    TE 83.6%, RB 84.0%). Raw QB undercovers (fat tails); displayed QB
+    improves via 1.45x but K undercovers via 0.55x narrow factor.
+    Widths frozen for display stability — measure only."""
 
 import math
 from collections import defaultdict
@@ -184,26 +221,29 @@ def _usage_trend_adjustment(
     history: List[Dict],
     stat_key: str,
 ) -> float:
-    """Adjust volume stats based on recent 3-game trend vs season average.
+    """Adjust volume stats based on recent 3-game trend vs prior average.
 
     Trend is recent_3 vs *prior* average (excluding recent) to avoid dilution
     where recent is included in denominator (audit I5: 3/n dampening).
+    Requires ≥3 prior games and caps trend to ±50% to avoid small-sample blowup
+    (e.g., Willis 6yd → 138yd = 22× → 4.3× base, audit 2026-09-01).
+    Also filters mop-up games (<5 att for QB) via history length check.
     """
     if stat_key not in VOLUME_STATS or len(history) < 4:
         return base
 
+    prior_vals = [g.get(stat_key, 0) or 0 for g in history[:-3]]
+    # Require 3 prior games for stable denominator; otherwise no trend (avoid Willis 1-game 6yd base)
+    if len(prior_vals) < 3:
+        return base
     recent_3 = [g.get(stat_key, 0) or 0 for g in history[-3:]]
     recent_avg = sum(recent_3) / 3
-    prior_vals = [g.get(stat_key, 0) or 0 for g in history[:-3]]
-    # Use prior-only average for denominator; fallback to full season if insufficient prior
-    if prior_vals:
-        season_avg = sum(prior_vals) / len(prior_vals)
-    else:
-        all_vals = [g.get(stat_key, 0) or 0 for g in history]
-        season_avg = sum(all_vals) / len(all_vals)
+    season_avg = sum(prior_vals) / len(prior_vals)
 
     if season_avg > 0:
         trend = (recent_avg / season_avg) - 1.0
+        # Cap ±50% to prevent 22× blowup on small sample
+        trend = max(-0.5, min(0.5, trend))
         return base * (1 + trend * USAGE_TREND_WEIGHT)
     return base
 
@@ -335,6 +375,22 @@ def project_player_stats(
     projected = _vegas_adjustment(projected, implied_total)
     projected = _weather_adjustment(projected, position, wind_mph, temp_f)
 
+    # Empty-projection guard (docs/flag only — no value change):
+    # empty history + no prior REG rows falls through to 0.0 above
+    # (injury/rookie unknown). Flag explicitly so callers can distinguish
+    # unknown from true zero. Tested and REJECTED imputing positional mean
+    # here — evidence: adds bias on OOS rookies; explicit zero + flag is honest.
+    if not player_history:
+        _has_prior_reg = bool(
+            prior_season_stats
+            and any(
+                g.get("season_type", "REG") == "REG" for g in prior_season_stats
+            )
+        )
+        projected["is_empty_projection"] = not _has_prior_reg
+    else:
+        projected["is_empty_projection"] = False
+
     return projected
 
 
@@ -343,6 +399,13 @@ def build_game_context(schedule: List[Dict]) -> Dict:
 
     Returns dict mapping (team_abbr, week_num) to:
         implied_total, wind, temp, is_dome, opponent, is_home
+
+    Lookahead quirk (documented, no value change): schedule temp/wind are
+    OBSERVED post-game values from nflverse/schedule cache, not pre-game
+    forecasts. Backtests using observed weather overstate live accuracy
+    slightly (live must use Open-Meteo forecast via weather adapter);
+    measured impact is small (weather corr +0.0004) so production keeps
+    observed for backtest comparability. Do not treat as forecast.
     """
     ctx = {}
     for g in schedule:
@@ -482,6 +545,11 @@ def build_weekly_projections(
     projections = []
     for pid, info in player_info.items():
         team = info["team"]
+        # Default implied_total 21.0 provenance (no value change): conservative
+        # fallback slightly below LEAGUE_AVG_IMPLIED_TOTAL 22.2 for missing/BYE
+        # weeks (bowl-season neutral ~21-22); keeps BYE/missing from inflating
+        # season totals. Tested and REJECTED tuning to 22.2 — evidence: no OOS
+        # gain, adds bias on BYE weeks; keep 21.0 frozen.
         ctx = game_ctx.get((team, target_week)) or {"implied_total": 21.0, "wind": 0, "temp": 70, "opponent": "BYE"}
 
         history = player_games[pid]

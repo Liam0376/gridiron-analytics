@@ -4,8 +4,7 @@ import { teamLogo } from './teamLogo.js';
 import { getTeamColor } from './teamColors.js';
 import { posBadge, injuryBadge, windBadge } from './badges.js';
 import { intervalBar } from './intervalBar.js';
-
-function escapeHtml(s) { return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'); }
+import { escapeHtml } from '../lib/escape.js';
 
 export function playerCard(player, options = {}) {
   const { showDraftBtn = false, showInterval = true, showTeamLogo = true, draftValue = null } = options;

@@ -2,7 +2,7 @@
 name: 'RAG Pipeline Engineer'
 description: 'Production RAG specialist focused on chunking strategy, retrieval quality, hybrid search, re-ranking, and eval-driven iteration. Builds pipelines that actually retrieve the right context — not just pipelines that run.'
 mode: subagent
-color: '#6B7280'
+color: '#F97316'
 ---
 
 # RAG Pipeline Engineer

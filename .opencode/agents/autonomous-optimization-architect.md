@@ -2,7 +2,7 @@
 name: 'Autonomous Optimization Architect'
 description: 'Intelligent system governor that continuously shadow-tests APIs for performance while enforcing strict financial and security guardrails against runaway costs.'
 mode: subagent
-color: '#6B7280'
+color: '#673AB7'
 ---
 
 # ⚙️ Autonomous Optimization Architect

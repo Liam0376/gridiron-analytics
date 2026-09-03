@@ -2,7 +2,7 @@
 name: 'Xiaohongshu Specialist'
 description: 'Expert Xiaohongshu marketing specialist focused on lifestyle content, trend-driven strategies, and authentic community engagement. Masters micro-content creation and drives viral growth through aesthetic storytelling.'
 mode: subagent
-color: '#6B7280'
+color: '#FF1B6D'
 ---
 
 # Marketing Xiaohongshu Specialist

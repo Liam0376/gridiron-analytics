@@ -4,9 +4,11 @@ from ffanalytics.projection import (
     calculate_opponent_positional_rating_feature,
     calculate_projection,
     calculate_projection,
-    calculate_weekly_projections
+    calculate_weekly_projections,
+    ENABLE_OPPONENT_RATING,
 )
 from ffanalytics.rating import Rating
+import pytest
 
 
 def test_calculate_target_share_feature():
@@ -154,3 +156,58 @@ def test_calculate_weekly_projections():
     assert "projection_lower" in player
     assert "projection_upper" in player
     assert "projection_width" in player
+
+
+def test_opponent_rating_gated_off_by_default():
+    # Production default: opponent-rating term OFF (tested and REJECTED per
+    # stat_projector.py:22-24). Same player vs weak/strong defense → same pts.
+    assert ENABLE_OPPONENT_RATING is False
+    base_stats = {
+        "rush_yd": 80, "rush_td": 1, "rec_yd": 20, "receptions": 3,
+        "targets": 5, "snaps": 60, "position_group": "rb",
+    }
+    weak = {"OPP": {"overall": Rating(1300.0, 50.0), "vs_rb": Rating(1300.0, 50.0)}}
+    strong = {"OPP": {"overall": Rating(1700.0, 50.0), "vs_rb": Rating(1700.0, 50.0)}}
+    p_weak = calculate_projection(
+        player_stats={**base_stats, "opponent_team": "OPP"},
+        team_ratings=weak, use_features=True,
+    )
+    p_strong = calculate_projection(
+        player_stats={**base_stats, "opponent_team": "OPP"},
+        team_ratings=strong, use_features=True,
+    )
+    assert p_weak["point_estimate"] == pytest.approx(p_strong["point_estimate"])
+
+
+def test_use_features_true_on_projected_stats_warns():
+    # Projected-stat dict (no actual-game keys) + use_features=True → warning.
+    projected_like = {"passing_yards": 250, "passing_tds": 2, "position_group": "QB"}
+    with pytest.warns(UserWarning, match="use_features=True"):
+        calculate_projection(
+            player_stats=projected_like, team_ratings={},
+            use_features=True,
+        )
+    # Same input with use_features=False → no warning, still scores.
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        res = calculate_projection(
+            player_stats=projected_like, team_ratings={},
+            use_features=False,
+        )
+    assert "point_estimate" in res
+
+
+def test_interval_widths_clamped_frozen():
+    # Widths frozen for display stability (3.0–14.0 clamp); measure-only, never retune.
+    # Guards against accidental width changes (see coverage_2025.json).
+    base = {"rush_yd": 80, "rush_td": 1, "receptions": 3, "rec_yd": 20, "targets": 5, "snaps": 60, "position_group": "RB"}
+    tiny = calculate_projection(player_stats={**base, "rush_yd": 1}, team_ratings={}, use_features=False)
+    huge = calculate_projection(
+        player_stats={**base, "rush_yd": 200, "rush_td": 3, "rec_yd": 150, "receptions": 10},
+        team_ratings={}, historical_residuals=[10.0, 12.0, 15.0, 20.0], use_features=False,
+    )
+    for r in (tiny, huge):
+        assert 3.0 <= r["width"] <= 14.0
+        assert r["lower_bound"] <= r["point_estimate"] <= r["upper_bound"]

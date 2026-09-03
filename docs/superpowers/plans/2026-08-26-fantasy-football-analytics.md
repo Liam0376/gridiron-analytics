@@ -21,9 +21,9 @@ REST/JSON, no SDK needed), `pytest`.
 ## Global Constraints
 
 - $0 cost: no paid dependency, no paid hosting, no service requiring a card.
-- No network calls in unit tests — adapters are tested against fixture data /
-  mocked HTTP, never live APIs (live calls are integration-tested manually,
-  documented per-task where relevant).
+- No network calls in unit tests. Adapters are tested against fixture
+  data / mocked HTTP; never live APIs. Live calls are integration-tested
+  manually, documented per-task.
 - Every feature used by the projection engine must have an entry in
   `config.py`'s `FEATURES` dict with a `why` — no feature added silently.
 - SQLite is the only datastore. One file: `data/fantasy.db`.
@@ -1344,11 +1344,11 @@ git commit -m "chore: launchd daily refresh scheduling + runbook"
 
 ## Deferred to a follow-up plan (explicitly out of scope here)
 
-Per the design spec's "Out of scope (v1)" and to keep this plan reviewable:
+Per the design spec's "Out of scope (v1)", and to keep this plan reviewable:
 the **decision layer** (start/sit ranking, waiver priority, trade evaluation
 — consuming `rating.py` + `conformal.py` + `shadow.py` together) and the
 **projection engine** that turns raw stats into a point estimate are
 substantial enough to warrant their own plan once Tasks 1–11 are reviewed
-and merged. Flagging this now rather than silently expanding scope — this
+and merged. Flagging this now rather than silently expanding scope: this
 plan delivers a working, testable data + rating + logging foundation; the
 decision layer is the natural next plan.

@@ -7,13 +7,13 @@
 ## 1. Visual Theme & Atmosphere
 
 **Theme: Apple / Helvetica Light — Airy Sidebar Dashboard**
-The hub is a native-macOS-feeling sports console: left dark sidebar for wayfinding, top white search bar for command, airy content canvas. Helvetica renders crisp on Retina, SF Mono for numbers. Sidebar is deep navy `#192741` with subtle inner shadow, not flat. Content area breathes with 24px gutters and 16px card radius. Feels like Linear + Apple App Store, not a Bootstrap admin.
+Native-macOS-feeling console: dark sidebar for wayfinding, white search bar at top, airy canvas. Helvetica on Retina, SF Mono for numbers. Sidebar is #192741 with subtle inner shadow. Content: 24px gutters, 16px card radius. Aims for Linear + Apple App Store, not Bootstrap admin.
 
-**Atmosphere keywords:** airy, precise, native, calm, confident — no neon, no glassmorphism, no storytelling hero.
+**Atmosphere keywords:** airy, precise, calm. No neon, no glassmorphism, no hero.
 
 **One-line pitch:** *A Helvetica-native sidebar console where search is command and every table feels like Finder.*
 
-**Interaction Level: L2 — Fluid** — `fadeInUp 220ms` reveal, sticky topbar compress on scroll, `transform` hover lifts, `8px` interval bar growth, sidebar `120ms` indicator slide, search dropdown `140ms` scale.
+**Interaction Level: L2 — Fluid.** `fadeInUp 220ms` reveal. Sticky topbar compress on scroll. `transform` hover lifts. `8px` interval bar growth. Sidebar `120ms` indicator slide. Search dropdown `140ms` scale.
 
 ---
 

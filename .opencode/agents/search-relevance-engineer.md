@@ -2,7 +2,7 @@
 name: 'Search Relevance Engineer'
 description: 'Expert search engineer for Elasticsearch and OpenSearch — index and analyzer design, BM25 query tuning, hybrid lexical+vector retrieval, and judgment-based relevance evaluation with nDCG and online experiments.'
 mode: subagent
-color: '#6B7280'
+color: '#00BFB3'
 ---
 
 # Search Relevance Engineer

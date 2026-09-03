@@ -1,21 +1,24 @@
 // hub/src/components/teamSelector.js — Global Team Selector Component
 import { fetchRoster } from '../api.js';
+import { escapeHtml } from '../lib/escape.js';
 
 const STORAGE_KEY = 'ffba-selected-team-id';
-const DEFAULT_TEAM_ID = '7'; // lfb0376
 
 export function getSelectedTeamId() {
   try {
-    return localStorage.getItem(STORAGE_KEY) || DEFAULT_TEAM_ID;
+    return localStorage.getItem(STORAGE_KEY) || null;
   } catch (_) {
-    return DEFAULT_TEAM_ID;
+    // localStorage unavailable in private mode
+    return null;
   }
 }
 
 export function setSelectedTeamId(id) {
   try {
     localStorage.setItem(STORAGE_KEY, String(id));
-  } catch (_) {}
+  } catch (_) {
+    // localStorage unavailable in private mode
+  }
 }
 
 const DEFAULT_TEAMS = [
@@ -33,9 +36,32 @@ const DEFAULT_TEAMS = [
   { roster_id: '12', display_name: 'Elcojeperras', team_name: 'Elcojeperras' },
 ];
 
+export function getDefaultTeamId(leagueRosters = []) {
+  if (Array.isArray(leagueRosters) && leagueRosters.length && leagueRosters[0]?.roster_id != null) {
+    return String(leagueRosters[0].roster_id);
+  }
+  return null;
+}
+
+export function resolveSelectedTeamId(leagueRosters = [], currentId = null) {
+  const stored = currentId || getSelectedTeamId();
+  if (stored) {
+    if (Array.isArray(leagueRosters) && leagueRosters.length) {
+      const match = leagueRosters.some(t => String(t.roster_id) === String(stored));
+      if (match) return String(stored);
+    } else {
+      return String(stored);
+    }
+  }
+  return getDefaultTeamId(leagueRosters);
+}
+
 export function renderTeamSelector(leagueRosters = [], currentId = null) {
-  const selectedId = currentId || getSelectedTeamId();
   const list = (Array.isArray(leagueRosters) && leagueRosters.length) ? leagueRosters : DEFAULT_TEAMS;
+  // Default derives from leagueRosters[0] (or fallback list[0]) — no hardcoded team id.
+  const fallbackDefault = list.length && list[0]?.roster_id != null ? String(list[0].roster_id) : null;
+  const stored = currentId || getSelectedTeamId();
+  const selectedId = stored || fallbackDefault;
 
   return `
     <div class="team-selector-wrap">
@@ -43,7 +69,7 @@ export function renderTeamSelector(leagueRosters = [], currentId = null) {
       <select id="globalTeamSelect" class="team-select-dropdown" aria-label="Select Sleeper Team">
         ${list.map(t => {
           const rId = String(t.roster_id);
-          const isSel = rId === String(selectedId) || (selectedId === 'lfb0376' && rId === '7');
+          const isSel = rId === String(selectedId);
           const label = t.team_name && t.team_name !== t.display_name
             ? `${t.team_name} (${t.display_name})`
             : t.display_name;
@@ -64,8 +90,4 @@ export function bindTeamSelector(onSelectCallback) {
       onSelectCallback(val);
     }
   });
-}
-
-function escapeHtml(s) {
-  return String(s || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 }
