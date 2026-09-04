@@ -15,7 +15,11 @@ export async function renderWaiver(root) {
   root.innerHTML = `
     <div class="hero reveal in">
       <h1>Waivers</h1>
-      <p>Ranked by <code class="inline">improvement_over_roster</code> (<code class="inline">decision.py:get_waiver_priority</code>), not raw points. A 12-pt WR who replaces your 4-pt WR is worth more than a 13-pt QB you don't need.</p>
+      <p>Ranked by improvement over roster, not raw points.</p>
+      <details style="margin-top:8px" aria-label="How waiver priority works">
+        <summary style="cursor:pointer; font-weight:600" title="Toggle waiver explainer">How priority works</summary>
+        <p style="margin-top:8px">Ranked by <code class="inline">improvement_over_roster</code> (<code class="inline">decision.py:get_waiver_priority</code>), not raw points. A 12-pt WR who replaces your 4-pt WR is worth more than a 13-pt QB you don't need.</p>
+      </details>
     </div>
 
     ${fpNews.length ? `

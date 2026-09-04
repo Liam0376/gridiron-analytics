@@ -6,19 +6,20 @@ cache, request handlers read from it, never touching disk per-request."""
 from fastapi import FastAPI, HTTPException, Query, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from requests.exceptions import HTTPError
 import datetime
 import json
 import logging
 import re
 import uuid
 import contextvars
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import timedelta
 
 import threading
 
-from ffanalytics import db
+from ffanalytics import config, db
 from ffanalytics.config import compute_nfl_week, get_stats_season
 from ffanalytics.refresh import run_refresh_with_data
 from ffanalytics.decision import (
@@ -200,6 +201,76 @@ _CACHE: dict = {
     "week": None,             # approximate NFL week (1-18)
 }
 
+def _league_query():
+    # why helper (not a shared Query object): each signature needs its own
+    # FieldInfo; convention here is inline Query(...) — this keeps the
+    # league_id validation identical on every endpoint in one place.
+    return Query(default=None, max_length=64, pattern=r"^\d+$")
+
+
+def _blank_cache() -> dict:
+    return {
+        "league_settings": None,
+        "rosters": None,
+        "player_stats": None,
+        "injury_status": None,
+        "matchups": None,
+        "trending": None,
+        "detailed_injuries": None,
+        "last_updated": None,
+        "season": None,
+        "week": None,
+    }
+
+
+_LEAGUE_CACHES: dict[str, dict] = {}
+
+
+def _is_default_league(league_id: str | None) -> bool:
+    # why: explicit league_id equal to the env default (or no id at all)
+    # keeps legacy behavior; any other numeric id gets an isolated snapshot.
+    lid = (league_id or "").strip()
+    if not lid:
+        return True
+    default_lid = (config.LEAGUE_ID or "").strip()
+    return bool(default_lid) and lid == default_lid
+
+
+def _cache_for(league_id: str | None) -> dict:
+    # why namespaced: multi-league — each league gets an isolated in-memory
+    # snapshot so switching leagues in the UI never serves another league's
+    # numbers. _CACHE stays the default league's dict (identity preserved:
+    # update_cache and the test suite snapshot it directly).
+    if _is_default_league(league_id):
+        return _CACHE
+    lid = str(league_id).strip()
+    return _LEAGUE_CACHES.setdefault(lid, _blank_cache())
+
+
+@contextmanager
+def _league_conn(league_id: str | None):
+    # why: read endpoints fall back to SQLite when the cache is cold — for a
+    # non-default league that means that league's own DB file. Missing file
+    # yields None (callers degrade to empty/503) instead of creating a stray
+    # empty DB via get_connection's auto-create.
+    if _is_default_league(league_id):
+        yield db._get_conn()
+        return
+    from pathlib import Path
+
+    path = config.db_path_for_league(league_id)
+    if not Path(path).exists():
+        yield None
+        return
+    conn = db.get_connection(path)
+    try:
+        yield conn
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
 
 def update_cache(
     league_settings: dict,
@@ -211,26 +282,28 @@ def update_cache(
     matchups: list[dict] | None = None,
     trending: list[dict] | None = None,
     detailed_injuries: list[dict] | None = None,
+    league_id: str | None = None,
 ) -> None:
+    target = _cache_for(league_id)
     if league_settings:
-        _CACHE["league_settings"] = league_settings
+        target["league_settings"] = league_settings
     if rosters:
-        _CACHE["rosters"] = rosters
+        target["rosters"] = rosters
     if player_stats:
-        _CACHE["player_stats"] = player_stats
+        target["player_stats"] = player_stats
     if injury_status:
-        _CACHE["injury_status"] = injury_status
+        target["injury_status"] = injury_status
     if matchups:
-        _CACHE["matchups"] = matchups
+        target["matchups"] = matchups
     if trending:
-        _CACHE["trending"] = trending
+        target["trending"] = trending
     if detailed_injuries:
-        _CACHE["detailed_injuries"] = detailed_injuries
-    _CACHE["last_updated"] = datetime.datetime.now().isoformat()
+        target["detailed_injuries"] = detailed_injuries
+    target["last_updated"] = datetime.datetime.now().isoformat()
     if season is not None:
-        _CACHE["season"] = season
+        target["season"] = season
     if week is not None:
-        _CACHE["week"] = week
+        target["week"] = week
 
 
 def _create_player_lookup(player_stats: list[dict]) -> dict[str, dict]:
@@ -339,7 +412,7 @@ def _process_roster_data(
     return roster_players, bench_players, free_agents
 
 
-def _batch_log_recommendations(kind: str, recommendations: list[dict]) -> None:
+def _batch_log_recommendations(kind: str, recommendations: list[dict], league_id: str | None = None) -> None:
     """Log a batch of recommendations to the shadow table using a single
     executemany + commit (best-effort). Uses the per-request thread-local
     DB connection (db._get_conn()) so all writes share one connection and
@@ -348,8 +421,9 @@ def _batch_log_recommendations(kind: str, recommendations: list[dict]) -> None:
         return
     try:
         logged_at = datetime.datetime.now().isoformat()
-        season = _CACHE.get("season")
-        week = _CACHE.get("week")
+        cache = _cache_for(league_id)
+        season = cache.get("season")
+        week = cache.get("week")
         # why real fallbacks, never 0: season/week=0 rows pollute the shadow
         # log with an unqueryable season (shadow resolution joins on real
         # season/week), so fall back to the configured seasons instead.
@@ -368,6 +442,24 @@ def _batch_log_recommendations(kind: str, recommendations: list[dict]) -> None:
             }
             for rec in recommendations
         ]
+        # why one target only: the thread-local conn serves the DEFAULT
+        # league's DB — logging another league's rows there would pollute its
+        # shadow outcomes. Non-default leagues log into their own DB file.
+        if league_id is not None and not _is_default_league(league_id):
+            import pathlib
+
+            path = config.db_path_for_league(league_id)
+            if not pathlib.Path(path).exists():
+                return
+            dedicated = db.get_connection(path)
+            try:
+                shadow.log_recommendations_batch(dedicated, rows)
+            finally:
+                try:
+                    dedicated.close()
+                except Exception:
+                    pass
+            return
         conn = db._get_conn()
         shadow.log_recommendations_batch(conn, rows)
     except Exception:
@@ -385,13 +477,15 @@ def health() -> dict:
 
 @app.get("/ready")
 @app.get("/v1/ready")
-def ready() -> dict:
+def ready(league_id: str | None = _league_query()) -> dict:
     # Readiness — 503 until warmed via POST /refresh (same warmed predicate
     # as the /recommendations/* guards so load-balancers/monitors agree).
+    # why per-league: a warmed default league must not mask a cold league B.
+    cache = _cache_for(league_id)
     if (
-        not _CACHE.get("league_settings")
-        or not _CACHE.get("rosters")
-        or not _CACHE.get("player_stats")
+        not cache.get("league_settings")
+        or not cache.get("rosters")
+        or not cache.get("player_stats")
     ):
         raise HTTPException(
             status_code=503,
@@ -427,22 +521,39 @@ def _latest_source_status(conn) -> dict:
     return out
 
 
-def _do_refresh_job(season: int, stats_season: int, ran_at_iso: str, week: int) -> None:
+class RefreshRequest(BaseModel):
+    # why optional body (not required): legacy callers POST with no body
+    # (curl, launchd, hub/start.sh) — they refresh the default league.
+    # why validated: league ids are numeric; 422s surface via the envelope.
+    league_id: str | None = Field(default=None, max_length=64, pattern=r"^\d+$")
+
+
+def _do_refresh_job(season: int, stats_season: int, ran_at_iso: str, week: int, league_id: str | None = None) -> None:
     """Background refresh worker: owns its own long-lived DB connection and
     holds _REFRESH_LOCK until done (released here, not in the endpoint, so
     concurrent POSTs 409 while the job runs). Failures are per-source
     isolated inside run_refresh_with_data; a total crash is logged
     server-side — there is no request left to answer, so nothing is raised."""
-    conn = db.get_connection()  # refresh is a long-running job; don't share
+    # why per-league conn: refresh writes into that league's own DB file
+    # (default league keeps legacy data/fantasy.db). Lock stays global —
+    # refreshes serialize across leagues (Sleeper courtesy + SQLite WAL).
+    lid = config.require_league_id(league_id)
+    conn = (
+        db.get_connection()
+        if _is_default_league(lid)
+        else db.get_connection(config.db_path_for_league(lid))
+    )
     try:
         status, data = run_refresh_with_data(
             conn,
             season=season,
             stats_season=stats_season,
-            ran_at_iso=ran_at_iso
+            ran_at_iso=ran_at_iso,
+            league_id=lid,
         )
 
-        new_cache = dict(_CACHE)
+        cache = _cache_for(lid)
+        new_cache = dict(cache)
         if data.get("league_settings"):
             new_cache["league_settings"] = data["league_settings"]
         if data.get("rosters"):
@@ -464,10 +575,10 @@ def _do_refresh_job(season: int, stats_season: int, ran_at_iso: str, week: int) 
             new_cache["week"] = week
         # P0: never _CACHE.clear()+update — readers on other threads could
         # observe an empty cache between the two calls. new_cache already
-        # starts as dict(_CACHE), so a single update() applies the delta
+        # starts as dict(cache), so a single update() applies the delta
         # without an empty window while preserving _CACHE identity (update_cache
         # mutates in place, so rebinding _CACHE would orphan that path).
-        _CACHE.update(new_cache)
+        cache.update(new_cache)
     except Exception:
         logger.exception("api: background refresh failed")
     finally:
@@ -483,7 +594,7 @@ def _do_refresh_job(season: int, stats_season: int, ran_at_iso: str, week: int) 
 
 @app.post("/refresh", status_code=202)
 @app.post("/v1/refresh", status_code=202)
-def refresh(background_tasks: BackgroundTasks) -> dict:
+def refresh(background_tasks: BackgroundTasks, body: RefreshRequest | None = None) -> dict:
     # Audit 6.0: truly async — the endpoint only snapshots season params and
     # queues the job, returning 202 immediately; _do_refresh_job holds the
     # lock until the multi-source run finishes (409 while running).
@@ -499,7 +610,10 @@ def refresh(background_tasks: BackgroundTasks) -> dict:
         stats_season = get_stats_season()
         ran_at_iso = now.isoformat()
         week = compute_nfl_week(now)
-        background_tasks.add_task(_do_refresh_job, season, stats_season, ran_at_iso, week)
+        # why optional body: no body refreshes the default league (legacy
+        # callers unchanged); {"league_id"} refreshes that league's own DB.
+        lid = body.league_id if body and body.league_id else None
+        background_tasks.add_task(_do_refresh_job, season, stats_season, ran_at_iso, week, lid)
     except Exception:
         try:
             _REFRESH_LOCK.release()
@@ -509,19 +623,24 @@ def refresh(background_tasks: BackgroundTasks) -> dict:
     # why last-known sources: the job hasn't run yet, so per-source bools
     # can't be fresh; poll status_url for completion instead.
     try:
-        sources = {s: v["success"] for s, v in _latest_source_status(db._get_conn()).items()}
+        with _league_conn(lid) as conn:
+            sources = {s: v["success"] for s, v in _latest_source_status(conn).items()} if conn else {}
     except Exception:
         sources = {}
-    return {"status": "accepted", "sources": sources, "status_url": "/refresh/status"}
+    out: dict = {"status": "accepted", "sources": sources, "status_url": "/refresh/status"}
+    if lid and not _is_default_league(lid):
+        out["league_id"] = lid
+    return out
 
 
 @app.get("/refresh/status")
 @app.get("/v1/refresh/status")
-def refresh_status() -> dict:
+def refresh_status(league_id: str | None = _league_query()) -> dict:
     # why: async POST returns before sources finish — hub/monitors poll here
     # for latest per-source success + ran_at instead of blocking on refresh.
     try:
-        sources = _latest_source_status(db._get_conn())
+        with _league_conn(league_id) as conn:
+            sources = _latest_source_status(conn) if conn else {}
     except Exception:
         sources = {}
     return {"sources": sources, "running": _REFRESH_LOCK.locked()}
@@ -529,8 +648,16 @@ def refresh_status() -> dict:
 
 @app.get("/news")
 @app.get("/v1/news")
-def get_news() -> dict:
-    conn = db._get_conn()
+def get_news(league_id: str | None = _league_query()) -> dict:
+    # why missing-file degrade: a freshly added league has no DB yet — empty
+    # lists (not 500) so the UI shows "refresh needed" instead of an error.
+    with _league_conn(league_id) as conn:
+        if conn is None:
+            return {"trending_adds": [], "detailed_injuries": []}
+        return _read_news(conn)
+
+
+def _read_news(conn) -> dict:
     try:
         trending_row = conn.execute(
             "SELECT data FROM news_data WHERE kind='trending' ORDER BY fetched_at DESC LIMIT 1"
@@ -553,25 +680,29 @@ def get_news() -> dict:
 def get_projections(
     limit: int = Query(800, ge=1, le=2000),
     offset: int = Query(0, ge=0),
+    league_id: str | None = _league_query(),
 ) -> dict:
     # why limit/offset: hub fetchProjections already sends ?limit= (default
     # 800, up to 2000 for the auction board); previously the param was
     # silently ignored and the slice hardcoded to 800. Defaults preserve the
     # exact legacy body (players[0:800]) for hub compat.
-    if _CACHE["player_stats"]:
-        players = _CACHE["player_stats"]
-        scoring = (_CACHE.get("league_settings") or {}).get("scoring_settings", {})
+    cache = _cache_for(league_id)
+    if cache["player_stats"]:
+        players = cache["player_stats"]
+        scoring = (cache.get("league_settings") or {}).get("scoring_settings", {})
     else:
-        conn = db._get_conn()
-        row = conn.execute(
-            "SELECT data FROM player_stats WHERE data IS NOT NULL AND length(data) > 1000 ORDER BY rowid DESC LIMIT 1"
-        ).fetchone()
-        players = json.loads(row["data"]) if row else []
-        # Load scoring settings from DB
-        srow = conn.execute(
-            "SELECT data FROM league_settings ORDER BY season DESC LIMIT 1"
-        ).fetchone()
-        scoring = json.loads(srow["data"]).get("scoring_settings", {}) if srow else {}
+        with _league_conn(league_id) as conn:
+            if conn is None:
+                return {"players": [], "count": 0, "meta": {"cached": False}}
+            row = conn.execute(
+                "SELECT data FROM player_stats WHERE data IS NOT NULL AND length(data) > 1000 ORDER BY rowid DESC LIMIT 1"
+            ).fetchone()
+            players = json.loads(row["data"]) if row else []
+            # Load scoring settings from DB
+            srow = conn.execute(
+                "SELECT data FROM league_settings ORDER BY season DESC LIMIT 1"
+            ).fetchone()
+            scoring = json.loads(srow["data"]).get("scoring_settings", {}) if srow else {}
 
     out = []
     for p in players[offset:offset + limit]:
@@ -584,7 +715,7 @@ def get_projections(
                 pts = calculate_fantasy_points(p, scoring)
             except Exception:
                 pass
-        injury = (_CACHE.get("injury_status") or {}).get(pid)
+        injury = (cache.get("injury_status") or {}).get(pid)
         out.append({
             "player_id": pid,
             "player_name": p.get("player_display_name") or p.get("short_name") or p.get("player_name") or pid,
@@ -597,22 +728,51 @@ def get_projections(
             "injury_status": injury,
         })
     out.sort(key=lambda x: x["projected_points"], reverse=True)
-    return {"players": out, "count": len(out), "meta": {"cached": bool(_CACHE["player_stats"])}}
+    return {"players": out, "count": len(out), "meta": {"cached": bool(cache["player_stats"])}}
+
+
+@app.get("/league/draft")
+@app.get("/v1/league/draft")
+def get_league_draft(league_id: str | None = _league_query()) -> dict:
+    # why: setup screen source — league identity + draft type, everything the
+    # UI needs before any refresh exists (name, teams, snake vs auction).
+    # why 400 when unconfigured: without any id there is nothing to look up;
+    # message points at the setup flow, not internals.
+    from ffanalytics.adapters import sleeper
+
+    lid = (league_id or config.LEAGUE_ID or "").strip()
+    if not lid:
+        raise HTTPException(
+            status_code=400,
+            detail="league_id required — enter your Sleeper league ID first.",
+        )
+    try:
+        return sleeper.get_draft_info(lid)
+    except HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else 500
+        if status == 404:
+            raise HTTPException(status_code=404, detail="League not found on Sleeper — check the league ID.")
+        logger.exception("api: /league/draft failed: %s", _sanitize_log(exc))
+        raise HTTPException(status_code=500, detail="internal error")
+    except Exception as exc:
+        logger.exception("api: /league/draft failed: %s", _sanitize_log(exc))
+        raise HTTPException(status_code=500, detail="internal error")
 
 
 @app.get("/recommendations/start-sit")
 @app.get("/v1/recommendations/start-sit")
-def get_start_sit(owner_id: str = Query(..., max_length=64, pattern=r"^\d+$")) -> dict:
-    if not _CACHE["league_settings"] or not _CACHE["rosters"] or not _CACHE["player_stats"]:
+def get_start_sit(owner_id: str = Query(..., max_length=64, pattern=r"^\d+$"), league_id: str | None = _league_query()) -> dict:
+    cache = _cache_for(league_id)
+    if not cache["league_settings"] or not cache["rosters"] or not cache["player_stats"]:
         raise HTTPException(
             status_code=503,
             detail="Data not available. Run /refresh first to load data."
         )
 
-    league_settings = _CACHE["league_settings"]
-    rosters = _CACHE["rosters"]
-    player_stats = _CACHE["player_stats"]
-    injury_status = _CACHE["injury_status"] or {}
+    league_settings = cache["league_settings"]
+    rosters = cache["rosters"]
+    player_stats = cache["player_stats"]
+    injury_status = cache["injury_status"] or {}
 
     scoring_settings = league_settings.get("scoring_settings", {})
     roster_positions = league_settings.get("roster_positions", [])
@@ -626,12 +786,12 @@ def get_start_sit(owner_id: str = Query(..., max_length=64, pattern=r"^\d+$")) -
             roster_players, bench_players, scoring_settings, roster_positions
         )
 
-        _batch_log_recommendations("start_sit", recommendations)
+        _batch_log_recommendations("start_sit", recommendations, league_id)
 
         return {
             "recommendations": recommendations,
             "count": len(recommendations),
-            "timestamp": _CACHE["last_updated"]
+            "timestamp": cache["last_updated"]
         }
     except HTTPException:
         raise
@@ -640,19 +800,34 @@ def get_start_sit(owner_id: str = Query(..., max_length=64, pattern=r"^\d+$")) -
         raise HTTPException(status_code=500, detail="internal error")
 
 
+def _league_econ_from_settings(league_settings: dict) -> dict:
+    # why: auction $/VOR math scales with league size, roster shape, and draft
+    # budget — all live per league (settings + draft info stashed at refresh).
+    # Falls back to the 12x$200 reference league when unknown.
+    from ffanalytics.config import league_economics
+
+    draft = (league_settings.get("draft") or {}) if isinstance(league_settings, dict) else {}
+    return league_economics(
+        total_rosters=league_settings.get("total_rosters", 12),
+        roster_positions=league_settings.get("roster_positions"),
+        auction_budget=(draft.get("auction_budget") if isinstance(draft, dict) else None) or 200,
+    )
+
+
 @app.get("/recommendations/waiver")
 @app.get("/v1/recommendations/waiver")
-def get_waiver(owner_id: str = Query(..., max_length=64, pattern=r"^\d+$")) -> dict:
-    if not _CACHE["league_settings"] or not _CACHE["rosters"] or not _CACHE["player_stats"]:
+def get_waiver(owner_id: str = Query(..., max_length=64, pattern=r"^\d+$"), league_id: str | None = _league_query()) -> dict:
+    cache = _cache_for(league_id)
+    if not cache["league_settings"] or not cache["rosters"] or not cache["player_stats"]:
         raise HTTPException(
             status_code=503,
             detail="Data not available. Run /refresh first to load data."
         )
 
-    league_settings = _CACHE["league_settings"]
-    rosters = _CACHE["rosters"]
-    player_stats = _CACHE["player_stats"]
-    injury_status = _CACHE["injury_status"] or {}
+    league_settings = cache["league_settings"]
+    rosters = cache["rosters"]
+    player_stats = cache["player_stats"]
+    injury_status = cache["injury_status"] or {}
 
     scoring_settings = league_settings.get("scoring_settings", {})
     roster_positions = league_settings.get("roster_positions", [])
@@ -662,16 +837,18 @@ def get_waiver(owner_id: str = Query(..., max_length=64, pattern=r"^\d+$")) -> d
             rosters, player_stats, injury_status, league_settings, owner_id=owner_id
         )
 
+        econ = _league_econ_from_settings(league_settings)
         recommendations = get_waiver_priority(
-            roster_players, free_agents, scoring_settings, roster_positions
+            roster_players, free_agents, scoring_settings, roster_positions,
+            num_teams=econ["teams"],
         )
 
-        _batch_log_recommendations("waiver", recommendations)
+        _batch_log_recommendations("waiver", recommendations, league_id)
 
         return {
             "recommendations": recommendations,
             "count": len(recommendations),
-            "timestamp": _CACHE["last_updated"]
+            "timestamp": cache["last_updated"]
         }
     except HTTPException:
         raise
@@ -684,18 +861,20 @@ def get_waiver(owner_id: str = Query(..., max_length=64, pattern=r"^\d+$")) -> d
 @app.get("/v1/recommendations/trade")
 def get_trade_evaluation(
     team_a_id: str = Query(..., max_length=64, pattern=r"^\d+$"),
-    team_b_id: str = Query(..., max_length=64, pattern=r"^\d+$")
+    team_b_id: str = Query(..., max_length=64, pattern=r"^\d+$"),
+    league_id: str | None = _league_query(),
 ) -> dict:
-    if not _CACHE["league_settings"] or not _CACHE["rosters"] or not _CACHE["player_stats"]:
+    cache = _cache_for(league_id)
+    if not cache["league_settings"] or not cache["rosters"] or not cache["player_stats"]:
         raise HTTPException(
             status_code=503,
             detail="Data not available. Run /refresh first to load data."
         )
 
-    league_settings = _CACHE["league_settings"]
-    rosters = _CACHE["rosters"]
-    player_stats = _CACHE["player_stats"]
-    injury_status = _CACHE["injury_status"] or {}
+    league_settings = cache["league_settings"]
+    rosters = cache["rosters"]
+    player_stats = cache["player_stats"]
+    injury_status = cache["injury_status"] or {}
 
     scoring_settings = league_settings.get("scoring_settings", {})
     roster_positions = league_settings.get("roster_positions", [])
@@ -735,8 +914,8 @@ def get_trade_evaluation(
         # Load market_consensus from DB for VBD auction params
         market_consensus = None
         try:
-            conn = db._get_conn()
-            row = conn.execute("SELECT data FROM market_consensus ORDER BY fetched_at DESC LIMIT 1").fetchone()
+            with _league_conn(league_id) as conn:
+                row = conn.execute("SELECT data FROM market_consensus ORDER BY fetched_at DESC LIMIT 1").fetchone() if conn else None
             if row is not None:
                 try:
                     data_str = row["data"]
@@ -793,7 +972,7 @@ def get_trade_evaluation(
                 all_league_players = None
 
         # current_week from cache or compute_nfl_week()
-        current_week = _CACHE.get("week") or compute_nfl_week()
+        current_week = cache.get("week") or compute_nfl_week()
         if current_week is None:
             current_week = 1
 
@@ -802,15 +981,16 @@ def get_trade_evaluation(
             current_week=current_week,
             market_consensus=market_consensus,
             all_league_players=all_league_players,
+            league_econ=_league_econ_from_settings(league_settings),
         )
 
-        _batch_log_recommendations("trade", [result])
+        _batch_log_recommendations("trade", [result], league_id)
 
         return {
             "trade_evaluation": result,
             "team_a_id": team_a_id,
             "team_b_id": team_b_id,
-            "timestamp": _CACHE["last_updated"]
+            "timestamp": cache["last_updated"]
         }
     except HTTPException:
         raise

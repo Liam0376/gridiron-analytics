@@ -1,0 +1,55 @@
+# CI — $0 forever: ubuntu-latest on the GitHub free tier only. No Docker,
+# no paid actions, no self-hosted runners, no new runtime deps (all scans run
+# with tools installed ephemerally in CI or with grep from the base image).
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m venv .venv && .venv/bin/pip install -r requirements.txt
+      - run: SLEEPER_LEAGUE_ID=test .venv/bin/pytest -q
+        env:
+          SLEEPER_LEAGUE_ID: test
+
+  isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash hub/verify-isolation.sh
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # pip-audit is CI-ephemeral only — not added to pyproject/requirements.
+      - run: pip install pip-audit && pip-audit --local
+        continue-on-error: true
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      # Prefer gitleaks if present on the runner; fall back to grep for
+      # api-key-ish patterns. Allow-if-missing: never fail the build here.
+      - run: |
+          if command -v gitleaks >/dev/null 2>&1; then
+            gitleaks detect --no-git -v || true
+          else
+            echo "gitleaks not on runner — grep fallback"
+            ! grep -RInE "FANTASYPROS_API_KEY\s*=\s*[^[:space:]#]+" --exclude-dir=.venv --exclude-dir=node_modules --exclude-dir=.git . || true
+            ! grep -RIniE "(api[_-]?key|secret)\s*[:=]\s*['\"][A-Za-z0-9_\-]{16,}['\"]" --exclude-dir=.venv --exclude-dir=node_modules --exclude-dir=.git . || true
+            echo "secrets grep fallback done"
+          fi
+        continue-on-error: true

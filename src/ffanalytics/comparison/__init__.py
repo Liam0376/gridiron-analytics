@@ -28,6 +28,7 @@ def build_comparison(
     statsguy_rows: list[dict] | None = None,
     actual_by_gsis: dict[str, dict] | None = None,
     draft_prices: dict[str, float] | None = None,
+    league_econ: dict | None = None,
 ) -> list[dict]:
     fpros_lut, statsguy_lut = build_lookups(fpros_players, statsguy_rows)
 
@@ -65,7 +66,7 @@ def build_comparison(
     )
     rows.extend(fallback)
 
-    apply_auction(rows, draft_prices)
+    apply_auction(rows, draft_prices, econ=league_econ)
     return rows
 
 

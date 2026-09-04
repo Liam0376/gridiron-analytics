@@ -78,7 +78,7 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
 
   container.innerHTML = `
     <div class="player-modal-backdrop" id="modalBackdrop">
-      <div class="player-modal-card card reveal in" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="modalPlayerName">
+      <div class="player-modal-card card" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="modalPlayerName">
         <button class="modal-close-btn" id="modalCloseBtn" aria-label="Close modal">✕</button>
 
         <!-- Centered Header Hero -->
@@ -168,18 +168,43 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
   `;
 
   const card = container.querySelector('.player-modal-card');
+  const backdrop = container.querySelector('#modalBackdrop');
+  // Choreographed enter: backdrop opacity + card translateY/scale (CSS handles timing).
+  if (backdrop && card) {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        backdrop.classList.add('show');
+        card.classList.add('show');
+      });
+    });
+  }
   // close defined before trapFocus so Escape can invoke full close (not just release).
   let releaseFocus = () => {};
+  let closing = false;
   const close = () => {
+    if (closing) return;
+    closing = true;
     try { releaseFocus(); } catch (_) {}
-    container.innerHTML = '';
-    // Focus return is handled by trapFocus.release(), but ensure fallback
-    // if trigger is still in the document and focus landed on body.
-    if (triggerEl && typeof triggerEl.focus === 'function' && document.contains(triggerEl)) {
-      if (!document.activeElement || document.activeElement === document.body) {
-        triggerEl.focus();
+    const done = () => {
+      container.innerHTML = '';
+      // Focus return is handled by trapFocus.release(), but ensure fallback
+      // if trigger is still in the document and focus landed on body.
+      if (triggerEl && typeof triggerEl.focus === 'function' && document.contains(triggerEl)) {
+        if (!document.activeElement || document.activeElement === document.body) {
+          triggerEl.focus();
+        }
       }
-    }
+    };
+    const b = container.querySelector('#modalBackdrop');
+    const c = container.querySelector('.player-modal-card');
+    if (!b || !c) { done(); return; }
+    b.classList.add('closing');
+    c.classList.add('closing');
+    let finished = false;
+    const finish = () => { if (!finished) { finished = true; done(); } };
+    // Prefer transitionend on the card; rAF/timeout fallback guarantees cleanup.
+    c.addEventListener('transitionend', finish, { once: true });
+    requestAnimationFrame(() => { setTimeout(finish, 200); });
   };
   releaseFocus = trapFocus(card, triggerEl, close);
 
@@ -203,7 +228,7 @@ function renderStatBar(label, value, maxVal, color, unit) {
         <strong style="color:${color}">${val.toLocaleString()} ${unit}</strong>
       </div>
       <div style="height:8px; background:rgba(0,0,0,0.06); border-radius:4px; overflow:hidden">
-        <div style="width:${pct}%; height:100%; background:${color}; border-radius:4px; transition:width 300ms ease"></div>
+        <div style="width:${pct}%; height:100%; background:${color}; border-radius:4px"></div>
       </div>
     </div>
   `;

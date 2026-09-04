@@ -37,16 +37,22 @@ Gridiron Analytics combines statistical projection models, conformal uncertainty
    # pip install -e .[ml]
    ```
 
-2. Configure your league (each user runs their own single league —
-   multi-league is an explicit non-goal for OSS v1):
+2. Add your league — type the ID once, the rest comes from Sleeper:
    ```bash
    cp .env.example .env && chmod 600 .env
-   # Edit .env and set SLEEPER_LEAGUE_ID to your league ID.
+   # Edit .env and set SLEEPER_LEAGUE_ID to your league ID
+   # (or skip it: the hub setup screen accepts the ID or a pasted
+   # Sleeper URL on first run).
    ```
+   Extra leagues anytime via the 🏈 button (topbar) — each league gets an
+   isolated snapshot (`data/fantasy_<id>.db`); league name, teams, season,
+   scoring, rosters, and draft type (snake/auction) all come from the
+   Sleeper API. The Auction tab auto-gates for snake leagues.
 
 3. Start the local engine and UI:
    ```bash
-   bash hub/start.sh
+   bash hub/start.sh            # default league ($SLEEPER_LEAGUE_ID)
+   bash hub/start.sh --league <sleeper-id>   # start synced to another league
    ```
 
    Launches FastAPI on :8000, read-only DB proxy on :8002, Vite UI on :8001; opens http://127.0.0.1:8001.

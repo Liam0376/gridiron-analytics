@@ -1,4 +1,5 @@
-import { fetchMatchups, fetchRoster, fetchRostersFull, fetchComparison, fetchMeta } from '../api.js';
+import { fetchMatchups, fetchRoster, fetchRostersFull, fetchComparison, fetchMeta, fetchDraftInfo } from '../api.js';
+import { getLeagueEcon } from '../lib/league.js';
 import { posBadge, injuryBadge, windBadge } from '../components/badges.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { userAvatar } from '../components/userAvatar.js';
@@ -76,7 +77,9 @@ export async function renderMatchups(root) {
       if (c.player_id) compMap.set(String(c.player_id), c);
       if (c.player_name) compMap.set(c.player_name.toLowerCase(), c);
     });
-    const vbdParams = computeVbdParams(compData.players || []);
+    // why league-aware: $/VOR scales with teams/budget/roster (memoized).
+    const league = await getLeagueEcon(fetchMeta, fetchDraftInfo).catch(() => null);
+    const vbdParams = computeVbdParams(compData.players || [], league);
     const slotOpts = { vbdParams, compPlayers: compData.players || [] };
 
     allRosters.forEach((rData, i) => {
@@ -115,8 +118,8 @@ export async function renderMatchups(root) {
     <div class="row" style="gap:8px">
       <span class="kicker">Week</span>
       <div class="filters week-picker-scroll" style="overflow-x:auto; flex-wrap:nowrap; max-width:100%; padding-bottom:4px">
-        ${Array.from({length:18},(_,i)=>i+1).map(w=>`<button class="chip ${String(w)===String(currentWeek)?'active':''}" data-week="${w}" style="flex-shrink:0">${w}</button>`).join('')}
-        <button class="chip" data-week="" style="flex-shrink:0">All</button>
+        ${Array.from({length:18},(_,i)=>i+1).map(w=>`<button class="chip ${String(w)===String(currentWeek)?'active':''}" data-week="${w}" title="Show week ${w}" style="flex-shrink:0">${w}</button>`).join('')}
+        <button class="chip" data-week="" title="Show all weeks" style="flex-shrink:0">All</button>
       </div>
     </div>
   `;
@@ -128,7 +131,7 @@ export async function renderMatchups(root) {
       <h1>Matchups <span class="badge" style="background:var(--color-primary); color:white; vertical-align:middle" aria-live="polite">Week ${currentWeek || '—'}</span></h1>
       <p>Head-to-head fantasy matchups with model projections vs market consensus. Click a matchup for slot breakdown.</p>
     </div>
-    ${isDemoData ? `<div class="alert alert-warn reveal in" role="status" style="margin-top:12px">Demo data — run refresh to load live Sleeper data.</div>` : ''}
+    ${isDemoData ? `<div class="alert alert-warn reveal in" role="status" style="margin-top:12px">Demo data: run refresh to load live Sleeper data.</div>` : ''}
     <div class="card reveal in" style="margin-top:12px">
       <div class="card-body">${weekPicker}</div>
     </div>
@@ -270,7 +273,7 @@ function renderMatchupCard(teamA, teamB, matchupId, rawRosters, slateByTeam) {
             </div>
             <div style="font-size:11px; margin-top:4px">
               <span class="mono" style="color:${winProbA >= 50 ? 'var(--emerald)' : 'var(--text-muted)'}">${winProbA}%</span>
-              <span class="faint" style="margin:0 4px">—</span>
+              <span class="faint" style="margin:0 4px">-</span>
               <span class="mono" style="color:${winProbB >= 50 ? 'var(--emerald)' : 'var(--text-muted)'}">${winProbB}%</span>
             </div>
             <!-- Win prob bar -->
@@ -352,7 +355,7 @@ function openMatchupModal(teamA, teamB, matchupId, slateByTeam, root, processedT
             </div>
             <div style="font-size:11px; margin-top:4px">
               <span class="mono" style="color:${winProbA >= 50 ? 'var(--emerald)' : 'var(--text-muted)'}">${winProbA}%</span>
-              <span class="faint" style="margin:0 4px">—</span>
+              <span class="faint" style="margin:0 4px">-</span>
               <span class="mono" style="color:${winProbB >= 50 ? 'var(--emerald)' : 'var(--text-muted)'}">${winProbB}%</span>
             </div>
             <div style="height:4px; border-radius:2px; background:var(--surface-raised); margin-top:6px; overflow:hidden; display:flex">

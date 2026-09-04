@@ -1,4 +1,6 @@
 import { fetchMeta, fetchRefreshLog, computeStaleness, fetchRoster } from '../api.js';
+import { leagueTagline } from '../lib/league.js';
+import { escapeHtml } from '../lib/escape.js';
 import { userAvatar } from '../components/userAvatar.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 
@@ -27,11 +29,11 @@ export async function renderDashboard(root) {
   root.innerHTML = `
     <div class="hero reveal in">
       <h1>Dashboard</h1>
-      <p>12-team analytical hub powered by local SQLite WAL &amp; Sleeper API projections.</p>
+      <p>${escapeHtml(leagueTagline(meta))} analytical hub powered by local SQLite WAL &amp; Sleeper API projections.</p>
     </div>
 
-    ${isDemoData ? `<div class="alert alert-warn reveal in" role="status" style="margin-top:12px">Demo data — run refresh to load live Sleeper data.</div>` : ''}
-    ${isWeatherPlaceholder ? `<div class="reveal in" style="margin-top:8px"><span class="badge badge-faint">Weather placeholder — forecast not yet live</span></div>` : ''}
+    ${isDemoData ? `<div class="alert alert-warn reveal in" role="status" style="margin-top:12px">Demo data: run refresh to load live Sleeper data.</div>` : ''}
+    ${isWeatherPlaceholder ? `<div class="reveal in" style="margin-top:8px"><span class="badge badge-faint">Weather placeholder: forecast not yet live</span></div>` : ''}
 
     <div class="grid grid-3 reveal in" style="margin-top:16px">
       <div class="card">
@@ -49,7 +51,7 @@ export async function renderDashboard(root) {
       </div>
 
       <div class="card">
-        <div class="card-header"><h3>League Settings</h3><span class="kicker">12-Team League</span></div>
+        <div class="card-header"><h3>League Settings</h3><span class="kicker">${escapeHtml(leagueTagline(meta))} League</span></div>
         <div class="card-body">
           <div class="row" style="gap:16px">
             <div class="stat"><div class="stat-value mono">${rosterPos.length ? rosterPos.length : '16'}</div><div class="stat-label">Roster slots</div></div>
@@ -73,11 +75,11 @@ export async function renderDashboard(root) {
       </div>
     </div>
 
-    <!-- 12-Team League Showcase Card -->
+    <!-- League Showcase Card -->
     ${teams.length ? `
     <div class="card reveal in" style="margin-top:16px">
       <div class="card-header row align-between">
-        <h3>12-Team League — League Directory</h3>
+        <h3>${escapeHtml(leagueTagline(meta))} League: League Directory</h3>
         <span class="badge badge-amber mono">${teams.length} Teams</span>
       </div>
       <div class="card-body" style="padding:12px">

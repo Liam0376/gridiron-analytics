@@ -35,20 +35,27 @@ ENABLE_OPPONENT_ADJUSTMENT = False
 BENCH_SLOTS = {"BN", "IR"}
 
 
-def _vbd_auction_params_from_comps(comp_list):
+def _vbd_auction_params_from_comps(comp_list, econ: dict | None = None):
     """Derive VBD auction params from comparison list.
 
     Mirrors comparison.py:626 logic: by_pos_model/market, sorted,
-    model_repl/market_repl via POS_REPL_COUNTS, raw totals,
-    market_share/model_share clamped [0.5,1.5], total weighted VOR top120,
-    return (model_repl, pos_weight, dollar_per_vor).
+    model_repl/market_repl via replacement counts, raw totals,
+    market_share/model_share clamped [0.5,1.5], total weighted VOR over the
+    league's starter slots, return (model_repl, pos_weight, dollar_per_vor).
+    why econ param: replacement counts, starter slice, and $ pool scale with
+    league size/budget — pass config.league_economics(...); None keeps the
+    legacy 12x$200 constants (backward compat).
     """
+    econ = econ or {}
+    repl_counts = econ.get("repl_counts", POS_REPL_COUNTS)
+    pool = econ.get("starter_pool", STARTER_BUDGET_POOL)
+    starter_slots = econ.get("starter_slots_total", 120)
     if not comp_list:
         return {}, POS_WEIGHT_FALLBACK.copy(), 0.0
 
     # by_pos_model / market
-    by_pos_model: Dict[str, List[float]] = {pos: [] for pos in POS_REPL_COUNTS}
-    by_pos_market: Dict[str, List[float]] = {pos: [] for pos in POS_REPL_COUNTS}
+    by_pos_model: Dict[str, List[float]] = {pos: [] for pos in repl_counts}
+    by_pos_market: Dict[str, List[float]] = {pos: [] for pos in repl_counts}
 
     for r in comp_list:
         if not isinstance(r, dict):
@@ -56,7 +63,7 @@ def _vbd_auction_params_from_comps(comp_list):
         pos = (r.get("position") or r.get("position_group") or "UNK").upper()
         if pos == "DST":
             pos = "DEF"
-        if pos not in POS_REPL_COUNTS:
+        if pos not in repl_counts:
             continue
         # model season points
         m_sp = r.get("model_season_points")
@@ -90,10 +97,10 @@ def _vbd_auction_params_from_comps(comp_list):
     for pos in by_pos_market:
         by_pos_market[pos].sort(reverse=True)
 
-    # model_repl / market_repl via POS_REPL_COUNTS
+    # model_repl / market_repl via replacement counts
     model_repl: Dict[str, float] = {}
     market_repl: Dict[str, float] = {}
-    for pos, count in POS_REPL_COUNTS.items():
+    for pos, count in repl_counts.items():
         arr = by_pos_model.get(pos, [])
         if len(arr) >= count:
             model_repl[pos] = float(arr[count - 1])
@@ -116,15 +123,15 @@ def _vbd_auction_params_from_comps(comp_list):
             return 0.0
 
     # raw totals per position for share calculation
-    raw_model_per_pos = {pos: 0.0 for pos in POS_REPL_COUNTS}
-    raw_market_per_pos = {pos: 0.0 for pos in POS_REPL_COUNTS}
+    raw_model_per_pos = {pos: 0.0 for pos in repl_counts}
+    raw_market_per_pos = {pos: 0.0 for pos in repl_counts}
     for r in comp_list:
         if not isinstance(r, dict):
             continue
         pos = (r.get("position") or r.get("position_group") or "UNK").upper()
         if pos == "DST":
             pos = "DEF"
-        if pos not in POS_REPL_COUNTS:
+        if pos not in repl_counts:
             continue
         m_sp = r.get("model_season_points")
         if m_sp is None:
@@ -146,7 +153,7 @@ def _vbd_auction_params_from_comps(comp_list):
     raw_market_total = sum(raw_market_per_pos.values()) or 1.0
 
     pos_weight: Dict[str, float] = {}
-    for pos in POS_REPL_COUNTS:
+    for pos in repl_counts:
         if pos in ("K", "DEF", "DST"):
             pos_weight[pos] = 0.0
         else:
@@ -162,7 +169,7 @@ def _vbd_auction_params_from_comps(comp_list):
         raw = _raw_vor(season_pts, pos, repl_map)
         return raw * pos_weight.get(pos, 1.0)
 
-    # total weighted VOR top120
+    # total weighted VOR over the league's starter slots
     all_weighted: List[float] = []
     for r in comp_list:
         if not isinstance(r, dict):
@@ -170,7 +177,7 @@ def _vbd_auction_params_from_comps(comp_list):
         pos = (r.get("position") or r.get("position_group") or "UNK").upper()
         if pos == "DST":
             pos = "DEF"
-        if pos not in POS_REPL_COUNTS:
+        if pos not in repl_counts:
             continue
         m_sp = r.get("model_season_points")
         if m_sp is None:
@@ -185,11 +192,10 @@ def _vbd_auction_params_from_comps(comp_list):
         if wv > 0:
             all_weighted.append(wv)
     all_weighted.sort(reverse=True)
-    starter_slots = 120
     top_vors = all_weighted[:starter_slots] if len(all_weighted) > starter_slots else all_weighted
     total_weighted_vor = sum(top_vors) or 1.0
 
-    dollar_per_vor = STARTER_BUDGET_POOL / total_weighted_vor if total_weighted_vor else 0.0
+    dollar_per_vor = pool / total_weighted_vor if total_weighted_vor else 0.0
 
     return (model_repl, pos_weight, dollar_per_vor)
 
@@ -313,9 +319,10 @@ def calculate_roster_value(
     players: List[Dict],
     scoring_settings: Dict[str, float],
     roster_positions: List[str],
+    num_teams: int = 12,
 ) -> float:
     starters, _ = _optimal_lineup(players, roster_positions)
-    replacement = _replacement_levels(players, roster_positions)
+    replacement = _replacement_levels(players, roster_positions, num_teams)
     return sum(_vbd(s, replacement) for s in starters)
 
 
@@ -427,11 +434,12 @@ def get_waiver_priority(
     free_agents: List[Dict],
     scoring_settings: Dict[str, float],
     roster_positions: List[str],
+    num_teams: int = 12,
 ) -> List[Dict]:
     all_rostered = list(roster_players)
     current_starters, _ = _optimal_lineup(all_rostered, roster_positions)
     replacement = _replacement_levels(
-        all_rostered + free_agents, roster_positions
+        all_rostered + free_agents, roster_positions, num_teams
     )
 
     # Worst starter per position for replacement calc
@@ -562,7 +570,10 @@ def evaluate_trade(
     total_weeks: int = 18,
     all_league_players: List[Dict] | None = None,
     market_consensus: List[Dict] | None = None,
+    league_econ: dict | None = None,
 ) -> Dict:
+    # why league_econ: auction $ scale with league size/budget — pass
+    # config.league_economics(...); None keeps legacy 12x$200 behavior.
     # Determine comparison list for VBD auction params
     comp_list = None
     use_market = False
@@ -582,7 +593,7 @@ def evaluate_trade(
 
     # Derive VBD auction params (model_repl, pos_weight, dollar_per_vor)
     try:
-        model_repl, pos_weight, dollar_per_vor = _vbd_auction_params_from_comps(comp_list)
+        model_repl, pos_weight, dollar_per_vor = _vbd_auction_params_from_comps(comp_list, econ=league_econ)
     except Exception:
         model_repl, pos_weight, dollar_per_vor = {}, POS_WEIGHT_FALLBACK.copy(), 0.0
 
@@ -592,7 +603,8 @@ def evaluate_trade(
 
     # Replacement levels for weekly VBD (traditional)
     all_players = all_league_players if (all_league_players and len(all_league_players) >= 20) else (team_a_players + team_b_players)
-    replacement = _replacement_levels(all_players, roster_positions)
+    num_teams = (league_econ or {}).get("teams", 12)
+    replacement = _replacement_levels(all_players, roster_positions, num_teams)
 
     def side_value(players: List[Dict]) -> Tuple[float, float]:
         weekly = 0.0

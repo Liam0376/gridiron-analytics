@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Project
-- Personal, single-user tool for one Sleeper league — **Fantasy Bahamas `1397736035240173568`**, 12-team full-PPR auction ($200 budget), 2 FLEX (roster `['QB','RB','RB','WR','WR','TE','FLEX','FLEX','K','DEF','BN','BN','BN','BN']` + `reserve_slots=2` IR, not in `roster_positions`). Reglamento 2026 is checked into the repo at `docs/reglamento-2026.md` (do not rely on `~/Downloads/...`). **Never hardcode scoring/roster settings** — `sleeper.get_league_settings()` is the source of truth; league scoring can be edited mid-season.
+- Personal, single-user tool — each user adds their own Sleeper leagues via the hub setup screen (`SLEEPER_LEAGUE_ID` = default league, per-league isolated `data/fantasy_<id>.db`, draft type auto-fetched). Reference league **Fantasy Bahamas `1397736035240173568`**, 12-team full-PPR auction ($200 budget), 2 FLEX (roster `['QB','RB','RB','WR','WR','TE','FLEX','FLEX','K','DEF','BN','BN','BN','BN']` + `reserve_slots=2` IR, not in `roster_positions`). Reglamento 2026 is checked into the repo at `docs/reglamento-2026.md` (do not rely on `~/Downloads/...`). **Never hardcode scoring/roster settings** — `sleeper.get_league_settings()` is the source of truth; league scoring can be edited mid-season.
 - `$0 cost forever`, fully local. FastAPI and Vite bind `127.0.0.1` only — never `--host 0.0.0.0`, no tunnels, no deploy. Outbound calls only to free APIs (Sleeper, nflreadpy/nflverse, Open-Meteo).
 - Two independent products in one repo: **model** (`src/ffanalytics`, root `pyproject.toml`) and **hub** (`hub/`, its own `package.json`). See Hub isolation below — this is enforced by a script, not just convention.
 - Primary interface is direct DB/API queries, not a CLI — for "who should I start" style questions, query `data/fantasy.db` or `http://127.0.0.1:8000` directly via Bash rather than telling the user to run curl themselves (`CLAUDE.md`).
@@ -43,7 +43,7 @@
 ## Hard Constraints
 - `$0 forever` — no paid tiers, trials, hosting, or DB. Call out free-tier limits (rate limits, quotas) explicitly instead of assuming they're fine.
 - Fully local — never `0.0.0.0`, no tunnels, no deploy step.
-- NFL/fantasy only, no real-money betting logic. Single private league — don't add multi-league support, public site, auth, or monetization without being asked.
+- NFL/fantasy only, no real-money betting logic. Single private user (multi-league via switcher is supported) — don't add public site, auth, or monetization without being asked.
 - Ask before installing new heavy deps (e.g. `pip install xgboost scikit-learn numpy --break-system-packages`) — flag/version tradeoffs first; user has denied ad hoc installs before.
 
 ## Gotchas

@@ -54,6 +54,53 @@ def get_league_settings(league_id: str, session=None) -> dict:
         "total_rosters": data.get("total_rosters", 12),
     }
 
+
+def get_draft_info(league_id: str, session=None) -> dict:
+    """League identity + draft type, all from Sleeper (setup screen source).
+
+    Returns {league_id, league_name, season, total_rosters, draft_id,
+    draft_type: "snake"|"auction"|"unknown", auction_budget, draft_settings}.
+    draft_type is "unknown" when the league has no draft yet (pre-draft) or
+    the draft payload lacks a type — callers treat unknown as "ask the user".
+    why two calls: /league/{id} carries identity + draft_id; only
+    /draft/{draft_id} carries type/settings. Both soft-fail to {} (the
+    league call raising means the id itself is bad — let it raise).
+    """
+    http = _session_or_default(session)
+    resp = _get_with_retry(http, f"{BASE_URL}/league/{league_id}", timeout=10)
+    league = resp.json()
+    info: dict = {
+        "league_id": league.get("league_id") or league_id,
+        "league_name": league.get("name") or "",
+        "season": league.get("season") or "",
+        "total_rosters": league.get("total_rosters", 12),
+        "draft_id": league.get("draft_id"),
+        "draft_type": "unknown",
+        "auction_budget": None,
+        "draft_settings": {},
+    }
+    draft_id = league.get("draft_id")
+    if not draft_id:
+        return info
+    try:
+        dresp = _get_with_retry(http, f"{BASE_URL}/draft/{draft_id}", timeout=10)
+        draft = dresp.json()
+    except Exception:
+        return info
+    dtype = str(draft.get("type") or "").lower()
+    if dtype in ("snake", "auction"):
+        info["draft_type"] = dtype
+    settings = draft.get("settings") or {}
+    info["draft_settings"] = settings
+    # why budget probe: auction draft settings carry varying budget keys
+    # across seasons — first numeric hit among known keys wins.
+    for key in ("budget", "auction_budget", "salary_cap", "cap"):
+        val = settings.get(key)
+        if isinstance(val, (int, float)) and val > 0:
+            info["auction_budget"] = val
+            break
+    return info
+
 def get_rosters(league_id: str, session=None) -> list[dict]:
     http = _session_or_default(session)
     resp = _get_with_retry(http, f"{BASE_URL}/league/{league_id}/rosters", timeout=10)

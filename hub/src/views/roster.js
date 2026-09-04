@@ -1,5 +1,6 @@
 // hub/src/views/roster.js — League Directory & Roster Matrix
-import { fetchRoster, fetchRostersFull, fetchComparison } from '../api.js';
+import { fetchRoster, fetchRostersFull, fetchComparison, fetchMeta, fetchDraftInfo } from '../api.js';
+import { getLeagueEcon, leagueTagline } from '../lib/league.js';
 import { posBadge, injuryBadge } from '../components/badges.js';
 import { intervalBar } from '../components/intervalBar.js';
 import { playerAvatar } from '../components/playerAvatar.js';
@@ -63,7 +64,10 @@ export async function renderRoster(root) {
     if (c.player_id) compMap.set(String(c.player_id), c);
     if (c.player_name) compMap.set(c.player_name.toLowerCase(), c);
   });
-  const vbdParams = computeVbdParams(compData.players || []);
+  // why league-aware: $/VOR scales with teams/budget/roster — same econ
+  // object the auction board uses (getLeagueEcon memoizes meta+draft).
+  const league = await getLeagueEcon(fetchMeta, fetchDraftInfo).catch(() => null);
+  const vbdParams = computeVbdParams(compData.players || [], league);
   const slotOpts = { vbdParams, compPlayers: compData.players || [] };
 
   const buildTeamRecord = (rData, metaFallback) => {
@@ -146,14 +150,14 @@ export async function renderRoster(root) {
     <!-- Header Hero -->
     <div class="hero reveal in">
       <h1>League directory</h1>
-      <p>12-team financial &amp; power leaderboard with side-by-side roster inspector.</p>
+      <p>${escapeHtml(leagueTagline(league))} financial &amp; power leaderboard with side-by-side roster inspector.</p>
     </div>
 
-    <!-- 12-Team Financial & Power Leaderboard -->
+    <!-- Financial & Power Leaderboard -->
     <div class="card reveal in" style="margin-top:8px">
       <div class="card-header">
         <div>
-          <h3>12-Team Financial &amp; Power Leaderboard</h3>
+          <h3>${escapeHtml(leagueTagline(league))} Financial &amp; Power Leaderboard</h3>
           <span class="kicker">Ranked by starter projected pts &amp; Model $</span>
         </div>
         <span class="badge badge-amber mono" aria-live="polite">${processedTeams.length} League Teams</span>
@@ -257,7 +261,23 @@ export async function renderRoster(root) {
     renderRoster(root);
   });
 
-  // Bind Player Clicks to open Draftea Modal (mouse + keyboard)
+  // Bind Player Clicks to open Draftea Modal (mouse + keyboard).
+  // Table semantics: <tr> carries data-player-row (no role); inner <button data-player-id>
+  // owns keyboard/ARIA. Native buttons handle Enter/Space, so keydown is div-only.
+  root.querySelectorAll('[data-player-row]').forEach(tr => {
+    tr.addEventListener('click', (e) => {
+      if (e.target.closest('button, a')) return;
+      const pid = tr.getAttribute('data-player-row');
+      let targetPlayer = null;
+      processedTeams.forEach(t => {
+        const found = t.allPlayers.find(p => String(p.player_id) === String(pid));
+        if (found) targetPlayer = found;
+      });
+      if (targetPlayer) {
+        openPlayerModal(targetPlayer, root);
+      }
+    });
+  });
   root.querySelectorAll('[data-player-id]').forEach(el => {
     const openForEl = () => {
       const pid = el.getAttribute('data-player-id');
@@ -270,13 +290,18 @@ export async function renderRoster(root) {
         openPlayerModal(targetPlayer, root);
       }
     };
-    el.addEventListener('click', openForEl);
-    el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        openForEl();
-      }
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openForEl();
     });
+    if (el.tagName !== 'BUTTON') {
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openForEl();
+        }
+      });
+    }
   });
 }
 
@@ -352,7 +377,7 @@ function renderSingleTeamInspector(team) {
       </div>
 
       <!-- Starters Table -->
-      <div class="table-wrap" style="margin-bottom:16px">
+      <div class="table-wrap" style="margin-bottom:16px; overflow-x:auto; max-width:100%">
         <table aria-label="Team starters">
           <caption class="sr-only">Team starters with projections</caption>
           <thead>
@@ -379,7 +404,7 @@ function renderSingleTeamInspector(team) {
       <!-- Bench Table -->
       <div style="margin-top:12px">
         <span class="kicker" style="display:block; margin-bottom:8px">Bench &amp; Reserves (${team.bench.length + team.reserve.length})</span>
-        <div class="table-wrap">
+        <div class="table-wrap" style="overflow-x:auto; max-width:100%">
           <table aria-label="Bench and reserves">
             <caption class="sr-only">Bench and reserve players</caption>
             <thead>
@@ -428,7 +453,7 @@ function renderCompareTeamsInspector(teamA, teamB) {
           </div>
           <div>
             <div style="font-weight:700; font-size:16px">${escapeHtml(teamA.team_name)}</div>
-            <div class="mono micro faint">Rank #${teamA.rank} · ${teamA.starterFPTS.toFixed(1)} FPTS · $${teamA.totalGridiron}</div>
+            <div class="mono micro faint">Rank #${teamA.rank} · ${teamA.starterFPTS.toFixed(1)} FPTS<br>$${teamA.totalGridiron}</div>
           </div>
         </div>
 
@@ -441,7 +466,7 @@ function renderCompareTeamsInspector(teamA, teamB) {
         <div style="display:flex; align-items:center; justify-content:flex-end; gap:12px">
           <div style="text-align:right">
             <div style="font-weight:700; font-size:16px">${escapeHtml(teamB.team_name)}</div>
-            <div class="mono micro faint">Rank #${teamB.rank} · ${teamB.starterFPTS.toFixed(1)} FPTS · $${teamB.totalGridiron}</div>
+            <div class="mono micro faint">Rank #${teamB.rank} · ${teamB.starterFPTS.toFixed(1)} FPTS<br>$${teamB.totalGridiron}</div>
           </div>
           <div class="player-avatar" style="width:44px; height:44px">
             ${teamB.avatar_url && safeAvatarUrl(teamB.avatar_url) ? `<img src="${escapeAttr(safeAvatarUrl(teamB.avatar_url))}" />` : `<div class="player-avatar-fallback" style="background:var(--sky)">${escapeHtml(teamB.owner_name).charAt(0)}</div>`}
@@ -477,7 +502,7 @@ function renderCompareTeamsInspector(teamA, teamB) {
       </div>
 
       <!-- Slot Matchup Table — slot-aligned (QB vs QB, RB1 vs RB1, etc.) -->
-      <div class="table-wrap">
+      <div class="table-wrap" style="overflow-x:auto; max-width:100%">
         <table aria-label="Slot comparison">
           <caption class="sr-only">Head-to-head slot comparison</caption>
           <thead>
@@ -507,10 +532,10 @@ function renderCompareTeamsInspector(teamA, teamB) {
                   <tr>
                     <td>
                       ${pA ? `
-                        <div class="player-cell data-player-id="${escapeHtml(pA.player_id)}" style="cursor:pointer" data-player-id="${escapeHtml(pA.player_id)}" tabindex="0" role="button" aria-label="Open details for ${escapeAttr(pA.player_name || pA.player_id)}">
+                        <div class="player-cell" style="cursor:pointer">
                           ${playerAvatar(pA, 32)}
                           <div>
-                            <div style="font-weight:700">${escapeHtml(pA.player_name)} ${posBadge(pA.position)}</div>
+                            <div style="font-weight:700"><button class="row-open-btn" data-player-id="${escapeHtml(pA.player_id)}" aria-label="Open details for ${escapeAttr(pA.player_name || pA.player_id)}" title="Open details for ${escapeAttr(pA.player_name || pA.player_id)}" style="background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; font-weight:700; text-align:left">${escapeHtml(pA.player_name)}</button> ${posBadge(pA.position)}</div>
                             <div class="mono micro" style="color:var(--amber)">${pA.weekly.toFixed(1)} pts · $${pA.gridironAuction}</div>
                           </div>
                         </div>
@@ -519,10 +544,10 @@ function renderCompareTeamsInspector(teamA, teamB) {
                     <td class="mono micro faint" style="font-weight:700; text-align:center">${escapeHtml(slot)}</td>
                     <td>
                       ${pB ? `
-                        <div class="player-cell" style="cursor:pointer" data-player-id="${escapeHtml(pB.player_id)}" tabindex="0" role="button" aria-label="Open details for ${escapeAttr(pB.player_name || pB.player_id)}">
+                        <div class="player-cell" style="cursor:pointer">
                           ${playerAvatar(pB, 32)}
                           <div>
-                            <div style="font-weight:700">${escapeHtml(pB.player_name)} ${posBadge(pB.position)}</div>
+                            <div style="font-weight:700"><button class="row-open-btn" data-player-id="${escapeHtml(pB.player_id)}" aria-label="Open details for ${escapeAttr(pB.player_name || pB.player_id)}" title="Open details for ${escapeAttr(pB.player_name || pB.player_id)}" style="background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; font-weight:700; text-align:left">${escapeHtml(pB.player_name)}</button> ${posBadge(pB.position)}</div>
                             <div class="mono micro" style="color:var(--sky)">${pB.weekly.toFixed(1)} pts · $${pB.gridironAuction}</div>
                           </div>
                         </div>
@@ -549,8 +574,8 @@ function renderInspectorPlayerRow(p) {
   const edgeIcon = p.edge === 'BUY' ? '▲ ' : p.edge === 'SELL' ? '▼ ' : '';
 
   return `
-    <tr data-player-id="${escapeHtml(p.player_id)}" data-team="${p.team || ''}" class="clickable-row" tabindex="0" role="button" aria-label="Open details for ${escapeAttr(p.player_name || p.player_id)}" style="cursor:pointer; --team-accent:${getTeamColor((p.team||'').toUpperCase())}">
-      <td class="micro faint mono" style="font-weight:700">${escapeHtml(p.slot)}</td>
+    <tr data-player-row="${escapeHtml(p.player_id)}" data-team="${p.team || ''}" class="clickable-row" style="cursor:pointer; --team-accent:${getTeamColor((p.team||'').toUpperCase())}">
+      <td class="micro faint mono" style="font-weight:700"><button class="row-open-btn" data-player-id="${escapeHtml(p.player_id)}" aria-label="Open details for ${escapeAttr(p.player_name || p.player_id)}" title="Open details for ${escapeAttr(p.player_name || p.player_id)}" style="background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; font-weight:700">${escapeHtml(p.slot)}</button></td>
       <td>
         <div class="player-cell">
           ${playerAvatar(p, 32)}

@@ -21,7 +21,7 @@ export function enrichPlayer(p, compRow, opts = {}) {
   const upper = num(p.projection_upper ?? p.upper_bound ?? p.upper, weekly + width / 2);
 
   const compPlayers = opts.compPlayers || (comp && comp.__compPlayers) || null;
-  const vbdParams = opts.vbdParams || (comp && comp.__vbdParams) || (compPlayers ? computeVbdParams(compPlayers) : null);
+  const vbdParams = opts.vbdParams || (comp && comp.__vbdParams) || (compPlayers ? computeVbdParams(compPlayers, opts.league) : null);
 
   const modelSeason = num(
     p.model_season_points ?? comp.model_season_points ?? (p._neutral_points != null ? p._neutral_points * 17 : weekly * 17),

@@ -32,7 +32,7 @@ Native-macOS-feeling console: dark sidebar for wayfinding, white search bar at t
 
   --text: #0F172A;
   --text-muted: #475569;
-  --text-faint: #94A3B8;
+  --text-faint: #64748B;
   --text-inverse: #FFFFFF;
 
   /* Sidebar — deep navy, distinct from topbar */
@@ -78,16 +78,16 @@ Native-macOS-feeling console: dark sidebar for wayfinding, white search bar at t
 ## 3. Typography Rules
 
 ```css
-/* System only — no Google Fonts */
+/* System only — deliberate brand Helvetica / Apple SF, zero webfonts, no Google Fonts */
 --font-sans: "Helvetica Neue", Helvetica, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
 --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 ```
 
 | Role | Family | Weight | Size | Tracking | Use |
 |------|--------|--------|------|----------|-----|
-| Display | Helvetica | 600 | 26px | -0.02em | Page `h1` |
+| Display | Helvetica | 700 | 26px | -0.03em | Page `h1` |
 | Section | Helvetica | 700 | 12px | 0.05em uppercase | Card headers, `th` |
-| Body | Helvetica | 400/500 | 13px | 0 | Descriptions |
+| Body | Helvetica | 500 | 13px | 0 | Descriptions |
 | Mono Data | SF Mono | 600/700 | 12px | 0 | Points, `$`, intervals |
 | Label | Helvetica | 600 | 11px | 0.06em | Kicker, badges |
 
@@ -113,15 +113,15 @@ Native-macOS-feeling console: dark sidebar for wayfinding, white search bar at t
 .search-top input { flex:1; border:0; outline:0; background:transparent; font:400 14px Helvetica; color:var(--text); }
 ```
 
-**Cards/Tables:** `radius 16px`, `padding 16px`, `shadow-sm` default, `shadow-md` on hover, `row height 40px`.
+**Cards/Tables:** `radius 12px`, `padding 14px` (code wins — single source `tokens.css`: `--grid-gap:10px` / `--card-padding:14px`), `shadow-sm` default, `border-strong` on hover, `row height 40px`. Radius rule: `16 modal` / `12 card` / `999 pill-only`.
 
 ---
 
 ## 5. Layout Principles
 
-* **Shell:** `display:flex` — `sidebar 240px` fixed left, `main flex:1` column (`topbar 56px` sticky + `page` scroll). `page { max-width:1280px; padding:24px; gap:16px }`.
-* **Grid:** `12-col` `gap 10px`, `kpi-card span 3` (12→6→12 responsive).
-* **Whitespace:** Section `gap 16px` (was 10), card `padding 16px` (was 14), hero `padding 8 0 16`.
+* **Shell:** `display:flex` — `sidebar 240px` fixed left, `main flex:1` column (`topbar 56px` sticky + `page` scroll). `page { max-width:1280px; padding:24px; gap:10px }`.
+* **Grid:** `12-col` `gap 10px` (`--grid-gap:10px`), `kpi-card span 3` (12→6→12 responsive).
+* **Whitespace:** Section `gap 10px`, card `padding 14px` (`--card-padding:14px`), hero `padding 8 0 12`. Radius rule: `16 modal` / `12 card` / `999 pill-only`.
 * **Container:** Sidebar collapses to `72px` icon-only at `1100px` hover-expand, to bottom sheet nav at `640px` (existing `.mobile-nav` reused, topbar stays).
 
 ---

@@ -31,28 +31,29 @@ def _raw_vor(season_pts, pos: str, repl_map: dict) -> float:
     return max(0.0, float(season_pts or 0) - repl_map.get(pos, 100.0))
 
 
-def _build_pos_weights(rows: list[dict]) -> dict[str, float]:
-    pos_weights = {pos: 1.0 for pos in _POS_REPL_COUNTS}
+def _build_pos_weights(rows: list[dict], repl_counts: dict | None = None) -> dict[str, float]:
+    repl_counts = repl_counts or _POS_REPL_COUNTS
+    pos_weights = {pos: 1.0 for pos in repl_counts}
     model_repl_pts = {
         p: _replacement_points(rows, p, c, "model_season_points")
-        for p, c in _POS_REPL_COUNTS.items()
+        for p, c in repl_counts.items()
     }
     market_repl_pts = {
         p: _replacement_points(rows, p, c, "market_season_points")
-        for p, c in _POS_REPL_COUNTS.items()
+        for p, c in repl_counts.items()
     }
 
-    raw_model_per_pos: dict[str, float] = {p: 0.0 for p in _POS_REPL_COUNTS}
-    raw_market_per_pos: dict[str, float] = {p: 0.0 for p in _POS_REPL_COUNTS}
+    raw_model_per_pos: dict[str, float] = {p: 0.0 for p in repl_counts}
+    raw_market_per_pos: dict[str, float] = {p: 0.0 for p in repl_counts}
     for r in rows:
         pos = r.get("position")
-        if pos in _POS_REPL_COUNTS:
+        if pos in repl_counts:
             raw_model_per_pos[pos] += _raw_vor(r.get("model_season_points"), pos, model_repl_pts)
             raw_market_per_pos[pos] += _raw_vor(r.get("market_season_points"), pos, market_repl_pts)
     raw_model_total = sum(raw_model_per_pos.values()) or 1.0
     raw_market_total = sum(raw_market_per_pos.values()) or 1.0
 
-    for pos in _POS_REPL_COUNTS:
+    for pos in repl_counts:
         if pos in ("K", "DEF", "DST"):
             pos_weights[pos] = 0.0
             continue
@@ -76,9 +77,11 @@ def _uncapped_auction_value(
     weighted_vor: float,
     total_weighted_vor: float,
     pos: str,
+    pool: float | None = None,
 ) -> int:
+    pool = _STARTER_BUDGET_POOL if pool is None else pool
     if weighted_vor > 0:
-        return int(round((weighted_vor / total_weighted_vor) * _STARTER_BUDGET_POOL)) if total_weighted_vor else 0
+        return int(round((weighted_vor / total_weighted_vor) * pool)) if total_weighted_vor else 0
     if season_pts and season_pts > 50:
         weekly_proxy = (season_pts or 0) / 17.0
         val = max(1, int(round(weekly_proxy * 0.35)))
@@ -98,9 +101,14 @@ def _starter_auction_value(
     season_pts,
     weighted_vor: float,
     total_weighted_vor: float,
+    pool: float | None = None,
 ) -> int:
+    # why slice lives in apply_auction (not here): the pool must divide over
+    # the league's starter slots only — paying every positive-VOR row
+    # overshoots the pool (fantasy audit: $2,782 vs $2,352).
+    pool = _STARTER_BUDGET_POOL if pool is None else pool
     if weighted_vor > 0:
-        return max(1, int(round((weighted_vor / total_weighted_vor) * _STARTER_BUDGET_POOL)))
+        return max(1, int(round((weighted_vor / total_weighted_vor) * pool)))
     return 1 if season_pts and season_pts > 50 else 0
 
 
@@ -123,32 +131,53 @@ def _market_starter_value(
     weighted_vor: float,
     total_weighted_vor: float,
     statsguy_value,
+    pool: float | None = None,
 ) -> int | None:
+    pool = _STARTER_BUDGET_POOL if pool is None else pool
     if weighted_vor > 0:
-        return max(1, int(round((weighted_vor / total_weighted_vor) * _STARTER_BUDGET_POOL)))
+        return max(1, int(round((weighted_vor / total_weighted_vor) * pool)))
     if statsguy_value is not None and statsguy_value > 0:
         return max(1, int(round((statsguy_value / 9500.0) ** 1.2 * 65.0)))
     return 1 if season_pts and season_pts > 50 else None
 
 
-def apply_auction(rows: list[dict], draft_prices: dict[str, float] | None) -> None:
-    pos_weights = _build_pos_weights(rows)
+def apply_auction(rows: list[dict], draft_prices: dict[str, float] | None, econ: dict | None = None) -> None:
+    # why econ: replacement counts, starter slice, and $ pool scale with
+    # league size/budget — pass config.league_economics(...); None keeps the
+    # legacy 12x$200 constants (backward compat).
+    econ = econ or {}
+    repl_counts = econ.get("repl_counts", _POS_REPL_COUNTS)
+    pool = econ.get("starter_pool", _STARTER_BUDGET_POOL)
+    starter_slots = econ.get("starter_slots_total", 120)
+    pos_weights = _build_pos_weights(rows, repl_counts)
     model_repl_pts = {
         p: _replacement_points(rows, p, c, "model_season_points")
-        for p, c in _POS_REPL_COUNTS.items()
+        for p, c in repl_counts.items()
     }
     market_repl_pts = {
         p: _replacement_points(rows, p, c, "market_season_points")
-        for p, c in _POS_REPL_COUNTS.items()
+        for p, c in repl_counts.items()
     }
-    total_model_vor = sum(
-        _weighted_vor(r.get("model_season_points"), r.get("position"), model_repl_pts, pos_weights)
-        for r in rows
-    ) or 1.0
-    total_market_vor = sum(
-        _weighted_vor(r.get("market_season_points"), r.get("position"), market_repl_pts, pos_weights)
-        for r in rows
-    ) or 1.0
+    def _vor_pair(r):
+        pos_k = r.get("position")
+        return (
+            _weighted_vor(r.get("model_season_points"), pos_k, model_repl_pts, pos_weights),
+            _weighted_vor(r.get("market_season_points"), pos_k, market_repl_pts, pos_weights),
+        )
+
+    # why slice to the league's starter slots: pool $ must divide over
+    # starters only. Paying every positive-VOR row overshoots the pool
+    # (fantasy audit measured $2,782 vs $2,352 on the default league).
+    # Mirrors hub/src/lib/auctionMath.js slicing. K/DEF stream at $1 outside.
+    skill_rows = [r for r in rows if (r.get("position") not in ("K", "DEF", "DST"))]
+    model_slice = {
+        id(r) for r in sorted(skill_rows, key=lambda r: _vor_pair(r)[0], reverse=True)[:starter_slots]
+    }
+    market_slice = {
+        id(r) for r in sorted(skill_rows, key=lambda r: _vor_pair(r)[1], reverse=True)[:starter_slots]
+    }
+    total_model_vor = sum(_vor_pair(r)[0] for r in skill_rows if id(r) in model_slice) or 1.0
+    total_market_vor = sum(_vor_pair(r)[1] for r in skill_rows if id(r) in market_slice) or 1.0
 
     for r in rows:
         pos_k = r.get("position")
@@ -157,26 +186,29 @@ def apply_auction(rows: list[dict], draft_prices: dict[str, float] | None) -> No
         sg_val = r.get("statsguy_value")
 
         is_streamer_pos = pos_k in ("K", "DEF", "DST")
-        m_vor = _weighted_vor(msp, pos_k, model_repl_pts, pos_weights)
-        m_uncapped = _uncapped_auction_value(msp, m_vor, total_model_vor, pos_k)
+        m_vor, mk_vor = _vor_pair(r)
+        m_uncapped = _uncapped_auction_value(msp, m_vor, total_model_vor, pos_k, pool)
         r["auctionUncapped"] = m_uncapped
         r["vor"] = round(m_vor, 1)
 
         if is_streamer_pos:
             auction_val = _streamer_auction_value(msp, m_vor)
+        elif id(r) in model_slice:
+            auction_val = _starter_auction_value(msp, m_vor, total_model_vor, pool)
         else:
-            auction_val = _starter_auction_value(msp, m_vor, total_model_vor)
+            auction_val = 1 if msp and msp > 50 else 0
         r["auction"] = auction_val
 
-        mk_vor = _weighted_vor(mk_sp, pos_k, market_repl_pts, pos_weights)
-        mk_uncapped = _uncapped_auction_value(mk_sp, mk_vor, total_market_vor, pos_k)
+        mk_uncapped = _uncapped_auction_value(mk_sp, mk_vor, total_market_vor, pos_k, pool)
         r["marketAuctionUncapped"] = mk_uncapped
         r["marketVor"] = round(mk_vor, 1)
 
         if is_streamer_pos:
             mk_auction_val = _market_streamer_value(mk_sp, mk_vor, sg_val)
+        elif id(r) in market_slice:
+            mk_auction_val = _market_starter_value(mk_sp, mk_vor, total_market_vor, sg_val, pool)
         else:
-            mk_auction_val = _market_starter_value(mk_sp, mk_vor, total_market_vor, sg_val)
+            mk_auction_val = 1 if mk_sp and mk_sp > 50 else None
         r["marketAuction"] = mk_auction_val
 
         _paid = draft_prices.get(r.get("player_id")) if draft_prices else None

@@ -1,7 +1,7 @@
 #!/bin/bash
 # hub/start.sh — one-click warm-boot launcher. Starts model+proxy+hub, ensures DATA is warm before opening browser.
 # 127.0.0.1 only — never bind 0.0.0.0 (see docs/RUNBOOK.md and CLAUDE.md hard constraints).
-# Flags: --auto (auto-refresh if stale, no prompt), --no-refresh (never POST, open even if cold), --force (refresh even if fresh), --no-browser (skip opening browser), --lan (explicit opt-in: display LAN URL with warning; default stays 127.0.0.1 local-only)
+# Flags: --auto (auto-refresh if stale, no prompt), --no-refresh (never POST, open even if cold), --force (refresh even if fresh), --no-browser (skip opening browser), --lan (explicit opt-in: display LAN URL with warning; default stays 127.0.0.1 local-only), --league <id> (sync + serve this Sleeper league; default: $SLEEPER_LEAGUE_ID or test)
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -12,18 +12,30 @@ NO_REFRESH=0
 FORCE=0
 NO_BROWSER=0
 LAN=0
-for arg in "$@"; do
+LEAGUE_ARG=""
+args=("$@")
+i=0
+while [ $i -lt $# ]; do
+  arg="${args[$i]}"
   case "$arg" in
     --auto) AUTO=1 ;;
     --no-refresh) NO_REFRESH=1 ;;
     --force) FORCE=1 ;;
     --no-browser) NO_BROWSER=1 ;;
     --lan) LAN=1 ;;
-    -h|--help) echo "Usage: bash hub/start.sh [--auto] [--no-refresh] [--force] [--no-browser] [--lan]"; exit 0 ;;
+    --league) i=$((i+1)); LEAGUE_ARG="${args[$i]:-}";;
+    --league=*) LEAGUE_ARG="${arg#--league=}" ;;
+    -h|--help) echo "Usage: bash hub/start.sh [--auto] [--no-refresh] [--force] [--no-browser] [--lan] [--league <sleeper-id>]"; exit 0 ;;
   esac
+  i=$((i+1))
 done
+if [ -n "$LEAGUE_ARG" ]; then
+  case "$LEAGUE_ARG" in
+    ''|*[!0-9]*) echo "error: --league needs a numeric Sleeper league id, got '$LEAGUE_ARG'"; exit 2 ;;
+  esac
+fi
 
-export SLEEPER_LEAGUE_ID="${SLEEPER_LEAGUE_ID:-test}"
+export SLEEPER_LEAGUE_ID="${LEAGUE_ARG:-${SLEEPER_LEAGUE_ID:-test}}"
 
 # Local-only default: all services bind 127.0.0.1. LAN URL display requires
 # explicit --lan opt-in (see warning below). No hardcoded user paths —
@@ -39,7 +51,7 @@ fi
 
 echo "→ Fantasy Hub — warm-boot start (Ctrl+C to stop, 0 resources after)"
 echo "  Model: http://127.0.0.1:8000   Hub: http://127.0.0.1:8001   Proxy: http://127.0.0.1:8002"
-echo "  Flags: auto=$AUTO no-refresh=$NO_REFRESH force=$FORCE no-browser=$NO_BROWSER lan=$LAN"
+echo "  Flags: auto=$AUTO no-refresh=$NO_REFRESH force=$FORCE no-browser=$NO_BROWSER lan=$LAN league=$SLEEPER_LEAGUE_ID"
 echo ""
 
 # Blast-radius guard for lsof reclaim: only kill PIDs whose command looks like

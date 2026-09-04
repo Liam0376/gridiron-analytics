@@ -78,11 +78,15 @@ if ! grep -q 'mode=ro' hub/server.py; then echo "FAIL: hub/server.py must open D
 # 5. No runtime POST to /refresh from hub (only docs may mention curl -X POST as manual step)
 # hub/start.sh (.sh launcher) is explicitly allowed to POST /refresh — this gate
 # covers runtime .js/.py only. Flags fetch/axios POST refresh AND curl POST refresh.
+# why USER-INSTRUCTION exemption below: setup.js renders the refresh command as
+# INERT copy-paste text for the user to run themselves (multi-league onboarding).
+# It is never executed by hub code — the strict fetch/axios check above (no
+# exemption) proves no runtime POST exists. The marker keeps it visible.
 if grep -R --include="*.js" --include="*.py" --exclude-dir=node_modules --exclude-dir=dist -E "fetch.*POST.*refresh|axios.*refresh" hub/ 2>/dev/null | grep -v "verify-isolation" | grep -v "curl" | grep -v "never POSTs"; then
   echo "FAIL: hub tries to POST /refresh at runtime (hub must never trigger refresh)"
   fail=1
-elif grep -R --include="*.js" --include="*.py" --exclude-dir=node_modules --exclude-dir=dist -E "curl[^|&;]*POST[^|&;]*refresh" hub/ 2>/dev/null | grep -v "verify-isolation"; then
-  echo "FAIL: hub runtime code curl-POSTs /refresh (only hub/start.sh launcher and docs may)"
+elif grep -R --include="*.js" --include="*.py" --exclude-dir=node_modules --exclude-dir=dist -E "curl[^|&;]*POST[^|&;]*refresh" hub/ 2>/dev/null | grep -v "verify-isolation" | grep -v "USER-INSTRUCTION"; then
+  echo "FAIL: hub runtime code curl-POSTs /refresh (only hub/start.sh launcher, docs, and marked USER-INSTRUCTION copy-paste text may)"
   fail=1
 else
   echo "✓ hub never POSTs /refresh at runtime"

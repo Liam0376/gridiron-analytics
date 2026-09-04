@@ -1,9 +1,41 @@
 // hub/src/api.js — read-only data layer. Never POSTs, never writes.
 // Tries 127.0.0.1:8000 GET endpoints first, falls back to hub read-only proxy (8002) which reads fantasy.db with mode=ro.
 // No import from src/ffanalytics — API boundary is HTTP / JSON only.
+import { getLeagueId, setLeagueId as storeLeagueId, getDraftTypeOverride } from './lib/league.js';
 
 const API_BASE = `http://${location.hostname}:8000`;
 const HUB_API = '/hub-api'; // proxied to 8002 when hub/server.py is running, otherwise 404 → we degrade gracefully
+
+// Active league plumbing: every hub-api AND model call carries ?league_id=
+// when one is stored (setup screen / switcher). Empty string = default
+// league (env-configured, legacy behavior) — nothing breaks for single setup.
+export function getActiveLeagueId() {
+  return getLeagueId();
+}
+
+export function setActiveLeague(id) {
+  storeLeagueId(id);
+  invalidateApiCache(); // cached payloads are per-league; never mix across switch
+}
+
+function leagueQuery(explicitId, joiner = '?') {
+  const id = explicitId !== undefined ? explicitId : getLeagueId();
+  return id ? `${joiner}league_id=${encodeURIComponent(id)}` : '';
+}
+
+// why central: ~15 fetch sites must all scope to the active league; missing
+// the param silently serves the DEFAULT league's numbers (wrong-league bug).
+function hubPath(path, explicitId) {
+  const [base, query] = path.split('?');
+  const joiner = query ? '&' : '?';
+  return `${HUB_API}${base}${query ? `?${query}` : ''}${leagueQuery(explicitId, joiner)}`;
+}
+
+function modelUrl(path, explicitId) {
+  const [base, query] = path.split('?');
+  const joiner = query ? '&' : '?';
+  return `${API_BASE}${base}${query ? `?${query}` : ''}${leagueQuery(explicitId, joiner)}`;
+}
 
 // 60s TTL cache so repeatedly navigating between tabs (auction ↔ projections)
 // doesn't re-fetch the same heavy projections / comparison / roster payloads.
@@ -43,11 +75,41 @@ async function getJSON(url, opts = {}) {
   return res.json();
 }
 
-async function tryHub(path) {
+async function tryHub(path, opts = {}) {
   try {
-    return await getJSON(`${HUB_API}${path}`);
+    const lid = opts.leagueId !== undefined ? opts.leagueId : undefined;
+    return await getJSON(hubPath(path, lid));
   } catch (_) {
     return null;
+  }
+}
+
+// Draft info for ANY league id (setup screen validates before saving, so it
+// takes an explicit id — tryHub would use the stored one). Short TTL keyed
+// by id; failures return null (caller shows Sleeper-unreachable copy).
+export async function fetchDraftInfo(explicitId) {
+  return withCache('fetchDraftInfo', { leagueId: explicitId || '' }, async () => {
+    const q = explicitId ? `?league_id=${encodeURIComponent(explicitId)}` : '';
+    try {
+      return await getJSON(`${HUB_API}/draft${q}`);
+    } catch (_) {
+      return null;
+    }
+  });
+}
+
+// Effective draft type: manual override wins, else live-fetched, else
+// 'unknown' (offline/unfetched) — unknown NEVER gates (fail-open preserves
+// current behavior when Sleeper is unreachable).
+export async function effectiveDraftType() {
+  const override = getDraftTypeOverride();
+  if (override === 'snake' || override === 'auction') return override;
+  try {
+    const info = await fetchDraftInfo();
+    const t = (info && info.draft_type) || 'unknown';
+    return t === 'snake' || t === 'auction' ? t : 'unknown';
+  } catch (_) {
+    return 'unknown';
   }
 }
 
@@ -69,6 +131,15 @@ export async function fetchMeta() {
   return { season: null, week: null, lastUpdated: null, counts: {}, stale: true, note: 'hub/server.py not running — start it for DB fallback' };
 }
 
+// League-scoped readiness: 200 when this league has rosters + players.
+export async function fetchReady() {
+  try {
+    return await getJSON(hubPath('/ready'));
+  } catch (_) {
+    return null;
+  }
+}
+
 export async function fetchProjections(args = {}) {
   return withCache('fetchProjections', args, async () => {
     const { week, limit = 800 } = args;
@@ -83,7 +154,7 @@ export async function fetchProjections(args = {}) {
 
     // Fallback: try start-sit (may 503 if cache cold)
     try {
-      const data = await getJSON(`${API_BASE}/recommendations/start-sit`);
+      const data = await getJSON(modelUrl('/recommendations/start-sit'));
       // Map to expected shape
       return {
         players: (data.recommendations || []).map(r => ({
@@ -139,7 +210,7 @@ export async function fetchRostersFull() {
 export async function fetchWaiver(args = {}) {
   return withCache('fetchWaiver', args, async () => {
     try {
-      const data = await getJSON(`${API_BASE}/recommendations/waiver`);
+      const data = await getJSON(modelUrl('/recommendations/waiver'));
       return { recommendations: data.recommendations || [], meta: { timestamp: data.timestamp } };
     } catch (_) {
       const hub = await tryHub('/waiver');
@@ -152,7 +223,7 @@ export async function fetchWaiver(args = {}) {
 export async function fetchTrade(teamA, teamB) {
   if (!teamA || !teamB) return null;
   try {
-    const data = await getJSON(`${API_BASE}/recommendations/trade?team_a_id=${encodeURIComponent(teamA)}&team_b_id=${encodeURIComponent(teamB)}`);
+    const data = await getJSON(modelUrl(`/recommendations/trade?team_a_id=${encodeURIComponent(teamA)}&team_b_id=${encodeURIComponent(teamB)}`));
     return data.trade_evaluation || data;
   } catch (_) {
     const hub = await tryHub(`/trade?team_a_id=${encodeURIComponent(teamA)}&team_b_id=${encodeURIComponent(teamB)}`);
@@ -162,7 +233,7 @@ export async function fetchTrade(teamA, teamB) {
 
 export async function fetchNews(args = {}) {
   return withCache('fetchNews', args, async () => {
-    try { return await getJSON(`${API_BASE}/news`); } catch (_) { return await tryHub('/news') || { trending_adds: [], detailed_injuries: [] }; }
+    try { return await getJSON(modelUrl('/news')); } catch (_) { return await tryHub('/news') || { trending_adds: [], detailed_injuries: [] }; }
   });
 }
 

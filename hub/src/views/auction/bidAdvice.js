@@ -15,7 +15,7 @@ export function liveAdviceFor(p, state, myRemaining, maxBid, myNeeds, slotsLeft)
   cap = Math.max(1, Math.min(cap, myRemaining - Math.max(0, slotsLeft - 1)));
   let title, color, text;
   if (myRemaining < 5) {
-    title = 'BUDGET TIGHT — $1 only';
+    title = 'BUDGET TIGHT: $1 only';
     color = 'var(--crimson)';
     text = `You have $${myRemaining} left. Only bid $1 unless ${p.player_name} is your last starter.`;
   } else if (p.isDrafted) {
@@ -24,21 +24,21 @@ export function liveAdviceFor(p, state, myRemaining, maxBid, myNeeds, slotsLeft)
     text = `${p.player_name} is gone for $${p.draftedPrice ?? '?'} (${p.draftedBy}).`;
     cap = 0;
   } else if (edge === 'BUY' && need > 0) {
-    title = 'STRONG BUY — bid aggressively';
+    title = 'STRONG BUY: bid aggressively';
     color = 'var(--emerald)';
     text = `Model sees +${delta != null ? Number(delta).toFixed(0) : '?'} season vs Market (T${tier}, ${pos} need: ${need} left). Value $${auctionVal} → cap $${cap} (max $${maxBid}). Narrow interval ±${width.toFixed(0)} = floor play.`;
   } else if (edge === 'BUY') {
-    title = 'BUY — value but you\'re set at ' + pos;
+    title = 'BUY: value but you\'re set at ' + pos;
     color = 'var(--emerald)';
     text = `Value says $${auctionVal} (+${delta != null ? Number(delta).toFixed(0) : '?'} vs Market, T${tier}) but you have no ${pos} need (${need} left). Nominate to drain opponents, or cap $${cap} if you want depth.`;
   } else if (edge === 'SELL') {
-    title = 'CAUTION — Market overpay';
+    title = 'CAUTION: Market overpay';
     color = 'var(--crimson)';
-    text = `Market pays ${delta != null ? Math.abs(Number(delta)).toFixed(0) : '?'} season more than Model (T${tier}). Let others burn cash — cap $${cap} ($${auctionVal} sticker). Wide interval ±${width.toFixed(0)} = risky.`;
+    text = `Market pays ${delta != null ? Math.abs(Number(delta)).toFixed(0) : '?'} season more than Model (T${tier}). Let others burn cash: cap $${cap} ($${auctionVal} sticker). Wide interval ±${width.toFixed(0)} = risky.`;
   } else {
-    title = need > 0 ? 'Fair value — fill need' : 'Fair value — depth';
+    title = need > 0 ? 'Fair value: fill need' : 'Fair value: depth';
     color = need > 0 ? 'var(--amber)' : 'var(--text-muted)';
-    text = `Neutral edge T${tier} — fair at $${auctionVal} (Δ ${delta != null ? (Number(delta) > 0 ? '+' : '') + Number(delta).toFixed(0) : '—'}). ${need > 0 ? `You need ${need} more ${pos} — cap $${cap}.` : `No ${pos} need — cap $${cap} for depth.`} Max $${maxBid}, $${myRemaining} left.`;
+    text = `Neutral edge T${tier}: fair at $${auctionVal} (Δ ${delta != null ? (Number(delta) > 0 ? '+' : '') + Number(delta).toFixed(0) : '—'}). ${need > 0 ? `You need ${need} more ${pos}: cap $${cap}.` : `No ${pos} need: cap $${cap} for depth.`} Max $${maxBid}, $${myRemaining} left.`;
   }
   return { title, color, text, cap: Math.max(0, Math.round(cap)) };
 }

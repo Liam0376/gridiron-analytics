@@ -1,5 +1,6 @@
 // hub/src/views/team.js — Team Hub Executive Command Center
-import { fetchRoster, fetchRostersFull, fetchComparison } from '../api.js';
+import { fetchRoster, fetchRostersFull, fetchComparison, fetchMeta, fetchDraftInfo } from '../api.js';
+import { getLeagueEcon } from '../lib/league.js';
 import { getSelectedTeamId, setSelectedTeamId, renderTeamSelector, bindTeamSelector } from '../components/teamSelector.js';import { posBadge, injuryBadge } from '../components/badges.js';
 import { intervalBar } from '../components/intervalBar.js';
 import { playerAvatar } from '../components/playerAvatar.js';
@@ -61,7 +62,9 @@ export async function renderTeam(root) {
     if (c.player_name) compMap.set(c.player_name.toLowerCase(), c);
   });
   // Compute dynamic VBD auction params from comparison data (mirrors comparison.py + auction.js)
-  const vbdParams = computeVbdParams(compData.players || []);
+  // why league-aware: $/VOR scales with teams/budget/roster (memoized).
+  const league = await getLeagueEcon(fetchMeta, fetchDraftInfo).catch(() => null);
+  const vbdParams = computeVbdParams(compData.players || [], league);
   const slotOpts = { vbdParams, compPlayers: compData.players || [] };
 
   const rawStarters = rosterData.starters || rosterData.myRoster || [];
@@ -171,7 +174,7 @@ export async function renderTeam(root) {
   root.innerHTML = `
     <!-- Executive Command Center Header -->
     <div class="team-hub-header reveal in">
-      <div class="team-hero-card card" style="border-left:4px solid var(--amber)">
+      <div class="team-hero-card card" style="border-top:1px solid var(--amber)">
         <div class="team-hero-top">
           <div class="team-owner-info">
             <div class="team-owner-avatar">
@@ -184,7 +187,8 @@ export async function renderTeam(root) {
                 <span class="badge badge-amber mono" style="font-size:12px; font-weight:700" aria-live="polite">Rank ${rankText}</span>
               </div>
               <div class="team-sub-row faint" style="margin-top:4px">
-                Roster #${teamMeta.roster_id || selectedId} · 12-team PPR · 2 FLEX
+                Roster #${teamMeta.roster_id || selectedId} <span style="color:var(--text-faint)">·</span> 12-team PPR
+                <br><span class="micro">2 FLEX</span>
               </div>
             </div>
           </div>
@@ -429,7 +433,19 @@ export async function renderTeam(root) {
     renderTeam(root);
   });
 
-  // Bind Player Row & Card Clicks to open Draftea Player Detail Modal (mouse + keyboard)
+  // Bind Player Row & Card Clicks to open Draftea Player Detail Modal (mouse + keyboard).
+  // Table semantics: <tr> carries data-player-row (no role); inner <button data-player-id>
+  // owns keyboard/ARIA. Native buttons handle Enter/Space, so keydown is div-only.
+  root.querySelectorAll('[data-player-row]').forEach(tr => {
+    tr.addEventListener('click', (e) => {
+      if (e.target.closest('button, a')) return;
+      const pid = tr.getAttribute('data-player-row');
+      const targetPlayer = allPlayers.find(p => String(p.player_id) === String(pid));
+      if (targetPlayer) {
+        openPlayerModal(targetPlayer, root);
+      }
+    });
+  });
   root.querySelectorAll('[data-player-id]').forEach(el => {
     const openForEl = () => {
       const pid = el.getAttribute('data-player-id');
@@ -438,13 +454,18 @@ export async function renderTeam(root) {
         openPlayerModal(targetPlayer, root);
       }
     };
-    el.addEventListener('click', openForEl);
-    el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        openForEl();
-      }
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openForEl();
     });
+    if (el.tagName !== 'BUTTON') {
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openForEl();
+        }
+      });
+    }
   });
 }
 
@@ -461,8 +482,8 @@ function renderPlayerRow(p, isReserve = false) {
   else statText = `${p.season_tds} TD`;
 
   return `
-    <tr data-player-id="${escapeHtml(p.player_id)}" data-team="${p.team || ''}" class="clickable-row" tabindex="0" role="button" aria-label="Open details for ${escapeAttr(p.player_name || p.player_id)}" style="cursor:pointer; --team-accent:${getTeamColor((p.team||'').toUpperCase())}">
-      <td class="micro faint mono" style="font-weight:700">${escapeHtml(p.slot)}</td>
+    <tr data-player-row="${escapeHtml(p.player_id)}" data-team="${p.team || ''}" class="clickable-row" style="cursor:pointer; --team-accent:${getTeamColor((p.team||'').toUpperCase())}">
+      <td class="micro faint mono" style="font-weight:700"><button class="row-open-btn" data-player-id="${escapeHtml(p.player_id)}" aria-label="Open details for ${escapeAttr(p.player_name || p.player_id)}" title="Open details for ${escapeAttr(p.player_name || p.player_id)}" style="background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; font-weight:700">${escapeHtml(p.slot)}</button></td>
       <td>
         <div class="player-cell">
           ${playerAvatar(p, 32)}

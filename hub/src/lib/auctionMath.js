@@ -1,15 +1,18 @@
 // hub/src/lib/auctionMath.js — pure VBD/auction pricing math for auction view.
 // Deduped from views/auction.js (was inline) so bidAdvice, table, and orchestrator
 // can share the same numbers. No DOM, no fetch — pure functions.
+import { leagueEconomics } from './league.js';
 
 export const BUDGET = 200;
 export const TEAMS = 12;
 export const ROSTER_SIZE = 14; // 10 starters + 4 bench
 export const SEASON_GAMES = 17;
 
-// Replacement-level indices (0-based) for each position in a 12-team 2-FLEX league.
+// Replacement-level indices (0-based) for the reference 12-team 2-FLEX league.
 // Mirrors src/ffanalytics/comparison.py: QB12 RB28 WR32 TE12 (72 flex-eligible starters).
 // Audit 2026-09-01: RB24/WR24 understated RB/WR scarcity; now 28/32.
+// NOTE: legacy defaults — live code derives per-league indices from
+// opts.league (see leagueEconomics); these stay for backward compat.
 export const REPL_IDX = { QB: 12 - 1, RB: 28 - 1, WR: 32 - 1, TE: 12 - 1, K: 12 - 1, DEF: 12 - 1 };
 
 // Positional weights to dampen 1QB overvaluation in pure VOR.
@@ -55,10 +58,20 @@ export function mergeComparisonPlayers(players, compRaw) {
 // compById     — Map<player_id, compPlayer> built by orchestrator
 // compByNamePos— Map<"name|pos", compPlayer>
 // state        — draft tracker { drafted, myRoster, myBudget, nominations }
-// opts         — { budget, remaining? }  (budget defaults to BUDGET; remaining defaults to SEASON_GAMES)
+// opts         — { budget, remaining?, league? } (budget defaults to league
+//                 budget or BUDGET; league defaults to the 12x$200 reference,
+//                 reproducing legacy numbers exactly — see leagueEconomics)
 export function computeAuctionMath(players, compRaw, compById, compByNamePos, state, opts = {}) {
-  const budget = opts.budget ?? BUDGET;
+  const league = opts.league || leagueEconomics({});
+  const teams = league.teams;
+  const budget = opts.budget ?? league.budget;
   const remaining = opts.remaining ?? SEASON_GAMES;
+  const replIdx = {};
+  for (const pos of ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']) {
+    replIdx[pos] = Math.max(0, (league.replCounts[pos] ?? 12) - 1);
+  }
+  const flexSlotsTotal = league.flexSlots * teams;
+  const rosterSize = league.startersPerTeam + league.benchPerTeam;
 
   const compPlayers = compRaw?.players || [];
   const existingByNamePos = new Set(players.map(namePosKey));
@@ -123,17 +136,17 @@ export function computeAuctionMath(players, compRaw, compById, compByNamePos, st
   const replPts = {};
   for (const pos of Object.keys(byPos)) {
     const arr = byPos[pos];
-    const idx = REPL_IDX[pos] ?? 0;
+    const idx = replIdx[pos] ?? 0;
     replPts[pos] = arr[idx]?.ros ?? (arr[arr.length - 1]?.ros ?? 0);
   }
 
-  // FLEX pool: remaining RB/WR/TE after positional starters (12*2=24 flex slots)
+  // FLEX pool: remaining RB/WR/TE after positional starters
   const flexPool = [
-    ...byPos.RB.slice(28),
-    ...byPos.WR.slice(32),
-    ...byPos.TE.slice(12),
+    ...byPos.RB.slice(league.replCounts.RB),
+    ...byPos.WR.slice(league.replCounts.WR),
+    ...byPos.TE.slice(league.replCounts.TE),
   ].sort((a, b) => b.ros - a.ros);
-  const flexRepl = flexPool[24 - 1]?.ros ?? 0;
+  const flexRepl = flexPool[flexSlotsTotal - 1]?.ros ?? 0;
 
   // Weighted VOR (model)
   rosPlayers.forEach(p => {
@@ -147,10 +160,9 @@ export function computeAuctionMath(players, compRaw, compById, compByNamePos, st
     if (pos === 'K' || pos === 'DEF') p.vor = 0;
   });
 
-  // Auction pricing — $2352 starter pool (12*200 - 48 bench $1)
-  const benchSlots = TEAMS * 4;
-  const totalStarterBudget = TEAMS * budget - benchSlots * 1;
-  const starters = rosPlayers.filter(p => p.vor > 0).sort((a, b) => b.vor - a.vor).slice(0, TEAMS * 10);
+  // Auction pricing — starter pool = teams*budget - bench $1 spots
+  const totalStarterBudget = league.starterPool;
+  const starters = rosPlayers.filter(p => p.vor > 0).sort((a, b) => b.vor - a.vor).slice(0, league.starterSlotsTotal);
   const totalVor = starters.reduce((s, p) => s + p.vor, 0) || 1;
   starters.forEach(p => {
     if (p.position === 'K' || p.position === 'DEF') p.auction = 1;
@@ -169,15 +181,15 @@ export function computeAuctionMath(players, compRaw, compById, compByNamePos, st
   const marketReplPts = {};
   for (const pos of Object.keys(marketByPos)) {
     const arr = marketByPos[pos];
-    const idx = REPL_IDX[pos] ?? 0;
+    const idx = replIdx[pos] ?? 0;
     marketReplPts[pos] = arr[idx]?.marketRos ?? (arr[arr.length - 1]?.marketRos ?? 0);
   }
   const marketFlexPool = [
-    ...marketByPos.RB.slice(28),
-    ...marketByPos.WR.slice(32),
-    ...marketByPos.TE.slice(12),
+    ...marketByPos.RB.slice(league.replCounts.RB),
+    ...marketByPos.WR.slice(league.replCounts.WR),
+    ...marketByPos.TE.slice(league.replCounts.TE),
   ].sort((a, b) => (b.marketRos || 0) - (a.marketRos || 0));
-  const marketFlexRepl = marketFlexPool[24 - 1]?.marketRos ?? 0;
+  const marketFlexRepl = marketFlexPool[flexSlotsTotal - 1]?.marketRos ?? 0;
   rosPlayers.forEach(pp => {
     const pos = (pp.position || '').toUpperCase();
     let base = marketReplPts[pos] ?? 0;
@@ -187,7 +199,7 @@ export function computeAuctionMath(players, compRaw, compById, compByNamePos, st
     const w = POS_WEIGHT[pos] ?? 1;
     pp.marketVor = (pos === 'K' || pos === 'DEF') ? 0 : raw * w;
   });
-  const marketStarters = rosPlayers.filter(pp => pp.marketVor > 0).sort((a, b) => b.marketVor - a.marketVor).slice(0, TEAMS * 10);
+  const marketStarters = rosPlayers.filter(pp => pp.marketVor > 0).sort((a, b) => b.marketVor - a.marketVor).slice(0, league.starterSlotsTotal);
   const totalMarketVor = marketStarters.reduce((s, pp) => s + pp.marketVor, 0) || 1;
   marketStarters.forEach(pp => {
     if (pp.position === 'K' || pp.position === 'DEF') pp.marketAuction = 1;
@@ -221,32 +233,34 @@ export function computeAuctionMath(players, compRaw, compById, compByNamePos, st
     else p.tier = 5;
   });
 
-  // Positional budget allocation
+  // Positional budget allocation from the league's real starter slots
   const posGroups = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
   const posBudget = {};
   for (const pos of posGroups) {
     const posStarters = starters.filter(p => (p.position || '').toUpperCase() === pos);
     const posVor = posStarters.reduce((s, p) => s + p.vor, 0);
     const share = posVor / totalVor;
-    const posSlots = pos === 'QB' ? 1 : pos === 'RB' ? 2 : pos === 'WR' ? 2 : pos === 'TE' ? 1 : 1;
+    const posSlots = league.posStarterSlots[pos] ?? 1;
     posBudget[pos] = {
       recommended: Math.round(share * budget),
       slots: posSlots,
-      perSlot: Math.round(share * budget / posSlots),
+      perSlot: posSlots ? Math.round(share * budget / posSlots) : 0,
     };
   }
   const flexBudget = Math.round(budget - Object.values(posBudget).reduce((s, v) => s + v.recommended, 0));
 
-  // My roster needs — target slots by position (starters + depth)
+  // My roster needs — league starter slots + standard depth
+  // (QB+0, RB/WR+2, TE+1 — reproduces the tuned 1/4/4/2/1/1 at 14-man).
   const myRosterPositions = state.myRoster.map(id => {
     const p = rosPlayers.find(x => x.player_id === id);
     return p ? (p.position || '').toUpperCase() : '';
   });
   const myNeeds = {};
-  const targetSlots = { QB: 1, RB: 4, WR: 4, TE: 2, K: 1, DEF: 1 };
+  const depthExtra = { QB: 0, RB: 2, WR: 2, TE: 1, K: 0, DEF: 0 };
   for (const pos of posGroups) {
     const have = myRosterPositions.filter(p => p === pos).length;
-    myNeeds[pos] = Math.max(0, (targetSlots[pos] || 1) - have);
+    const target = (league.posStarterSlots[pos] ?? 1) + (depthExtra[pos] ?? 1);
+    myNeeds[pos] = Math.max(0, target - have);
   }
 
   // Nomination strategy: players to nominate that drain opponents
@@ -265,7 +279,7 @@ export function computeAuctionMath(players, compRaw, compById, compByNamePos, st
   const mySpent = myRosterPlayers.reduce((s, p) => s + (state.drafted[p.player_id]?.price || 0), 0);
   const myRemaining = budget - mySpent;
   const myRosterCount = state.myRoster.length;
-  const slotsLeft = ROSTER_SIZE - myRosterCount;
+  const slotsLeft = rosterSize - myRosterCount;
   const maxBid = slotsLeft > 1 ? myRemaining - (slotsLeft - 1) : myRemaining;
 
   return {

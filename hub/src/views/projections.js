@@ -58,6 +58,9 @@ export async function renderProjections(root) {
 
   // Fetch rosters FIRST (they have Sleeper IDs which work with CDN).
   // This mirrors team hub's approach — roster player IDs are Sleeper IDs.
+  // why normName: Sleeper strips suffixes ("Michael Penix") while display
+  // names keep them ("Michael Penix Jr.") — raw lower() never matches.
+  const normName = (n) => String(n || '').toLowerCase().replace(/\b(jr\.?|sr\.?|ii|iii|iv|v)\b/g, '').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
   let sleeperIdByNamePos = new Map();
   try {
     const rosterData = await fetchRoster({});
@@ -66,7 +69,7 @@ export async function renderProjections(root) {
       .concat((rosterData.starters || []), (rosterData.bench || []), (rosterData.reserve || []));
     for (const p of allRosterPlayers) {
       if (p.player_id && p.player_name) {
-        const key = `${p.player_name.toLowerCase()}|${(p.position || '').toUpperCase()}`;
+        const key = `${normName(p.player_name)}|${(p.position || '').toUpperCase()}`;
         sleeperIdByNamePos.set(key, String(p.player_id));
       }
     }
@@ -84,7 +87,7 @@ export async function renderProjections(root) {
 
   // Enrich ALL players with Sleeper IDs from roster lookup (bypasses GSIS→Sleeper gap)
   for (const p of allPlayers) {
-    const key = `${(p.player_name || '').toLowerCase()}|${(p.position || '').toUpperCase()}`;
+    const key = `${normName(p.player_name || '')}|${(p.position || '').toUpperCase()}`;
     if (!p.sleeper_id && sleeperIdByNamePos.has(key)) {
       p.sleeper_id = sleeperIdByNamePos.get(key);
     }
@@ -99,6 +102,7 @@ export async function renderProjections(root) {
       allPlayers.push({
         player_id: pid,
         sleeper_id: c.sleeper_id || (/^\d+$/.test(pid) ? pid : null),
+        espn_id: c.espn_id || null,
         player_name: c.player_name || c.full_name || pid,
         position: (c.position || 'UNK').toUpperCase(),
         team: (c.team || '').toUpperCase(),
@@ -132,6 +136,7 @@ export async function renderProjections(root) {
     const c = compById.get(String(p.player_id));
     if (c) {
       if (c.sleeper_id) p.sleeper_id = c.sleeper_id;
+      if (c.espn_id) p.espn_id = c.espn_id;
       p.market_points = c.market_points;
       p.delta_points = c.delta_points;
       p.model_overall_rank = c.model_overall_rank;
@@ -190,42 +195,42 @@ export async function renderProjections(root) {
 
     ${hasComparison ? `
     <div class="kpi-row reveal in" style="margin-top:4px">
-      <div class="kpi-card" style="border-left:3px solid var(--emerald)">
-        <div class="kpi-label">BUY edges — market sleeping</div>
+      <div class="kpi-card" style="border-top:1px solid var(--emerald)">
+        <div class="kpi-label" style="color:var(--emerald)">BUY edges: market sleeping</div>
         <div class="kpi-value" style="color:var(--emerald)">${buyCount}</div>
         <div class="kpi-bar"><div class="kpi-bar-fill good" style="width:${Math.min(100, Math.round((buyCount/ Math.max(1, Math.min(40, compById.size/6)))*100))}%"></div></div>
         <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:6px">Model rank ≥12 better than FP ECR or +3.0 pts vs Sleeper market</div>
       </div>
-      <div class="kpi-card" style="border-left:3px solid var(--crimson)">
-        <div class="kpi-label">SELL flags — market overvalued</div>
+      <div class="kpi-card" style="border-top:1px solid var(--crimson)">
+        <div class="kpi-label" style="color:var(--crimson)">SELL flags: market overvalued</div>
         <div class="kpi-value" style="color:var(--crimson)">${sellCount}</div>
         <div class="kpi-bar"><div class="kpi-bar-fill bad" style="width:${Math.min(100, Math.round((sellCount/ Math.max(1, Math.min(40, compById.size/6)))*100))}%"></div></div>
         <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:6px">Market rank ≥12 higher or −3.0 pts vs model</div>
       </div>
-      <div class="kpi-card" style="border-left:3px solid var(--sky)">
-        <div class="kpi-label">Market coverage · Sleeper + FantasyPros</div>
+      <div class="kpi-card" style="border-top:1px solid var(--sky)">
+        <div class="kpi-label" style="color:var(--sky)">Market coverage: Sleeper + FantasyPros</div>
         <div class="kpi-value" style="color:var(--sky)">${marketCovered} / ${compById.size}</div>
         <div class="kpi-bar"><div class="kpi-bar-fill" style="background:var(--sky); width:${Math.round((marketCovered/Math.max(1, compById.size))*100)}%"></div></div>
         <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:6px">Sleeper pts+stats keyed by gsis_id · FP ECR/ADP via name+team+pos</div>
       </div>
-      <div class="kpi-card" style="border-left:3px solid var(--amber)">
-        <div class="kpi-label">Comparison source</div>
+      <div class="kpi-card" style="border-top:1px solid var(--amber)">
+        <div class="kpi-label" style="color:var(--amber)">Comparison source</div>
         <div class="kpi-value" style="font-size:14px; line-height:1.3">Model vs Market<br><span style="font:600 11px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-muted); letter-spacing:0.04em; text-transform:uppercase">${compRaw.fetched_at ? new Date(compRaw.fetched_at).toLocaleString() : 'DB snapshot'} · ${compById.size} ranked</span></div>
-        <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:6px">Free, local — Sleeper projections + FP free ECR/ADP</div>
+        <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:6px">Free, local: Sleeper projections + FP free ECR/ADP</div>
       </div>
     </div>
-    <div class="card reveal in" style="margin-top:8px; border-left:3px solid var(--amber)">
+    <div class="card reveal in" style="margin-top:8px; border-top:1px solid var(--amber)">
       <div class="card-body" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between">
         <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center">
           <span class="kicker">Compare vs Market</span>
-          <button class="chip ${compareEnabled ? 'active' : ''}" id="toggleCompare">${compareEnabled ? 'Market + ECR on' : 'Show Market & ECR'}</button>
+          <button class="chip ${compareEnabled ? 'active' : ''}" id="toggleCompare" title="Toggle market comparison">${compareEnabled ? 'Market + ECR on' : 'Show Market & ECR'}</button>
           <div style="display:flex; gap:6px; margin-left:8px; flex-wrap:wrap">
             <button class="chip ${edgeFilter==='ALL' ? 'active' : ''}" data-edge="ALL">All (${compById.size})</button>
             <button class="chip ${edgeFilter==='BUY' ? 'active' : ''}" data-edge="BUY" style="${edgeFilter==='BUY' ? 'background:var(--emerald-dim); border-color:rgba(16,185,129,0.35); color:var(--emerald)' : ''}">▲ BUY (${buyCount})</button>
             <button class="chip ${edgeFilter==='SELL' ? 'active' : ''}" data-edge="SELL" style="${edgeFilter==='SELL' ? 'background:var(--crimson-dim); border-color:rgba(239,68,68,0.35); color:var(--crimson)' : ''}">▼ SELL (${sellCount})</button>
           </div>
         </div>
-        <span class="mono" style="font-size:11px; color:var(--text-faint)">Click row ▶ to see stat deltas (pass/rush/rec yds, TDs). Preseason: Sleeper pts empty until Week 1 publish — rank delta (ECR) works now.</span>
+        <span class="mono" style="font-size:11px; color:var(--text-faint)">Click row ▶ to see stat deltas (pass/rush/rec yds, TDs). Preseason: Sleeper pts empty until Week 1 publish: rank delta (ECR) works now.</span>
       </div>
     </div>
     ` : `<div class="alert alert-info reveal in" style="margin-top:8px">Market comparison not loaded. Showing model only.</div>`}
@@ -257,15 +262,20 @@ export async function renderProjections(root) {
 
     <div class="responsive-view">
     ${compareEnabled && hasComparison ? `
-    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; padding:8px 12px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; margin-bottom:10px; font:500 11px "Helvetica Neue", Helvetica,sans-serif; line-height:1.4">
-      <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--amber); border-radius:2px; display:inline-block"></span> <strong style="color:var(--amber)">Model</strong> · weekly PPR (×17 for Auction)</span>
-      <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--sky); border-radius:2px; display:inline-block"></span> <strong style="color:var(--sky)">Sleeper</strong> Market · free Sleeper projections</span>
+    <details style="padding:8px 12px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; margin-bottom:10px; font:500 11px "Helvetica Neue", Helvetica,sans-serif; line-height:1.4" aria-label="Projections legend: Model vs Market, BUY and SELL">
+      <summary style="cursor:pointer; font-weight:700" title="Toggle legend">Legend: Model vs Market, BUY/SELL</summary>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:8px">
+      <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--amber); border-radius:2px; display:inline-block"></span> <strong style="color:var(--amber)">Model</strong> <span>weekly PPR (×17 for Auction)</span></span>
+      <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--sky); border-radius:2px; display:inline-block"></span> <strong style="color:var(--sky)">Sleeper</strong> <span>Market: free Sleeper projections</span></span>
+      </div>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:6px">
       <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--emerald); border-radius:2px; display:inline-block"></span> BUY = Model ≥ +3 pts / ≥12 ranks better</span>
       <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--crimson); border-radius:2px; display:inline-block"></span> SELL = Market ≥ +3 / 12 better</span>
-      <span class="mono" style="color:var(--text-faint); margin-left:auto">FP ECR/ADP sparse on free tier — Market pts primary</span>
-    </div>
+      <span class="mono" style="color:var(--text-faint); margin-left:auto">FP ECR/ADP sparse on free tier: Market pts primary</span>
+      </div>
+    </details>
     ` : ''}
-    <div class="table-wrap sticky-player reveal in" style="margin-top:16px">
+    <div class="table-wrap sticky-player reveal in" style="margin-top:16px; overflow-x:auto; max-width:100%">
       <table id="projTable" style="min-width:${compareEnabled && hasComparison ? '1180px' : '760px'}">
         <thead>
           <tr>
@@ -350,7 +360,7 @@ export async function renderProjections(root) {
     if (!btn) return;
     const dirLabel = sortDir===-1 ? 'Highest → Lowest' : 'Lowest → Highest';
     btn.textContent = `↕ ${dirLabel}`;
-    btn.title = `Currently ${dirLabel} by ${sortKey} — click to flip`;
+    btn.title = `Currently ${dirLabel} by ${sortKey}: click to flip`;
   }
   root.querySelector('#toggleProjSortDir')?.addEventListener('click', ()=>{
     sortDir *= -1;
@@ -470,7 +480,7 @@ export async function renderProjections(root) {
             </div>
           `).join('');
           const opp = p.opponent_team ? `vs ${p.opponent_team}` : '';
-          return mainRow + `<tr class="expand-panel" data-expand-panel="${p.player_id}" style="display:none; background:var(--surface-raised)"><td colspan="${colSpan}" style="padding:12px 12px 12px 48px"><div style="display:flex; flex-direction:column; gap:6px"><div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap"><span class="kicker">Stat deltas — Model vs Market</span><span class="mono" style="font-size:11px; color:var(--text-faint)">${escapeHtml(p.player_name)} ${opp} · <span style="color:var(--amber)">amber=Model</span> <span style="color:var(--sky)">· blue=Market</span></span></div>${statRows || `<span class="mono" style="font-size:11px; color:var(--text-faint)">No market stats for this player yet (preseason).</span>`}<div class="mono" style="font-size:11px; color:var(--text-faint); margin-top:6px">FP ECR #${p.fp_ecr ?? '—'} ${p.fp_ecr_pos ? `(pos #${p.fp_ecr_pos})` : ''} · ADP #${p.fp_adp ?? '—'} · Model #${p.model_overall_rank ?? '—'} (pos #${p.model_pos_rank ?? '—'}) · ΔRk ${p.delta_rank != null ? (p.delta_rank > 0 ? '+' : '')+p.delta_rank : '—'}</div></div></td></tr>`;
+          return mainRow + `<tr class="expand-panel" data-expand-panel="${p.player_id}" style="display:none; background:var(--surface-raised)"><td colspan="${colSpan}" style="padding:12px 12px 12px 48px"><div style="display:flex; flex-direction:column; gap:6px"><div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap"><span class="kicker">Stat deltas: Model vs Market</span><span class="mono" style="font-size:11px; color:var(--text-faint)">${escapeHtml(p.player_name)} ${opp} · <span style="color:var(--amber)">amber=Model</span> <span style="color:var(--sky)">, blue=Market</span></span></div>${statRows || `<span class="mono" style="font-size:11px; color:var(--text-faint)">No market stats for this player yet (preseason).</span>`}<div class="mono" style="font-size:11px; color:var(--text-faint); margin-top:6px">FP ECR #${p.fp_ecr ?? '—'} ${p.fp_ecr_pos ? `(pos #${p.fp_ecr_pos})` : ''} · ADP #${p.fp_adp ?? '—'} · Model #${p.model_overall_rank ?? '—'} (pos #${p.model_pos_rank ?? '—'}) · ΔRk ${p.delta_rank != null ? (p.delta_rank > 0 ? '+' : '')+p.delta_rank : '—'}</div></div></td></tr>`;
         }
         return mainRow;
       }).join('');

@@ -338,3 +338,76 @@ def test_hub_stale_sleeper_served_no_500(hub_server_url):
         hubserver._fetch_sleeper_players_from_network = orig_fetch
         hubserver._PROJECTIONS_CACHE = orig_proj
         hubserver._PROJECTIONS_CACHE = {"at": 0.0, "payload": None, "last_modified": ""}
+
+
+# Multi-league routing additions (append-only; existing tests above untouched).
+
+
+def test_resolve_league_id_validation(monkeypatch):
+    import os
+    monkeypatch.setenv("SLEEPER_LEAGUE_ID", "1397736035240173568")
+    # why: ?league_id= becomes a filename — must be numeric, never a path.
+    assert hubserver.resolve_league_id({"league_id": ["999"]}) == "999"
+    assert hubserver.resolve_league_id({}) == "1397736035240173568"
+    for bad in ("../evil", "abc", "1?x", "1#y", "-5", ""):
+        try:
+            out = hubserver.resolve_league_id({"league_id": [bad]})
+        except ValueError:
+            continue
+        # "" falls back to env default; anything else must raise
+        assert bad == "" and out == "1397736035240173568", bad
+
+
+def test_db_path_for_request_allowlist(monkeypatch):
+    import os
+    monkeypatch.setenv("SLEEPER_LEAGUE_ID", "1397736035240173568")
+    from pathlib import Path
+    # default/env league keeps the legacy file
+    assert hubserver.db_path_for_request("").name == "fantasy.db"
+    assert hubserver.db_path_for_request("1397736035240173568").name == "fantasy.db"
+    # other leagues get isolated files inside data/
+    p = hubserver.db_path_for_request("999")
+    assert p.name == "fantasy_999.db"
+    assert "data" in p.parts
+    for bad in ("../evil", "abc", "1?x"):
+        try:
+            hubserver.db_path_for_request(bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"db_path_for_request accepted {bad!r}")
+
+
+def test_hub_league_id_invalid_400(hub_server_url):
+    import urllib.error
+    # why: traversal/non-numeric league_id must 400, never touch the FS.
+    for bad in ("../evil", "..%2Fevil", "abc"):
+        try:
+            with urllib.request.urlopen(f"{hub_server_url}/hub-api/meta?league_id={bad}", timeout=10) as r:
+                raise AssertionError(f"expected 400 for {bad}, got {r.status}")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400, (bad, e.code)
+
+
+def test_hub_unknown_league_db_503(hub_server_url):
+    # why: a league with no synced DB degrades to generic 503 (setup-flow
+    # signal), never 500/traceback/path disclosure.
+    import urllib.error
+    try:
+        with urllib.request.urlopen(f"{hub_server_url}/hub-api/meta?league_id=424242", timeout=10) as r:
+            body = json.loads(r.read().decode("utf-8"))
+            assert "error" in body and "424242" not in json.dumps(body)
+    except urllib.error.HTTPError as e:
+        assert e.code == 503, e.code
+
+
+def test_hub_draft_endpoint_mocked(hub_server_url, monkeypatch):
+    # why: /hub-api/draft is live Sleeper — unit tests pin it, no network.
+    fake = {"league_id": "424242", "league_name": "Mock League",
+            "season": "2026", "total_rosters": 10, "draft_id": "d1",
+            "draft_type": "auction", "auction_budget": 200, "draft_settings": {}}
+    monkeypatch.setattr(hubserver, "get_cached_draft_info", lambda lid: dict(fake, league_id=lid))
+    with urllib.request.urlopen(f"{hub_server_url}/hub-api/draft?league_id=424242", timeout=10) as r:
+        assert r.status == 200
+        body = json.loads(r.read().decode("utf-8"))
+    assert body["league_name"] == "Mock League"
+    assert body["draft_type"] == "auction"

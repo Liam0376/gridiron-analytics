@@ -1,63 +1,39 @@
 // hub/src/components/teamSelector.js — Global Team Selector Component
 import { fetchRoster } from '../api.js';
 import { escapeHtml } from '../lib/escape.js';
+import { getLeagueId, teamStorageKey } from '../lib/league.js';
 
-const STORAGE_KEY = 'ffba-selected-team-id';
+function storageKey(leagueId) {
+  // why namespaced: team ids are per-league — switching leagues must never
+  // restore another league's roster pick.
+  return teamStorageKey(leagueId !== undefined ? leagueId : getLeagueId());
+}
 
-export function getSelectedTeamId() {
+export function getSelectedTeamId(leagueId) {
   try {
-    return localStorage.getItem(STORAGE_KEY) || null;
+    return localStorage.getItem(storageKey(leagueId)) || null;
   } catch (_) {
     // localStorage unavailable in private mode
     return null;
   }
 }
 
-export function setSelectedTeamId(id) {
+export function setSelectedTeamId(id, leagueId) {
   try {
-    localStorage.setItem(STORAGE_KEY, String(id));
+    localStorage.setItem(storageKey(leagueId), String(id));
   } catch (_) {
     // localStorage unavailable in private mode
   }
 }
 
-const DEFAULT_TEAMS = [
-  { roster_id: '7', display_name: 'lfb0376', team_name: 'lfb0376' },
-  { roster_id: '2', display_name: 'poma12', team_name: 'felix team' },
-  { roster_id: '6', display_name: 'Arguelles', team_name: 'Rebeldes de Boston' },
-  { roster_id: '1', display_name: 'DGoatMx', team_name: 'DGoatMx' },
-  { roster_id: '3', display_name: 'gonzazabala10', team_name: 'gonzazabala10' },
-  { roster_id: '4', display_name: 'fuchsgoated', team_name: 'fuchsgoated' },
-  { roster_id: '5', display_name: 'Cachitos', team_name: 'Cachitos' },
-  { roster_id: '8', display_name: 'erik6782357', team_name: 'erik6782357' },
-  { roster_id: '9', display_name: 'rodrigotajonar97', team_name: 'rodrigotajonar97' },
-  { roster_id: '10', display_name: 'toytorres', team_name: 'toytorres' },
-  { roster_id: '11', display_name: 'gonher10', team_name: 'gonher10' },
-  { roster_id: '12', display_name: 'Elcojeperras', team_name: 'Elcojeperras' },
-];
-
-export function getDefaultTeamId(leagueRosters = []) {
-  if (Array.isArray(leagueRosters) && leagueRosters.length && leagueRosters[0]?.roster_id != null) {
-    return String(leagueRosters[0].roster_id);
-  }
-  return null;
-}
-
-export function resolveSelectedTeamId(leagueRosters = [], currentId = null) {
-  const stored = currentId || getSelectedTeamId();
-  if (stored) {
-    if (Array.isArray(leagueRosters) && leagueRosters.length) {
-      const match = leagueRosters.some(t => String(t.roster_id) === String(stored));
-      if (match) return String(stored);
-    } else {
-      return String(stored);
-    }
-  }
-  return getDefaultTeamId(leagueRosters);
-}
-
 export function renderTeamSelector(leagueRosters = [], currentId = null) {
-  const list = (Array.isArray(leagueRosters) && leagueRosters.length) ? leagueRosters : DEFAULT_TEAMS;
+  // why no hardcoded fallback roster: team names/ids are per-league private
+  // data — a static list would show the wrong league's managers. Empty state
+  // invites setup instead.
+  const list = (Array.isArray(leagueRosters) && leagueRosters.length) ? leagueRosters : [];
+  if (!list.length) {
+    return `<div class="faint" style="font-size:12px">No teams synced — <a href="#dashboard">open Dashboard</a> to set up your league.</div>`;
+  }
   // Default derives from leagueRosters[0] (or fallback list[0]) — no hardcoded team id.
   const fallbackDefault = list.length && list[0]?.roster_id != null ? String(list[0].roster_id) : null;
   const stored = currentId || getSelectedTeamId();

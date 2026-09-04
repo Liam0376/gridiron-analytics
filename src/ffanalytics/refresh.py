@@ -52,14 +52,18 @@ def run_refresh(
     nfl_module=None,
     ran_at_iso: str = "",
     stats_season: int | None = None,
+    league_id: str | None = None,
 ) -> dict:
     if stats_season is None:
         stats_season = season
+    # why require at call time (not import): multi-league — the id arrives
+    # per refresh (POST body / CLI), and config no longer raises at import.
+    lid = config.require_league_id(league_id)
     result = {}
 
     try:
-        sleeper.get_league_settings(config.LEAGUE_ID, session=sleeper_session)
-        sleeper.get_rosters(config.LEAGUE_ID, session=sleeper_session)
+        sleeper.get_league_settings(lid, session=sleeper_session)
+        sleeper.get_rosters(lid, session=sleeper_session)
         sleeper.get_injury_statuses(session=sleeper_session)
         _log(conn, "sleeper", True, None, ran_at_iso)
         result["sleeper"] = True
@@ -98,27 +102,38 @@ def run_refresh_with_data(
     nfl_module=None,
     ran_at_iso: str = "",
     stats_season: int | None = None,
+    league_id: str | None = None,
 ) -> tuple[dict, dict]:
     # season: the league season (2026); stats_season: nflreadpy data season
     # (2025 in preseason). Falls back to season if not provided.
     if stats_season is None:
         stats_season = season
+    lid = config.require_league_id(league_id)
     data = {}
     status = {}
 
     # Get Sleeper data
     try:
-        league_settings = sleeper.get_league_settings(config.LEAGUE_ID, session=sleeper_session)
+        league_settings = sleeper.get_league_settings(lid, session=sleeper_session)
         try:
-            users = sleeper.get_users(config.LEAGUE_ID, session=sleeper_session)
+            users = sleeper.get_users(lid, session=sleeper_session)
             league_settings["users"] = users
         except Exception as u_exc:
             logger.warning(f"Failed to fetch sleeper users: {u_exc}")
             league_settings["users"] = []
-        rosters = sleeper.get_rosters(config.LEAGUE_ID, session=sleeper_session)
+        # why draft info here: auction economics (budget, snake vs auction)
+        # live in the draft object, not the league object — stash once per
+        # refresh so readers (api/proxy) never add per-request Sleeper calls.
+        # Additive key, soft-fail to {} (budget falls back to 200).
+        try:
+            league_settings["draft"] = sleeper.get_draft_info(lid, session=sleeper_session)
+        except Exception as d_exc:
+            logger.warning(f"Failed to fetch sleeper draft info: {d_exc}")
+            league_settings["draft"] = {}
+        rosters = sleeper.get_rosters(lid, session=sleeper_session)
         injury_status = sleeper.get_injury_statuses(session=sleeper_session)
         current_week = compute_nfl_week()
-        matchups = sleeper.get_league_matchups(config.LEAGUE_ID, current_week, session=sleeper_session)
+        matchups = sleeper.get_league_matchups(lid, current_week, session=sleeper_session)
         data["league_settings"] = league_settings
         data["rosters"] = rosters
         data["injury_status"] = injury_status
@@ -267,7 +282,17 @@ def run_refresh_with_data(
         # Pass FP season projections map (596 season totals) for Auction season stats + StatsGuy real-trade values
         try:
             from ffanalytics.comparison import build_comparison as _build_comp
-            data["comparison"] = _build_comp(_model_projs, market_by_gsis, fpros_players_list, sleeper_players_map, fp_projections_map, statsguy_rows)
+            # why econ here: auction $ must divide over THIS league's teams,
+            # budget (draft API, stored above), and roster shape — not the
+            # 12x$200 defaults. Falls back to defaults when unknown.
+            _ls = data.get("league_settings") or {}
+            _draft = _ls.get("draft") or {}
+            _econ = config.league_economics(
+                total_rosters=_ls.get("total_rosters", 12),
+                roster_positions=_ls.get("roster_positions"),
+                auction_budget=_draft.get("auction_budget") or 200,
+            )
+            data["comparison"] = _build_comp(_model_projs, market_by_gsis, fpros_players_list, sleeper_players_map, fp_projections_map, statsguy_rows, league_econ=_econ)
         except Exception as cmp_exc:
             logger.warning(f"Comparison build failed: {cmp_exc}")
             data["comparison"] = []

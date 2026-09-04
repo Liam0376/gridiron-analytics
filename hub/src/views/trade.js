@@ -1,4 +1,5 @@
-import { fetchRoster, fetchTrade, fetchComparison } from '../api.js';
+import { fetchRoster, fetchTrade, fetchComparison, fetchMeta, fetchDraftInfo } from '../api.js';
+import { getLeagueEcon } from '../lib/league.js';
 import { posBadge, injuryBadge } from '../components/badges.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
@@ -21,7 +22,7 @@ export async function renderTrade(root) {
       <div class="card-body row align-center" style="gap:16px; flex-wrap:wrap">
         <div style="flex:1; min-width:220px">
           <label class="micro faint" style="display:block; margin-bottom:6px">Team A (Sending Package)</label>
-          <select id="selectTeamA" class="search-mini" style="width:100%; padding:8px 12px; font:500 13px "Helvetica Neue", Helvetica, sans-serif; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:8px">
+          <select id="selectTeamA" class="search-mini" title="Select Team A" style="width:100%; padding:8px 12px; font:500 13px "Helvetica Neue", Helvetica, sans-serif; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:8px">
             <option value="">Loading teams…</option>
           </select>
         </div>
@@ -30,7 +31,7 @@ export async function renderTrade(root) {
 
         <div style="flex:1; min-width:220px">
           <label class="micro faint" style="display:block; margin-bottom:6px">Team B (Receiving Package)</label>
-          <select id="selectTeamB" class="search-mini" style="width:100%; padding:8px 12px; font:500 13px "Helvetica Neue", Helvetica, sans-serif; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:8px">
+          <select id="selectTeamB" class="search-mini" title="Select Team B" style="width:100%; padding:8px 12px; font:500 13px "Helvetica Neue", Helvetica, sans-serif; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:8px">
             <option value="">Loading teams…</option>
           </select>
         </div>
@@ -103,7 +104,9 @@ export async function renderTrade(root) {
         const comp = await fetchComparison({ limit: 800 });
         const players = comp?.players || [];
         if (players.length) {
-          vbdParams = computeVbdParams(players);
+          // why league-aware: $/VOR scales with teams/budget/roster.
+          const league = await getLeagueEcon(fetchMeta, fetchDraftInfo).catch(() => null);
+          vbdParams = computeVbdParams(players, league);
         }
       } catch (_) {
         vbdParams = null;
@@ -179,9 +182,10 @@ export async function renderTrade(root) {
           const auctionPrice = p.auction_price_paid ?? p.auction ?? p.marketAuction ?? 0;
 
           return `
-            <label class="row align-between" style="padding:10px 14px; cursor:pointer; background:${isChecked ? 'var(--surface-raised)' : 'transparent'}; border-bottom:1px solid var(--border); transition:background 0.15s; border-left:3px solid ${getTeamColor((p.team||'').toUpperCase())}">
+            <label class="row align-between" style="padding:10px 14px; cursor:pointer; background:${isChecked ? 'var(--surface-raised)' : 'transparent'}; border-bottom:1px solid var(--border); transition:background 0.15s; border-top:1px solid ${getTeamColor((p.team||'').toUpperCase())}">
               <div class="row align-center" style="gap:10px">
-                <input type="checkbox" class="trade-check" data-side="${side}" data-pid="${pid}" ${isChecked ? 'checked' : ''} style="width:16px; height:16px; cursor:pointer" />
+                <input type="checkbox" class="trade-check" data-side="${side}" data-pid="${pid}" ${isChecked ? 'checked' : ''} title="Select ${escapeHtml(p.player_name || p.full_name || pid)} for trade" style="width:16px; height:16px; cursor:pointer" />
+                <span style="width:8px; height:8px; border-radius:50%; background:${getTeamColor((p.team||'').toUpperCase())}; flex-shrink:0" aria-hidden="true"></span>
                 ${playerAvatar(p, 28)}
                 <div>
                   <div class="row align-center" style="gap:6px">
@@ -284,11 +288,11 @@ export async function renderTrade(root) {
     }
 
     summaryBanner.innerHTML = `
-      <div class="card" style="border-left:4px solid ${verdictColor}; background:${verdictBg}">
+      <div class="card" style="border-top:1px solid ${verdictColor}; background:${verdictBg}">
         <div class="card-body">
           <div class="row align-between align-center" style="flex-wrap:wrap; gap:12px">
             <div>
-              <div class="micro faint" style="text-transform:uppercase; letter-spacing:0.5px">Trade verdict — $ VOR ROS</div>
+              <div class="micro faint" style="text-transform:uppercase; letter-spacing:0.5px">Trade verdict: $ VOR ROS</div>
               <h2 style="margin:2px 0 0; color:${verdictColor}">${escapeHtml(verdict)}</h2>
             </div>
             <div class="row" style="gap:24px; flex-wrap:wrap">

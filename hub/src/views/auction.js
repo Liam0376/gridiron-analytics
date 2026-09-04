@@ -5,7 +5,8 @@
 //   - views/auction/bidAdvice.js  live bid advice
 //   - views/auction/table.js table render + sort + modals
 
-import { fetchProjections, fetchComparison } from '../api.js';
+import { fetchProjections, fetchComparison, fetchMeta, fetchDraftInfo, effectiveDraftType } from '../api.js';
+import { getLeagueId, getLeagueEcon } from '../lib/league.js';
 import { posBadge } from '../components/badges.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
@@ -26,8 +27,30 @@ import { tableHeaders, tableBody, bindTableEvents, showDraftModal, parseSort, so
 
 export async function renderAuction(root) {
   const params = new URLSearchParams(location.hash.split('?')[1] || '');
-  const budget = Number(params.get('budget') || BUDGET);
+
+  // why league econ first: budget, replacement levels, pool, and slices all
+  // scale with this league's teams/roster/draft budget (memoized fetch).
+  const league = await getLeagueEcon(fetchMeta, fetchDraftInfo).catch(() => null);
+  const budget = Number(params.get('budget') || (league ? league.budget : BUDGET));
   const focusPid = params.get('focus') || null;
+
+  // why gate: auction $/VOR math is meaningless for snake drafts — show a
+  // friendly gate instead of misleading values. 'unknown' (offline/unfetched)
+  // fails open to preserve current behavior.
+  const draftType = await effectiveDraftType().catch(() => 'unknown');
+  if (draftType === 'snake') {
+    root.innerHTML = `
+      <div class="hero reveal in"><h1>Auction Draft</h1><p>This league drafts snake-style, so auction values don't apply.</p></div>
+      <div class="card reveal in" style="padding:20px">
+        <div style="font-weight:700; margin-bottom:6px">Snake draft league detected</div>
+        <div class="faint" style="margin-bottom:12px">Dollar values and VOR pricing assume an auction draft. Your projections, tiers, and trade lab all work normally — only this board is gated.</div>
+        <div class="row" style="gap:8px">
+          <a class="btn btn-primary btn-sm" href="#projections">Open Projections</a>
+          <a class="btn btn-ghost btn-sm" href="#tierlists">Open Tier Lists</a>
+        </div>
+      </div>`;
+    return;
+  }
 
   const [data, compRaw] = await Promise.all([
     fetchProjections({}),
@@ -59,9 +82,10 @@ export async function renderAuction(root) {
     // localStorage unavailable in private mode
   }
 
-  const state = loadDraftState();
+  const state = loadDraftState(getLeagueId());
+  if (state.myBudget == null) state.myBudget = budget;
 
-  const math = computeAuctionMath(players, compRaw, compById, compByNamePos, state, { budget });
+  const math = computeAuctionMath(players, compRaw, compById, compByNamePos, state, { budget, league });
   const {
     rosPlayers, allRanked, posGroups, posBudget, flexBudget, nominationTargets,
     myRosterPlayers, myRosterCount, mySpent, myRemaining, maxBid, slotsLeft,
@@ -96,37 +120,37 @@ export async function renderAuction(root) {
 
     ${hasComparison ? `
     <div class="kpi-row reveal in" style="margin-top:12px">
-      <div class="kpi-card" style="border-left:3px solid var(--emerald)">
-        <div class="kpi-label">BUY edges — season</div>
+      <div class="kpi-card" style="border-top:1px solid var(--emerald)">
+        <div class="kpi-label" style="color:var(--emerald)">BUY edges: season</div>
         <div class="kpi-value" style="color:var(--emerald)">${buyCount}</div>
         <div class="kpi-bar"><div class="kpi-bar-fill good" style="width:${Math.min(100, Math.round((buyCount / Math.max(1, Math.min(40, compById.size / 6))) * 100))}%"></div></div>
         <div class="micro faint" style="font-size:11px; margin-top:6px">Model season ≥ +51 pts vs FantasyPros season (or rank ≥12 better than ECR)</div>
       </div>
-      <div class="kpi-card" style="border-left:3px solid var(--crimson)">
-        <div class="kpi-label">SELL flags — overpriced</div>
+      <div class="kpi-card" style="border-top:1px solid var(--crimson)">
+        <div class="kpi-label" style="color:var(--crimson)">SELL flags: overpriced</div>
         <div class="kpi-value" style="color:var(--crimson)">${sellCount}</div>
         <div class="kpi-bar"><div class="kpi-bar-fill bad" style="width:${Math.min(100, Math.round((sellCount / Math.max(1, Math.min(40, compById.size / 6))) * 100))}%"></div></div>
         <div class="micro faint" style="font-size:11px; margin-top:6px">FantasyPros season ≥ +51 pts vs Model · avoid paying sticker</div>
       </div>
-      <div class="kpi-card" style="border-left:3px solid var(--sky)">
-        <div class="kpi-label">Market coverage (season)</div>
+      <div class="kpi-card" style="border-top:1px solid var(--sky)">
+        <div class="kpi-label" style="color:var(--sky)">Market coverage (season)</div>
         <div class="kpi-value" style="color:var(--sky)">${marketCovered} / ${compById.size}</div>
         <div class="kpi-bar"><div class="kpi-bar-fill" style="background:var(--sky); width:${Math.round((marketCovered / Math.max(1, compById.size)) * 100)}%"></div></div>
         <div class="micro faint" style="font-size:11px; margin-top:6px">FantasyPros season projections (596, YDS/TDS) + ECR 519/ADP 695 CSVs · Sleeper weekly fallback 98 starters</div>
       </div>
-      <div class="kpi-card" style="border-left:3px solid var(--amber)">
-        <div class="kpi-label">Auction vs Market</div>
+      <div class="kpi-card" style="border-top:1px solid var(--amber)">
+        <div class="kpi-label" style="color:var(--amber)">Auction vs Market</div>
         <div class="kpi-value" style="font-size:14px; line-height:1.2">VOR $ from Model<br><span style="font:600 11px Helvetica Neue, Helvetica,sans-serif; color:var(--text-muted); letter-spacing:0.04em; text-transform:uppercase">$${usedBudget} × ${math.posGroups.length} teams · ${compareAuctionEnabled ? 'Market Δ shown' : 'toggle Market to see Δ'}</span></div>
         <div style="display:flex; gap:6px; margin-top:8px"><button class="chip ${compareAuctionEnabled ? 'active' : ''}" id="toggleAuctionCompare" style="font-size:11px">${compareAuctionEnabled ? '✓ Market + ECR on' : 'Show Market + ECR'}</button><button class="chip" id="copyModelVsMarketCsv" style="font-size:11px">Copy Model vs Market CSV</button></div>
       </div>
     </div>
     ` : `<div class="alert alert-info reveal in" style="margin-top:12px">Market comparison not loaded. Showing model only.</div>`}
 
-    <div class="card reveal in" style="margin-top:12px; border-left:3px solid var(--crimson); background: linear-gradient(90deg, rgba(239,68,68,0.08), transparent)">
+    <div class="card reveal in" style="margin-top:12px; border-top:1px solid var(--crimson); background: linear-gradient(90deg, rgba(239,68,68,0.08), transparent)">
       <div class="card-body" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 12px">
         <span class="kicker" style="color:var(--crimson)">● Draft Live</span>
         <span id="draftCountdown" class="mono" style="font-size:18px; font-weight:700; color:var(--crimson)">60:00</span>
-        <span class="micro faint">until draft — board frozen to FP season 596 + Week 10 model • <span class="mono" style="color:var(--text-muted)">VOR $200/12</span></span>
+        <span class="micro faint">until draft: board frozen to FP season 596 + Week 10 model • <span class="mono" style="color:var(--text-muted)">VOR $200/12</span></span>
         <span style="flex:1"></span>
         <button class="chip" id="fullscreenAuction" title="Fullscreen draft board (F)">⛶ Fullscreen</button>
         <button class="chip" id="printAuction" title="Print board (⌘P)">⎙ Print</button>
@@ -134,7 +158,7 @@ export async function renderAuction(root) {
       </div>
     </div>
 
-    <div class="kpi-row reveal in" style="margin-top:12px">
+    <div class="kpi-row reveal in" id="auctionBudgetKpis" style="margin-top:12px; position:sticky; top:0; z-index:10; background:var(--surface); padding:8px; border-radius:8px">
       <div class="kpi-card">
         <div class="kpi-label">My Budget</div>
         <div class="kpi-value mono" style="color:${myRemaining > 50 ? 'var(--color-accent)' : myRemaining > 20 ? 'var(--amber)' : 'var(--crimson)'}">$${myRemaining}</div>
@@ -159,6 +183,8 @@ export async function renderAuction(root) {
       </div>
     </div>
 
+    <details class="card reveal in" style="margin-top:16px; padding:12px" ${draftedCount > 0 ? '' : 'open'} aria-label="Draft prep: budget, nominations, strategy">
+      <summary style="cursor:pointer; font-weight:700" title="Toggle draft prep panels">Draft prep: budget, nominations, strategy</summary>
     <div class="card reveal in" style="margin-top:16px">
       <div class="card-header"><h3>Budget Allocation</h3><span class="kicker">recommended spend by position</span></div>
       <div class="card-body" style="display:flex; gap:12px; flex-wrap:wrap">
@@ -183,10 +209,10 @@ export async function renderAuction(root) {
     <div class="card reveal in" style="margin-top:16px">
       <div class="card-header"><h3>Nomination Strategy</h3><span class="kicker">nominate these to drain opponents</span></div>
       <div class="card-body" style="font:400 13px Helvetica Neue, Helvetica,sans-serif; color:var(--text-muted); line-height:1.6">
-        <div class="alert alert-ok" style="margin-bottom:12px">Nominate players at positions you've filled (or don't need yet). Force opponents to spend early while you save budget for YOUR targets. <strong>Prefer high Market $ but lower Model $</strong> — let others overpay where Market is hot but Model is cool (SELL).</div>
+        <div class="alert alert-ok" style="margin-bottom:12px">Nominate players at positions you've filled (or don't need yet). Force opponents to spend early while you save budget for YOUR targets. <strong>Prefer high Market $ but lower Model $</strong>: let others overpay where Market is hot but Model is cool (SELL).</div>
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           ${nominationTargets.map(p => `
-            <div style="padding:6px 10px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; display:flex; align-items:center; gap:6px; ${p.edge === 'BUY' ? 'border-left:3px solid var(--emerald)' : p.edge === 'SELL' ? 'border-left:3px solid var(--crimson)' : ''}">
+            <div style="padding:6px 10px; background:${p.edge === 'BUY' ? 'rgba(16,185,129,0.06)' : p.edge === 'SELL' ? 'rgba(239,68,68,0.06)' : 'var(--surface-raised)'}; border:1px solid ${p.edge === 'BUY' ? 'var(--emerald)' : p.edge === 'SELL' ? 'var(--crimson)' : 'var(--border)'}; border-radius:8px; display:flex; align-items:center; gap:6px;">
               ${playerAvatar(p, 24)}
               ${posBadge(p.position)}
               <strong style="font:600 12px Helvetica Neue, Helvetica,sans-serif">${escapeHtml(p.player_name)}</strong>
@@ -205,14 +231,15 @@ export async function renderAuction(root) {
       <div class="card-header"><h3>Draft Strategy</h3><span class="kicker">$200 auction</span></div>
       <div class="card-body" style="font:400 13px Helvetica Neue, Helvetica,sans-serif; color:var(--text-muted); line-height:1.6">
         <ol style="margin:0; padding-left:18px">
-          <li><strong>Stars &amp; Scrubs:</strong> Spend 60-70% ($150-175) on 4-5 elite starters. Your 2-FLEX league means 7 RB/WR/TE start — premium on volume backs and target hogs.</li>
-          <li><strong>Model &gt; Market = value:</strong> Filter <code class="inline">BUY</code> in Auction to see where Model season total beats Market season by ≥51 pts — bid up to Model $ there.</li>
-          <li><strong>K/DEF = $1 always.</strong> MAE on kickers is 4+ pts — pure noise. Stream them.</li>
+          <li><strong>Stars &amp; Scrubs:</strong> Spend 60-70% ($150-175) on 4-5 elite starters. Your 2-FLEX league means 7 RB/WR/TE start: premium on volume backs and target hogs.</li>
+          <li><strong>Model &gt; Market = value:</strong> Filter <code class="inline">BUY</code> in Auction to see where Model season total beats Market season by ≥51 pts: bid up to Model $ there.</li>
+          <li><strong>K/DEF = $1 always.</strong> MAE on kickers is 4+ pts: pure noise. Stream them.</li>
           <li><strong>$1 bench:</strong> Fill bench last at $1. Waiver wire value &gt; draft bench value in 12-team.</li>
-          <li><strong>Nominate positions you've filled</strong> — prefer SELL-flagged players so opponents burn cash where you're cold.</li>
+          <li><strong>Nominate positions you've filled</strong>: prefer SELL-flagged players so opponents burn cash where you're cold.</li>
         </ol>
       </div>
     </div>
+    </details>
 
     ${myRosterCount > 0 ? `
     <div class="card reveal in" style="margin-top:16px">
@@ -231,7 +258,7 @@ export async function renderAuction(root) {
                 <td>${posBadge(p.position)}</td>
                 <td class="mono">$${paid}</td>
                 <td class="mono">$${p.auction}</td>
-                <td class="mono" style="color:${diff > 0 ? '#10B981' : diff < 0 ? 'var(--crimson)' : 'var(--text-muted)'}">${diff > 0 ? '+' : ''}${diff}</td>
+                <td class="mono" style="color:${diff > 0 ? 'var(--emerald)' : diff < 0 ? 'var(--crimson)' : 'var(--text-muted)'}">${diff > 0 ? '+' : ''}${diff}</td>
                 ${compareAuctionEnabled && hasComparison ? `<td>${deltaSeasonBadge(p.deltaRos)}</td><td>${edgeBadgeAuction(p.edge)}</td>` : ''}
               </tr>`;
             }).join('')}
@@ -240,23 +267,23 @@ export async function renderAuction(root) {
       </div>
     </div>` : ''}
 
-    <div class="card reveal in" id="liveAuctionCard" style="margin-top:16px; ${focusedPlayer ? `border-left:3px solid ${liveAdvice.color}; background: linear-gradient(90deg, ${liveAdvice.color}14, transparent)` : ''}">
-      <div class="card-header"><h3 style="color:${focusedPlayer ? liveAdvice.color : 'var(--text-muted)'}">${focusedPlayer ? `On the Block — ${escapeHtml(focusedPlayer.player_name)}` : 'Live Auction — select the player being auctioned'}</h3><span class="kicker">${focusedPlayer ? liveAdvice.title : 'Click 👁 to focus a row'}</span>${focusedPlayer ? `<button class="chip" id="clearFocus" style="margin-left:auto">✕ Clear</button>` : ''}</div>
+    <div class="card reveal in" id="liveAuctionCard" style="margin-top:16px; position:sticky; top:0; z-index:10; ${focusedPlayer ? `border-top:1px solid ${liveAdvice.color}; background: linear-gradient(90deg, ${liveAdvice.color}14, transparent)` : ''}">
+      <div class="card-header"><h3 style="color:${focusedPlayer ? liveAdvice.color : 'var(--text-muted)'}">${focusedPlayer ? `On the Block: ${escapeHtml(focusedPlayer.player_name)}` : 'Live Auction: select the player being auctioned'}</h3><span class="kicker">${focusedPlayer ? liveAdvice.title : 'Click 👁 to focus a row'}</span>${focusedPlayer ? `<button class="chip" id="clearFocus" style="margin-left:auto">✕ Clear</button>` : ''}</div>
       <div class="card-body" style="display:flex; flex-direction:column; gap:12px">
         ${focusedPlayer ? `
         <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:center">
           <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:260px">${playerAvatar(focusedPlayer, 56)}<div><div style="font:700 16px Helvetica Neue, Helvetica,sans-serif; display:flex; gap:8px; align-items:center; flex-wrap:wrap">${escapeHtml(focusedPlayer.player_name)} ${posBadge(focusedPlayer.position)} ${teamLogo(focusedPlayer.team, 20)} <span class="mono" style="font-size:11px; color:var(--text-muted)">T${focusedPlayer.fp_tier ?? focusedPlayer.tier} · ECR #${focusedPlayer.fp_ecr ?? '—'} · ADP #${focusedPlayer.fp_adp ?? '—'}${focusedPlayer.statsguy_value != null ? ` · <span style="color:var(--violet)">SG ${focusedPlayer.statsguy_value.toFixed(0)} (#${focusedPlayer.statsguy_rank})</span>` : ''}</span></div><div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:2px">Model ${focusedPlayer.weekly.toFixed(1)} wk → <span style="color:var(--amber); font-weight:700">${focusedPlayer.ros.toFixed(0)} season</span> · Market <span style="color:var(--sky); font-weight:700">${focusedPlayer.marketRos != null ? focusedPlayer.marketRos.toFixed(0) : '—'}</span> · Δ ${focusedPlayer.deltaRos != null ? (Number(focusedPlayer.deltaRos) > 0 ? '+' : '') + Number(focusedPlayer.deltaRos).toFixed(0) : '—'} · VOR +${focusedPlayer.vor.toFixed(0)} · <span style="color:var(--amber)">$${focusedPlayer.auction} val</span></div></div></div>
           <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end">
             <span class="badge" style="background:${focusedPlayer.edge === 'BUY' ? 'var(--emerald-dim)' : 'var(--crimson-dim)'}; color:${focusedPlayer.edge === 'BUY' ? 'var(--emerald)' : 'var(--crimson)'}; font-size:12px; padding:6px 10px">${focusedPlayer.edge} ${deltaSeasonBadge(focusedPlayer.deltaRos)}</span>
-            ${focusedPlayer.statsguy_value != null ? `<span class="mono" style="font-size:11px; color:var(--violet)">StatsGuy market #${focusedPlayer.statsguy_rank} · ${focusedPlayer.statsguy_value.toFixed(0)}/10000</span>` : '<span class="mono" style="font-size:11px; color:var(--text-faint)">StatsGuy — no rank</span>'}
+            ${focusedPlayer.statsguy_value != null ? `<span class="mono" style="font-size:11px; color:var(--violet)">StatsGuy market #${focusedPlayer.statsguy_rank} · ${focusedPlayer.statsguy_value.toFixed(0)}/10000</span>` : '<span class="mono" style="font-size:11px; color:var(--text-faint)">StatsGuy: no rank</span>'}
           </div>
         </div>
-        <div class="alert" style="background:${liveAdvice.color}14; border:1px solid ${liveAdvice.color}33; color:var(--text)"><strong style="color:${liveAdvice.color}">${liveAdvice.title}</strong> — ${liveAdvice.text}</div>
+        <div class="alert" style="background:${liveAdvice.color}14; border:1px solid ${liveAdvice.color}33; color:var(--text)"><strong style="color:${liveAdvice.color}">${liveAdvice.title}</strong>: ${liveAdvice.text}</div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; font:500 11px Helvetica Neue, Helvetica,sans-serif">
           <span class="kicker">Cap</span> <span class="mono" style="font-size:18px; font-weight:700; color:${liveAdvice.color}">$${liveAdvice.cap}</span> <span class="micro faint">(max $${maxBid} · $${myRemaining} left · ${slotsLeft} slots)</span>
           <span style="flex:1"></span>
           <button class="btn btn-primary btn-sm" data-pid="${focusedPlayer.player_id}" id="liveDraftBtn">Draft ${escapeHtml(focusedPlayer.player_name)} for $${liveAdvice.cap}</button>
-          <button class="btn btn-ghost btn-sm" data-pid="${focusedPlayer.player_id}" id="livePassBtn">Pass — nominate next</button>
+          <button class="btn btn-ghost btn-sm" data-pid="${focusedPlayer.player_id}" id="livePassBtn">Pass: nominate next</button>
         </div>
         ` : `<div class="micro faint">Search a name, then click <span class="mono" style="background:var(--surface-raised); padding:2px 6px; border-radius:6px">👁 Focus</span> on the row.</div>
           <div style="display:flex; gap:8px; margin-top:4px"><input id="liveSearch" placeholder="Search player to focus…" style="flex:1; background:var(--surface-raised); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px; font:400 13px Helvetica Neue, Helvetica,sans-serif" /></div>
@@ -267,14 +294,14 @@ export async function renderAuction(root) {
     <div class="responsive-view">
     <div class="card reveal in" style="margin-top:16px">
       <div class="card-header">
-        <h3>Auction Board — ${activePos === 'ALL' ? 'All Positions' : activePos} ${auctionEdge !== 'ALL' ? `· ${auctionEdge}` : ''}</h3>
+        <h3>Auction Board: ${activePos === 'ALL' ? 'All Positions' : activePos} ${auctionEdge !== 'ALL' ? `· ${auctionEdge}` : ''}</h3>
         <div class="row" style="gap:8px; flex-wrap:wrap">
           ${['ALL', ...posGroups].map(pos => `
-            <button class="btn btn-sm ${activePos === pos ? '' : 'btn-ghost'} posFilter" data-pos="${pos}" style="${activePos === pos ? 'background:var(--color-accent); color:white' : ''}">${pos}</button>
+            <button class="btn btn-sm ${activePos === pos ? '' : 'btn-ghost'} posFilter" data-pos="${pos}" title="Filter board by ${pos}" style="${activePos === pos ? 'background:var(--color-accent); color:white' : ''}">${pos}</button>
           `).join('')}
           ${hasComparison ? `
             <span style="border-left:1px solid var(--border); margin:0 4px"></span>
-            ${['ALL', 'BUY', 'SELL'].map(e => `<button class="btn btn-sm ${auctionEdge === e ? '' : 'btn-ghost'} edgeFilter" data-edge="${e}" style="${auctionEdge === e ? (e === 'BUY' ? 'background:var(--emerald); color:white' : e === 'SELL' ? 'background:var(--crimson); color:white' : 'background:var(--color-accent); color:white') : ''}">${e === 'ALL' ? 'All' : e === 'BUY' ? '▲ BUY' : '▼ SELL'}</button>`).join('')}
+            ${['ALL', 'BUY', 'SELL'].map(e => `<button class="btn btn-sm ${auctionEdge === e ? '' : 'btn-ghost'} edgeFilter" data-edge="${e}" title="Filter board by ${e === 'ALL' ? 'all edges' : e}" style="${auctionEdge === e ? (e === 'BUY' ? 'background:var(--emerald); color:white' : e === 'SELL' ? 'background:var(--crimson); color:white' : 'background:var(--color-accent); color:white') : ''}">${e === 'ALL' ? 'All' : e === 'BUY' ? '▲ BUY' : '▼ SELL'}</button>`).join('')}
           ` : ''}
           <span style="border-left:1px solid var(--border); margin:0 4px"></span>
           <button class="btn btn-ghost btn-sm" id="copyAuction">Copy CSV</button>
@@ -289,20 +316,25 @@ export async function renderAuction(root) {
         <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--sky); border-radius:2px; display:inline-block"></span> <strong style="color:var(--sky)">Market</strong> · FantasyPros season projections (596, full YDS/TDS) + Sleeper weekly fallback</span>
         <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--emerald); border-radius:2px; display:inline-block"></span> BUY = Model ≥ +51 pts vs Market (3/wk)</span>
         <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--crimson); border-radius:2px; display:inline-block"></span> SELL = Market ≥ +51 pts vs Model</span>
-        <span class="mono" style="color:var(--text-faint); margin-left:auto">ECR 519 / ADP 695 via CSVs — full, not sparse</span>
+        <span class="mono" style="color:var(--text-faint); margin-left:auto">ECR 519 / ADP 695 via CSVs: full, not sparse</span>
       </div>
       ` : ''}
       <div class="card" style="padding:8px 12px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center">
         <span class="kicker">Sort</span>
-        <span class="mono" style="font-size:11px; color:var(--text-muted)">Click header to sort — </span>
+        <span class="mono" style="font-size:11px; color:var(--text-muted)">Click header to sort: </span>
         <button class="chip ${auctionSortKey === 'auction' ? 'active' : ''}" data-sort="auction" title="Sort by Auction $">Auction $ ${auctionSortKey === 'auction' ? (auctionSortDir === -1 ? '▼ Highest → Lowest' : '▲ Lowest → Highest') : '↕'}</button>
         <button class="chip ${auctionSortKey === 'ros' ? 'active' : ''}" data-sort="ros">Model season ${auctionSortKey === 'ros' ? (auctionSortDir === -1 ? '▼' : '▲') : '↕'}</button>
         ${compareAuctionEnabled && hasComparison ? `<button class="chip ${auctionSortKey === 'marketRos' ? 'active' : ''}" data-sort="marketRos">Market Season ${auctionSortKey === 'marketRos' ? (auctionSortDir === -1 ? '▼' : '▲') : '↕'}</button><button class="chip ${auctionSortKey === 'deltaRos' ? 'active' : ''}" data-sort="deltaRos">Δ ${auctionSortKey === 'deltaRos' ? (auctionSortDir === -1 ? '▼' : '▲') : '↕'}</button>` : ''}
         <button class="chip" id="toggleSortDir" title="Flip highest↔lowest">↕ ${auctionSortDir === -1 ? 'Highest → Lowest' : 'Lowest → Highest'}</button>
         <span class="mono" style="font-size:11px; color:var(--text-faint); margin-left:auto">Click headers to sort</span>
       </div>
-      <div class="table-wrap" style="border:0; border-radius:0; overflow-x:auto; margin-top:10px">
-        <table style="width:100%; table-layout:fixed;">
+      <div class="table-wrap" style="border:0; border-radius:0; overflow-x:auto; max-width:100%; margin-top:10px">
+        <table style="width:100%; min-width:980px;">
+          <colgroup>
+            <col style="width:36px">
+            <col style="min-width:210px">
+            ${compareAuctionEnabled && hasComparison ? '<col span="16">' : '<col span="8">'}
+          </colgroup>
           <thead>
             <tr>
               ${tableHeaders(compareAuctionEnabled && hasComparison, auctionSortKey, auctionSortDir)}
@@ -360,7 +392,7 @@ export async function renderAuction(root) {
       const s = Math.floor((remain % 60000) / 1000);
       countdownEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
       countdownEl.style.color = remain < 5 * 60 * 1000 ? 'var(--crimson)' : remain < 15 * 60 * 1000 ? 'var(--amber)' : 'var(--crimson)';
-      if (remain === 0) countdownEl.textContent = '00:00 — Draft now';
+      if (remain === 0) countdownEl.textContent = '00:00: Draft now';
     };
     tick();
     if (root._draftInterval) clearInterval(root._draftInterval);

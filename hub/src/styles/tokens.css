@@ -10,12 +10,16 @@
   --border-strong: #CBD5E1;
   --border-active: #1E40AF;
 
-  /* Text — dark on light */
+  /* Text — dark on light (text-faint darkened to #64748B for text use; #94A3B8 fails contrast) */
   --text: #0F172A;
   --text-rgb: 15, 23, 42;
   --text-muted: #475569;
-  --text-faint: #94A3B8;
+  --text-faint: #64748B;
   --text-inverse: #FFFFFF;
+
+  /* Typography — deliberate brand: Helvetica / Apple SF + SF Mono. Zero webfonts, no Google Fonts. */
+  --font-sans: "Helvetica Neue", Helvetica, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* Primary — FantasyPros navy blue */
   --primary: #1E40AF;
@@ -66,7 +70,9 @@
   --shadow-lg: 0 10px 24px rgba(0,0,0,0.12);
   --shadow-glow: 0 0 0 3px rgba(30,64,175,0.15);
 
-  /* Layout tokens */
+  /* Layout tokens — single source of truth (code wins over DESIGN.md drafts):
+     gap 10 / padding 14 / radius 12.
+     Radius rule: 16 modal / 12 card / 999 pill-only. */
   --color-primary: #1E40AF;
   --color-on-primary: #FFFFFF;
   --color-secondary: #0284C7;

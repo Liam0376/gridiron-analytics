@@ -10,8 +10,10 @@ Thanks for contributing to Gridiron Analytics. OSS v1 stays small on purpose.
   no deploy steps. `hub/start.sh` stays local-only unless run with explicit
   `--lan` (which warns).
 - **NFL-only, no betting logic.** No real-money features.
-- **Single-league:** each user runs their own league via `SLEEPER_LEAGUE_ID`.
-  Multi-league support is an explicit non-goal for OSS v1.
+- **Multi-league by switcher:** each user adds their own leagues via the hub
+  setup screen (`SLEEPER_LEAGUE_ID` = default league). Per-league isolated
+  snapshots (`data/fantasy_<id>.db`); hub stays read-only (no writes, no
+  refresh POSTs — refresh is model-side only).
 - **No hardcoded league IDs** in code or docs — use `SLEEPER_LEAGUE_ID` /
   placeholders.
 

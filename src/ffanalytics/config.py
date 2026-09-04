@@ -2,14 +2,60 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
-LEAGUE_ID = os.environ["SLEEPER_LEAGUE_ID"]
-if not LEAGUE_ID:
-    raise RuntimeError(
-        "SLEEPER_LEAGUE_ID env var must be set — this project never "
-        "hardcodes league settings, see CLAUDE.md"
-    )
+LEAGUE_ID = os.environ.get("SLEEPER_LEAGUE_ID", "")
+# why .get + no raise at import: the hub is multi-league now — league id
+# arrives per-request (UI setup screen / ?league_id= / POST /refresh body).
+# Import-time raise broke every tool/consumer without the env var (and masked
+# the friendly message behind KeyError). Refresh paths raise a clear
+# RuntimeError at call time instead (see get_league_id).
+
+
+def get_league_id(override: str | None = None) -> str:
+    """Resolve the active Sleeper league id: explicit arg > env > "".
+
+    Returns "" when unconfigured (callers decide: 503/empty-state, never crash).
+    """
+    if override and str(override).strip():
+        return str(override).strip()
+    return (LEAGUE_ID or "").strip()
+
+
+def require_league_id(override: str | None = None) -> str:
+    """get_league_id or raise the friendly error (refresh paths only)."""
+    lid = get_league_id(override)
+    if not lid:
+        raise RuntimeError(
+            "SLEEPER_LEAGUE_ID env var must be set (or pass league_id) — "
+            "copy .env.example to .env and paste your Sleeper league ID"
+        )
+    return lid
+
+
+def is_valid_league_id(lid: str | None) -> bool:
+    """Sleeper league ids are numeric strings (also guards ?league_id= input)."""
+    return bool(lid) and str(lid).isdigit()
+
 
 DB_PATH = Path(os.environ.get("FFANALYTICS_DB_PATH", "data/fantasy.db"))
+
+
+def db_path_for_league(league_id: str | None = None) -> Path:
+    """DB file for a league. Default/env league keeps legacy data/fantasy.db
+    (backward compat with existing installs); any other league gets
+    data/fantasy_<id>.db. Explicit FFANALYTICS_DB_PATH always wins.
+    why per-league files (not a league_id column): zero-migration multi-league —
+    each league is an isolated snapshot with identical schema; the hub proxy
+    allowlists data/ so ?league_id= can only resolve inside it.
+    """
+    if "FFANALYTICS_DB_PATH" in os.environ:
+        return Path(os.environ["FFANALYTICS_DB_PATH"])
+    lid = get_league_id(league_id)
+    default_lid = (LEAGUE_ID or "").strip()
+    if not lid or (default_lid and lid == default_lid):
+        return Path("data/fantasy.db")
+    if not is_valid_league_id(lid):
+        raise ValueError(f"invalid league id: {lid!r}")
+    return Path(f"data/fantasy_{lid}.db")
 
 # Every feature the projection engine uses is declared here with why it's
 # in, or (once tested) why it was rejected. See docs/superpowers/specs/
@@ -81,14 +127,72 @@ def get_stats_season() -> int:
 # TE 1*12=12, K/DEF streamed at $1 in practice but VBD still allocates 12 each
 # before clamping.
 POS_REPL_COUNTS = {"QB": 12, "RB": 28, "WR": 32, "TE": 12, "K": 12, "DEF": 12}
-
 # Empirical fallback for positional scarcity weights when market/model share is
 # too thin to derive a weight. K/DEF streamed at $1 -> weight 0.
 POS_WEIGHT_FALLBACK = {"QB": 0.65, "RB": 1.10, "WR": 0.92, "TE": 0.78, "K": 0.0, "DEF": 0.0}
 
 # 12-team $200 auction pool ($2400) minus 48 bench spots at $1 each = $2352
 # starter budget (10 starters * 12 teams). Aligned with auction.js / vbdAuction.js.
+# NOTE: both constants below are the 12x$200 DEFAULTS kept for backward compat
+# (tests, cold-start fallbacks). Live code must prefer league_economics(), which
+# derives the same numbers from any league's roster/teams/budget.
 STARTER_BUDGET_POOL = 2352.0
+
+
+def league_economics(
+    total_rosters: int = 12,
+    roster_positions: list | None = None,
+    auction_budget: int | float = 200,
+) -> dict:
+    """Per-league auction economics derived from league settings + draft info.
+
+    Returns {teams, budget, starters_per_team, bench_per_team, flex_slots,
+    starter_pool, starter_slots_total, bench_slots_total, repl_counts,
+    pos_starter_slots}. For the reference 12-team 2-FLEX $200 league this
+    reproduces POS_REPL_COUNTS / STARTER_BUDGET_POOL exactly.
+
+    Methodology (preserved from the 12-team tuning, audit 2026-09-01):
+    base starters per position x teams; FLEX extra goes to the positions
+    actually flexed — RB +F/6, WR +F/3, TE +0 (TEs are ~never flexed over
+    RB/WR); QB/K/DEF get no flex share. Bench spots cost $1 each.
+    Flex-split ratios are starting values — revisit with shadow data.
+    """
+    teams = max(1, int(total_rosters or 12))
+    budget = float(auction_budget or 200)
+    positions = list(roster_positions or [])
+    bench = sum(1 for p in positions if p == "BN") or 4
+    flex = sum(1 for p in positions if p == "FLEX")
+    starters = (len(positions) - bench) if positions else 10
+    starters = max(1, starters)
+
+    def _base(pos: str, fallback: int) -> int:
+        return sum(1 for p in positions if p == pos) if positions else fallback
+
+    rb_base, wr_base = _base("RB", 2), _base("WR", 2)
+    repl_counts = {
+        "QB": teams * _base("QB", 1),
+        "RB": round(teams * (rb_base + flex / 6)),
+        "WR": round(teams * (wr_base + flex / 3)),
+        "TE": teams * _base("TE", 1),
+        "K": teams * _base("K", 1),
+        "DEF": teams * _base("DEF", 1),
+    }
+    bench_total = teams * bench
+    return {
+        "teams": teams,
+        "budget": budget,
+        "starters_per_team": starters,
+        "bench_per_team": bench,
+        "flex_slots": flex,
+        "starter_pool": teams * budget - bench_total * 1,
+        "starter_slots_total": teams * starters,
+        "bench_slots_total": bench_total,
+        "repl_counts": repl_counts,
+        "pos_starter_slots": {
+            "QB": _base("QB", 1), "RB": rb_base, "WR": wr_base,
+            "TE": _base("TE", 1), "K": _base("K", 1), "DEF": _base("DEF", 1),
+        },
+    }
 
 
 def compute_nfl_week(now: datetime | None = None) -> int:

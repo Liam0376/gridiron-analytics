@@ -1,6 +1,7 @@
 import './styles/app.css';
 import { allRoutes, getRoute } from './router.js';
-import { fetchHealth, fetchMeta, computeStaleness, fetchProjections, fetchComparison, fetchRoster } from './api.js';
+import { fetchHealth, fetchMeta, fetchReady, computeStaleness, fetchProjections, fetchComparison, fetchRoster } from './api.js';
+import { getLeagueId } from './lib/league.js';
 import { shimmer } from './components/shimmer.js';
 import { renderMobileNav, bindMobileNav } from './components/mobileNav.js';
 import { renderDashboard } from './views/dashboard.js';
@@ -140,11 +141,22 @@ async function render() {
     // reveal animation
     app.querySelectorAll('.reveal').forEach((el,i)=>{
       el.style.transitionDelay = `${Math.min(i*40, 240)}ms`;
-      requestAnimationFrame(()=> el.classList.add('in'));
+      requestAnimationFrame(()=>{
+        el.classList.add('in');
+        const clearDelay = () => { el.style.transitionDelay = ''; };
+        el.addEventListener('transitionend', clearDelay, { once: true });
+        setTimeout(clearDelay, 500);
+      });
     });
     // observe for scroll reveals if more content added
     const io = new IntersectionObserver((entries)=>{
-      entries.forEach(e=>{ if(e.isIntersecting) e.target.classList.add('in'); });
+      entries.forEach(e=>{
+        if(e.isIntersecting) {
+          e.target.classList.add('in');
+          e.target.style.transitionDelay = '';
+          io.unobserve(e.target);
+        }
+      });
     }, { threshold: 0.08 });
     app.__revealObserver = io;
     app.querySelectorAll('.reveal').forEach(el=> io.observe(el));
@@ -467,28 +479,60 @@ document.addEventListener('keydown', (e)=>{
   }
 });
 
-// Linear-style mouse spotlight tracking for data cards and rows (rAF throttled)
-let mxPending = null;
-let mxLastEvent = null;
-function applyMx() {
-  if (!mxLastEvent) return;
-  const e = mxLastEvent;
-  mxPending = null;
-  const target = e.target.closest('.card');
-  if (!target) return;
-  const rect = target.getBoundingClientRect();
-  target.style.setProperty('--mx', `${e.clientX - rect.left}px`);
-  target.style.setProperty('--my', `${e.clientY - rect.top}px`);
-}
-document.addEventListener('mousemove', (e) => {
-  mxLastEvent = e;
-  if (mxPending != null) return;
-  mxPending = requestAnimationFrame(applyMx);
-});
-
 window.addEventListener('hashchange', render);
 render();
 setInterval(refreshStaleness, 30000);
+
+// League switcher entry point: topbar button (league name + draft badge) +
+// first-run setup gate. Non-blocking — fills in when meta resolves.
+let _setupAutoOpened = false;
+async function renderLeagueButton() {
+  const slot = document.querySelector('.topbar-right');
+  if (!slot || document.getElementById('leagueBtn')) return;
+  const btn = document.createElement('button');
+  btn.id = 'leagueBtn';
+  btn.className = 'chip';
+  btn.title = 'Switch fantasy league';
+  btn.setAttribute('aria-label', 'Switch fantasy league');
+  btn.style.marginRight = '8px';
+  btn.textContent = 'League…';
+  btn.addEventListener('click', async () => {
+    const { openSetupModal } = await import('./views/setup.js');
+    openSetupModal({ onDone: (saved) => { if (saved) { location.reload(); } } });
+  });
+  slot.prepend(btn);
+  try {
+    const meta = await fetchMeta();
+    const name = meta.leagueName || (getLeagueId() ? `League ${getLeagueId().slice(0, 6)}…` : 'Set up league');
+    btn.textContent = `🏈 ${name}`;
+    btn.title = `Active league: ${meta.leagueName || getLeagueId() || 'none'} — click to switch`;
+    const sub = document.querySelector('.nav-sub');
+    if (sub && meta.totalRosters && meta.season) {
+      sub.textContent = `${meta.totalRosters}-Team · ${meta.season}`;
+    }
+  } catch (_) {
+    btn.textContent = '🏈 League';
+  }
+}
+
+async function maybeAutoSetup() {
+  if (_setupAutoOpened) return;
+  _setupAutoOpened = true;
+  // why gated: first run = no stored league AND nothing synced on this
+  // machine AND no env default. Existing single-league installs (env set or
+  // data present) never see this modal.
+  try {
+    if (getLeagueId()) return;
+    const meta = await fetchMeta();
+    if ((meta.configuredLeagues || []).length > 0) return;
+    if (meta.defaultLeagueId) return;
+    const { openSetupModal } = await import('./views/setup.js');
+    openSetupModal({ onDone: (saved) => { if (saved) location.reload(); } });
+  } catch (_) {}
+}
+
+renderLeagueButton();
+maybeAutoSetup();
 
 // Pre-load search player cache in background for instant dropdown results
 loadSearchPlayersCache();

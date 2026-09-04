@@ -43,7 +43,11 @@ export async function renderTierlists(root) {
   root.innerHTML = `
     <div class="hero reveal in">
       <h1>Tiers <span class="badge" style="background:var(--color-primary); color:white; margin-left:8px; vertical-align:middle">${view==='season' ? 'SEASON ROS' : 'WEEK 10'}</span></h1>
-      <p>Deterministic — sorted by <code class="inline">point_estimate</code> then cut when gap &gt; <code class="inline">max(${gap}, 0.7×median width)</code> or tier hits <code class="inline">cap=${cap}</code>. No LLM. <strong>Week</strong> = next game (star-aware ±${view==='season'?'~15-35':'~6-10'}). <strong>Season</strong> = ROS ` + (view==='season' ? `9 games (weeks 10-18) × weekly, width ×√9` : `weekly`) + ` — switch to <strong>FLEX</strong> for your 2-FLEX board (RB/WR/TE <code class="inline">×1.05</code>).</p>
+      <p>Deterministic tiers by point estimate.</p>
+      <details style="margin-top:8px" aria-label="How tiering works">
+        <summary style="cursor:pointer; font-weight:600" title="Toggle tiering explainer">How tiering works</summary>
+        <p style="margin-top:8px">Deterministic: sorted by <code class="inline">point_estimate</code> then cut when gap &gt; <code class="inline">max(${gap}, 0.7×median width)</code> or tier hits <code class="inline">cap=${cap}</code>. No LLM. <strong>Week</strong> = next game (star-aware ±${view==='season'?'~15-35':'~6-10'}). <strong>Season</strong> = ROS ` + (view==='season' ? `9 games (weeks 10-18) × weekly, width ×√9` : `weekly`) + `: switch to <strong>FLEX</strong> for your 2-FLEX board (RB/WR/TE <code class="inline">×1.05</code>).</p>
+      </details>
     </div>
     <div class="card reveal in" style="margin-top:12px">
       <div class="card-body row">
@@ -56,18 +60,18 @@ export async function renderTierlists(root) {
         <div class="spacer"></div>
         <label class="faint" style="font:500 12px "Helvetica Neue", Helvetica, sans-serif">gap <input id="gapInput" type="number" step="0.5" min="0.5" max="6" value="${gap}" style="width:64px; background:var(--surface-raised); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:6px 8px; margin-left:6px"></label>
         <label class="faint" style="font:500 12px "Helvetica Neue", Helvetica, sans-serif; margin-left:8px">cap <input id="capInput" type="number" step="1" min="3" max="12" value="${cap}" style="width:64px; background:var(--surface-raised); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:6px 8px; margin-left:6px"></label>
-        <button class="btn btn-ghost btn-sm" id="copyMd">Copy markdown</button>
+        <button class="btn btn-ghost btn-sm" id="copyMd" title="Copy tiers as markdown">Copy markdown</button>
       </div>
     </div>
 
-    ${!players.length ? `<div class="card reveal in" style="margin-top:16px"><div class="empty">No players for <strong>${pos}</strong> yet. Refresh in-season or check <code class="inline">Projections</code> — tiering needs <code class="inline">projected_points</code>.</div></div>` :
+    ${!players.length ? `<div class="card reveal in" style="margin-top:16px"><div class="empty">No players for <strong>${pos}</strong> yet. Refresh in-season or check <code class="inline">Projections</code>: tiering needs <code class="inline">projected_points</code>.</div></div>` :
       `<div style="margin-top:16px; display:flex; flex-direction:column; gap:12px">
         ${tiers.map((tier, idx)=>`
           <div class="tier reveal in">
             <div class="tier-head"><strong style="color:${tierColor(idx)}">Tier ${idx+1}</strong><span class="micro faint">${tier.length} players · ${tier[0].projected_points?.toFixed(1)} → ${tier[tier.length-1].projected_points?.toFixed(1)} pts</span></div>
             <div class="tier-body">
               ${tier.map(p=>`
-                <div class="player-card" data-pid="${escapeHtml(p.player_id || '')}" style="--team-accent:${getTeamColor((p.team||'').toUpperCase())}; border-left:3px solid var(--team-accent); background:linear-gradient(90deg, color-mix(in srgb, var(--team-accent) 7%, var(--surface-raised)) 0%, var(--surface-raised) 50%); cursor:pointer">
+                <div class="player-card" data-pid="${escapeHtml(p.player_id || '')}" style="--team-accent:${getTeamColor((p.team||'').toUpperCase())}; border-top:1px solid var(--team-accent); background:linear-gradient(90deg, color-mix(in srgb, var(--team-accent) 7%, var(--surface-raised)) 0%, var(--surface-raised) 50%); cursor:pointer">
                   <div class="row" style="gap:8px">${playerAvatar(p, 28)} <div style="flex:1; min-width:0"><div class="row" style="gap:6px">${posBadge(p.position || p.position_group)} <span class="name">${escapeHtml(p.player_name || p.player_id)}</span></div><div class="meta">${teamLogo(p.team, 14)} ${escapeHtml(p.team||'—')} vs ${escapeHtml(p.opponent_team||'—')} · ${p.wind_mph ? `${Number(p.wind_mph).toFixed(0)} mph` : '—'}</div></div></div>
                   <div class="pts">${Number(p.projected_points ?? p.point_estimate ?? 0).toFixed(1)} <span style="font:500 11px ui-monospace, SFMono-Regular, monospace; color:var(--text-muted)">±${Number(p.width ?? 5).toFixed(1)}</span></div>
                 </div>
@@ -105,11 +109,11 @@ export async function renderTierlists(root) {
   gapInput?.addEventListener('change', sync);
   capInput?.addEventListener('change', sync);
   root.querySelector('#copyMd')?.addEventListener('click', ()=>{
-    const md = tiers.map((t,i)=>`### Tier ${i+1}\n` + t.map(p=>`- ${p.player_name || p.player_id} (${p.position || p.position_group}) — ${Number(p.projected_points ?? 0).toFixed(1)} pts`).join('\n')).join('\n\n');
+    const md = tiers.map((t,i)=>`### Tier ${i+1}\n` + t.map(p=>`- ${p.player_name || p.player_id} (${p.position || p.position_group}) - ${Number(p.projected_points ?? 0).toFixed(1)} pts`).join('\n')).join('\n\n');
     navigator.clipboard.writeText(md || 'No tiers yet');
     const btn = root.querySelector('#copyMd');
     if(btn){ btn.textContent='Copied'; setTimeout(()=>btn.textContent='Copy markdown', 1200); }
   });
 }
 
-function tierColor(i){ const cols=['#F59E0B','#38BDF8','#10B981','#8B5CF6','#EC4899','#6B7280']; return cols[i % cols.length]; }
+function tierColor(i){ const cols=['var(--amber)','var(--sky)','var(--emerald)','var(--violet)','var(--pos-k)','var(--pos-def)']; return cols[i % cols.length]; }

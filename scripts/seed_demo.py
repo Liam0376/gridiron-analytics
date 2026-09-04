@@ -5,7 +5,11 @@ import json, pathlib, sys
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 import os
-os.environ.setdefault("SLEEPER_LEAGUE_ID","1397736035240173568")
+# why require (not setdefault): multi-league — seeding another league's id
+# here would mislabel demo data; the id always comes from the environment
+# (start.sh passes SLEEPER_LEAGUE_ID through).
+if not os.environ.get("SLEEPER_LEAGUE_ID"):
+    raise SystemExit("seed_demo: SLEEPER_LEAGUE_ID env var must be set (refusing to seed the wrong league)")
 os.environ.setdefault("FFANALYTICS_DB_PATH", str(REPO_ROOT / "data" / "fantasy.db"))
 from ffanalytics import db
 from ffanalytics.stat_projector import build_weekly_projections
@@ -32,7 +36,7 @@ except Exception as e:
     print(f"live 2026 schedule fetch failed ({e}) — fallback to {schedule_path.name}")
     schedule=json.loads(schedule_path.read_text())
     stats_2025=stats_2025  # keep as stats_2025 for naming
-scoring=requests.get("https://api.sleeper.app/v1/league/1397736035240173568",timeout=10).json().get("scoring_settings",{})
+scoring=requests.get(f"https://api.sleeper.app/v1/league/{os.environ['SLEEPER_LEAGUE_ID']}",timeout=10).json().get("scoring_settings",{})
 # build weekly projections for week 1 — use 2025 stats as history (most recent complete season)
 from collections import Counter
 game_counts = Counter(r.get("player_id") for r in stats_2025 if r.get("season_type") == "REG")
@@ -81,7 +85,11 @@ try:
     conn.execute("DELETE FROM player_stats WHERE season=2026 AND week=1")
 except Exception: pass
 conn.execute("INSERT INTO player_stats (season, week, data) VALUES (?, ?, ?)", (2026, 1, json.dumps(projs, allow_nan=False)))
-conn.execute("INSERT OR REPLACE INTO league_settings (season, data) VALUES (?, ?)", (2026, json.dumps({"scoring_settings": scoring, "roster_positions": ["QB","RB","RB","WR","WR","TE","FLEX","FLEX","K","DEF","BN","BN","BN","BN"]})))
+# why insert-only-if-missing: league_settings holds live Sleeper truth (users,
+# reserve_slots, budget); a stripped demo row must never clobber it.
+exists = conn.execute("SELECT 1 FROM league_settings WHERE season=2026 LIMIT 1").fetchone()
+if not exists:
+    conn.execute("INSERT OR REPLACE INTO league_settings (season, data) VALUES (?, ?)", (2026, json.dumps({"scoring_settings": scoring, "roster_positions": ["QB","RB","RB","WR","WR","TE","FLEX","FLEX","K","DEF","BN","BN","BN","BN"]})))
 import datetime
 conn.execute("INSERT INTO refresh_log (source, ran_at, success, error_message) VALUES (?, ?, ?, ?)", ("demo-seed-auto", datetime.datetime.now().isoformat(), 1, None))
 conn.commit()

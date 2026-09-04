@@ -1,13 +1,22 @@
 // VBD (Value Based Drafting) auction pricing from comparison data
 // Mirrors auction.js logic: dynamic replacement levels + budget-proportional pricing
+import { leagueEconomics } from '../lib/league.js';
 
 const TEAMS = 12;
 const BUDGET = 200;
 // Aligned with src/ffanalytics/comparison.py: QB12 RB28 WR32 TE12 (12-team 2-FLEX: 72 flex-eligible starters)
 // K/DEF capped to $1 in real drafts (streamed) — VBD computes but vbdAuction clamps
+// NOTE: legacy defaults — live code derives per-league indices from the
+// league param (see leagueEconomics); these stay for backward compat.
 const REPL_IDX = { QB: 12, RB: 28, WR: 32, TE: 12, K: 12, DEF: 12 };
 
-export function computeVbdParams(compPlayers) {
+export function computeVbdParams(compPlayers, league) {
+  const econ = league || leagueEconomics({});
+  const replIdx = {};
+  for (const pos of ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']) {
+    replIdx[pos] = econ.replCounts[pos] ?? REPL_IDX[pos];
+  }
+  const flexSlotsTotal = econ.flexSlots * econ.teams;
   const byPos = { QB: [], RB: [], WR: [], TE: [], K: [], DEF: [] };
 
   compPlayers.forEach(p => {
@@ -18,23 +27,24 @@ export function computeVbdParams(compPlayers) {
     byPos[pos].push(szn);
   });
 
+  // why 1-based counts here (not 0-based like auctionMath REPL_IDX):
+  // these feed slice(n) cutoffs + [n-1] indexing below, both count-based.
   for (const pos in byPos) byPos[pos].sort((a, b) => b - a);
 
   const replPts = {};
-  for (const pos in REPL_IDX) {
+  for (const pos in replIdx) {
     const arr = byPos[pos] || [];
-    const idx = REPL_IDX[pos] - 1;
+    const idx = replIdx[pos] - 1;
     replPts[pos] = idx < arr.length ? arr[idx] : 0;
   }
 
   // FLEX pool: remaining RB/WR/TE after positional starters
   const flexPool = [
-    ...byPos.RB.slice(REPL_IDX.RB),
-    ...byPos.WR.slice(REPL_IDX.WR),
-    ...byPos.TE.slice(REPL_IDX.TE),
+    ...byPos.RB.slice(replIdx.RB),
+    ...byPos.WR.slice(replIdx.WR),
+    ...byPos.TE.slice(replIdx.TE),
   ].sort((a, b) => b - a);
-  const flexSlots = 2 * TEAMS;
-  const flexRepl = flexSlots - 1 < flexPool.length ? flexPool[flexSlots - 1] : 0;
+  const flexRepl = flexSlotsTotal - 1 < flexPool.length ? flexPool[flexSlotsTotal - 1] : 0;
 
   // Effective replacement: max(positional, flex) for FLEX-eligible positions
   for (const pos of ['RB', 'WR', 'TE']) {
@@ -70,7 +80,7 @@ export function computeVbdParams(compPlayers) {
       const modelVals = byPos[pos] || [];
       const marketVals = byPosMarket[pos] || [];
       // market repl
-      const mIdx = REPL_IDX[pos]-1;
+      const mIdx = replIdx[pos]-1;
       const marketRepl = mIdx < marketVals.length ? marketVals[mIdx] : (marketVals[marketVals.length-1]||0);
       const modelSum = modelVals.reduce((s,szn)=> s + Math.max(0, szn - repl), 0);
       const marketSum = marketVals.reduce((s,szn)=> s + Math.max(0, szn - marketRepl), 0);
@@ -100,12 +110,11 @@ export function computeVbdParams(compPlayers) {
     });
   }
   allVors.sort((a, b) => b - a);
-  const starterSlots = TEAMS * 10;
+  const starterSlots = econ.starterSlotsTotal;
   const starters = allVors.slice(0, starterSlots);
   totalVor = starters.reduce((s, v) => s + v, 0) || 1;
 
-  const benchSlots = TEAMS * 4;
-  const starterBudget = TEAMS * BUDGET - benchSlots;
+  const starterBudget = econ.starterPool;
 
   return { replPts, dollarPerVor: starterBudget / totalVor, posWeight: POS_WEIGHT };
 }

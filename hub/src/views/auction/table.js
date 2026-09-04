@@ -102,8 +102,8 @@ export function tableBody(filteredPlayers, showCompare, escapeHtml) {
         <td class="mono" style="font-size:11px; color:var(--text-muted)">${p.fp_adp != null ? '#' + p.fp_adp : '—'}</td>
         <td class="mono" style="font-size:11px; color:var(--violet)">${p.statsguy_rank != null ? `#${p.statsguy_rank} <span style="color:var(--text-faint)">(${p.statsguy_value.toFixed(0)})</span>` : '—'}</td>
       ` : ''}
-      <td class="mono" style="color:${p.vor > 30 ? '#10B981' : p.vor > 15 ? 'var(--amber)' : 'var(--text-muted)'}">+${p.vor.toFixed(0)}</td>
-      <td><span class="badge" style="background:${p.auction >= 15 ? '#16A34A' : p.auction >= 5 ? 'var(--amber-dim)' : 'var(--surface-raised)'}; color:${p.auction >= 15 ? 'white' : p.auction >= 5 ? 'var(--amber)' : 'var(--text-muted)'}; border:1px solid ${p.auction >= 15 ? '#16A34A' : 'var(--border)'}">$${p.auction}</span></td>
+      <td class="mono" style="color:${p.vor > 30 ? 'var(--emerald)' : p.vor > 15 ? 'var(--amber)' : 'var(--text-muted)'}">+${p.vor.toFixed(0)}</td>
+      <td><span class="badge" style="background:${p.auction >= 15 ? 'var(--emerald)' : p.auction >= 5 ? 'var(--amber-dim)' : 'var(--surface-raised)'}; color:${p.auction >= 15 ? 'white' : p.auction >= 5 ? 'var(--amber)' : 'var(--text-muted)'}; border:1px solid ${p.auction >= 15 ? 'var(--emerald)' : 'var(--border)'}">$${p.auction}</span></td>
       ${showCompare ? `<td class="mono" style="color:var(--sky)"><span class="badge" style="background:var(--sky-dim); color:var(--sky); border:1px solid rgba(56,189,248,0.2)">$${p.marketAuction}</span></td><td class="mono" style="font-weight:700; color:${p.deltaAuction > 4 ? 'var(--emerald)' : p.deltaAuction < -4 ? 'var(--crimson)' : 'var(--text-muted)'}">${p.deltaAuction > 0 ? '+' : ''}$${p.deltaAuction}</td>` : ''}
       ${showCompare ? `<td>${edgeBadgeAuction(p.edge)}</td>` : ''}
       <td class="mono-muted" style="font-size:11px">${(p.ros - p.widthRos).toFixed(0)}–${(p.ros + p.widthRos).toFixed(0)}</td>
