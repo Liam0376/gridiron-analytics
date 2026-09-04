@@ -131,6 +131,22 @@ export async function fetchMeta() {
   return { season: null, week: null, lastUpdated: null, counts: {}, stale: true, note: 'hub/server.py not running — start it for DB fallback' };
 }
 
+// Trigger sync/refresh for a specific league directly from the UI (no terminal needed).
+export async function triggerRefresh(explicitId) {
+  const lid = explicitId || getLeagueId();
+  const res = await fetch(`${API_BASE}/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(lid ? { league_id: String(lid) } : {}),
+  });
+  if (!res.ok && res.status !== 202) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Refresh failed (${res.status}): ${text || res.statusText}`);
+  }
+  invalidateApiCache();
+  return { ok: true, status: res.status };
+}
+
 // League-scoped readiness: 200 when this league has rosters + players.
 export async function fetchReady() {
   try {

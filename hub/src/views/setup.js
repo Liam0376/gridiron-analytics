@@ -2,7 +2,7 @@
 // The only two things a user ever types: league ID (or pasted Sleeper URL)
 // and optionally a draft-type override. Everything else (name, teams,
 // season, draft type, scoring, rosters) is fetched from Sleeper per league.
-import { fetchDraftInfo, fetchMeta, fetchReady, setActiveLeague } from '../api.js';
+import { fetchDraftInfo, fetchMeta, fetchReady, setActiveLeague, triggerRefresh } from '../api.js';
 import { getLeagueId, setDraftTypeOverride, getDraftTypeOverride, parseLeagueInput, isValidLeagueId } from '../lib/league.js';
 import { escapeHtml, escapeAttr } from '../lib/escape.js';
 import { trapFocus } from '../lib/focusTrap.js';
@@ -119,26 +119,64 @@ export async function openSetupModal({ onDone } = {}) {
         </div>
         <div id="setupDataCheck"></div>
       </div>`;
-    container.querySelector('#setupSave').addEventListener('click', async () => {
-      const dt = container.querySelector('#setupDraftType').value;
-      setDraftTypeOverride(dt);
-      setActiveLeague(id);
-      const checkEl = container.querySelector('#setupDataCheck');
-      checkEl.innerHTML = `<div class="faint" style="margin-top:8px">Checking synced data…</div>`;
-      const ready = await fetchReady().catch(() => null);
-      if (ready) {
-        cleanup(); origClose(true);
-        return;
-      }
-      // USER-INSTRUCTION (inert copy-paste text; hub never executes it — see verify-isolation.sh §5):
-      const cmd = `SLEEPER_LEAGUE_ID=${escapeHtml(id)} curl -X POST http://127.0.0.1:8000/refresh -H 'Content-Type: application/json' -d '{"league_id":"${escapeHtml(id)}"}'`; // USER-INSTRUCTION
-      checkEl.innerHTML = `
-        <div class="alert alert-info" style="margin-top:12px">League saved — one step left: this league has no synced data on this machine yet. With the model running (<span class="mono">bash hub/start.sh</span>), run:
-          <div class="mono" style="margin-top:8px; font-size:11px; word-break:break-all; background:var(--surface-raised); padding:8px; border-radius:8px">${cmd}</div>
-          <div class="faint" style="margin-top:8px">Refresh pulls everything (settings, rosters, matchups) from Sleeper — then reload this page.</div>
-          <div class="row" style="gap:8px; justify-content:flex-end; margin-top:8px"><button class="btn btn-primary btn-sm" id="setupDoneBtn">Done</button></div>
-        </div>`;
-      container.querySelector('#setupDoneBtn').addEventListener('click', () => { cleanup(); origClose(true); });
+      container.querySelector('#setupSave').addEventListener('click', async () => {
+        const dt = container.querySelector('#setupDraftType').value;
+        setDraftTypeOverride(dt);
+        setActiveLeague(id);
+        const checkEl = container.querySelector('#setupDataCheck');
+        checkEl.innerHTML = `<div class="faint" style="margin-top:8px">Checking synced data…</div>`;
+        const ready = await fetchReady().catch(() => null);
+        if (ready) {
+          cleanup(); origClose(true);
+          return;
+        }
+
+        const renderSyncState = (statusHtml) => {
+          checkEl.innerHTML = `
+            <div class="alert alert-info" style="margin-top:12px">
+              <div><strong>Sync League Data</strong></div>
+              <div class="faint" style="margin-top:4px">This league is set up. Click below to pull settings, rosters, and matchups from Sleeper directly into your local database.</div>
+              <div id="syncProgressArea" style="margin-top:10px">${statusHtml}</div>
+            </div>`;
+        };
+
+        renderSyncState(`<button class="btn btn-primary" id="setupSyncBtn">Sync League Data Now</button>`);
+
+        const bindSyncBtn = () => {
+          const syncBtn = container.querySelector('#setupSyncBtn');
+          if (!syncBtn) return;
+          syncBtn.addEventListener('click', async () => {
+            syncBtn.disabled = true;
+            syncBtn.textContent = 'Starting sync…';
+            const progress = container.querySelector('#syncProgressArea');
+            try {
+              await triggerRefresh(id);
+              if (progress) progress.innerHTML = `<div class="faint" style="display:flex; align-items:center; gap:8px"><span class="spinner" style="width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--amber); border-radius:50%; animation:spin 0.8s linear infinite"></span> Fetching Sleeper settings, rosters &amp; matchups…</div>`;
+
+              // Poll fetchReady until local DB is populated
+              let attempts = 0;
+              const poll = setInterval(async () => {
+                attempts++;
+                const isReady = await fetchReady().catch(() => null);
+                if (isReady || attempts >= 15) {
+                  clearInterval(poll);
+                  cleanup(); origClose(true);
+                }
+              }, 2000);
+            } catch (err) {
+              if (progress) {
+                progress.innerHTML = `
+                  <div class="alert alert-bad" style="margin-bottom:8px">Model backend unreachable or busy (${escapeHtml(err.message || 'connection failed')}). Make sure backend is running.</div>
+                  <button class="btn btn-primary btn-sm" id="setupSyncBtn">Retry Sync</button>
+                  <button class="btn btn-ghost btn-sm" id="setupDoneBtn" style="margin-left:8px">Done (sync later)</button>`;
+                bindSyncBtn();
+                const doneBtn = container.querySelector('#setupDoneBtn');
+                if (doneBtn) doneBtn.addEventListener('click', () => { cleanup(); origClose(true); });
+              }
+            }
+          });
+        };
+        bindSyncBtn();
+      });
     });
-  });
-}
+  }
