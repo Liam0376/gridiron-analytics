@@ -120,7 +120,10 @@ def evaluate_unresolved_shadow_recommendations(
     for p in player_stats:
         pid = str(p.get("player_id") or p.get("id") or "")
         wk = p.get("week")
-        if pid and wk:
+        # why skip explicit unknowns: rookie/flagged rows carry zero stats by
+        # design — resolving pending rows against them would record fake 0.0
+        # outcomes for games never projected.
+        if pid and wk and not p.get("is_empty_projection"):
             fpts = p.get("fantasy_points")
             if fpts is None:
                 fpts = calculate_fantasy_points(p, scoring_settings)
@@ -257,7 +260,9 @@ def evaluate_unresolved_prop_recommendations(
     for p in player_stats:
         pid = str(p.get("player_id") or p.get("id") or "")
         wk = p.get("week")
-        if pid and wk:
+        # why skip explicit unknowns (same as the fantasy resolver above):
+        # zero-stat placeholder rows must never resolve real outcomes.
+        if pid and wk and not p.get("is_empty_projection"):
             by_key[(pid, int(wk))] = p
 
     resolved = 0

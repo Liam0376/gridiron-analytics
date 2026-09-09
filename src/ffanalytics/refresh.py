@@ -45,6 +45,102 @@ def _log(conn: sqlite3.Connection, source: str, success: bool, error_message: st
     conn.commit()
 
 
+def _norm_name_pos(name, pos):
+    return (str(name or "").strip().lower(), str(pos or "").upper())
+
+
+def build_sleeper_team_map(sleeper_players: dict) -> dict:
+    """(normalized name, POS) -> current team abbr from Sleeper /players/nfl.
+
+    nflverse rows carry LAST season's team; Sleeper is current (trades, free
+    agency). First-seen wins on (name, pos) collisions — documented limit
+    (e.g. shared names across positions are split by pos; same-name same-pos
+    collisions keep the first row).
+    """
+    out = {}
+    for sp in (sleeper_players or {}).values():
+        sp = sp or {}
+        team, pos = sp.get("team"), sp.get("position")
+        name = sp.get("full_name") or " ".join(
+            x for x in (sp.get("first_name"), sp.get("last_name")) if x
+        )
+        if team and pos and name:
+            out.setdefault(_norm_name_pos(name, pos), str(team).upper())
+    return out
+
+
+def patch_proj_teams(projs: list, team_by_np: dict, opp_map: dict) -> int:
+    """Overwrite stale nflverse teams on projection rows with current Sleeper
+    teams; remap opponent from the target-week schedule. Mutates rows.
+    Returns patched count. Never raises on weird rows (soft-fail per row)."""
+    patched = 0
+    for pr in projs or []:
+        try:
+            key = _norm_name_pos(
+                pr.get("player_display_name") or pr.get("player_name"),
+                pr.get("position") or pr.get("position_group"),
+            )
+            nt = (team_by_np or {}).get(key)
+            if nt and nt != (pr.get("team") or ""):
+                pr["team"] = nt
+                pr["recent_team"] = nt
+                if opp_map:
+                    pr["opponent_team"] = opp_map.get(nt, pr.get("opponent_team", ""))
+                patched += 1
+        except Exception:
+            continue
+    return patched
+
+
+ROOKIE_SCOPE_POSITIONS = ("QB", "RB", "WR", "TE", "K")
+
+
+def build_rookie_rows(sleeper_players: dict, have_keys: set, opp_map: dict, week: int) -> list:
+    """Explicit-unknown rows for the incoming class (Sleeper years_exp == 0).
+
+    nflverse has no rows for rookies — without this they are invisible
+    (unknown) instead of identified. Zero stats + is_empty_projection=True;
+    positional-mean imputation stays REJECTED (adds bias on OOS rookies).
+    player_id is the Sleeper id (no GSIS exists yet) — hub avatars and roster
+    joins resolve on it. have_keys skips anyone already projected.
+    """
+    rows = []
+    for sid, sp in (sleeper_players or {}).items():
+        try:
+            sp = sp or {}
+            pos = str(sp.get("position") or "").upper()
+            if pos not in ROOKIE_SCOPE_POSITIONS:
+                continue
+            if sp.get("years_exp", 99) != 0:
+                continue
+            if sp.get("active") is False:
+                continue
+            team = sp.get("team")
+            name = sp.get("full_name") or " ".join(
+                x for x in (sp.get("first_name"), sp.get("last_name")) if x
+            )
+            if not team or not name:
+                continue
+            if _norm_name_pos(name, pos) in (have_keys or set()):
+                continue
+            rows.append({
+                "player_id": str(sid),
+                "player_display_name": name,
+                "position": pos,
+                "position_group": pos,
+                "team": str(team).upper(),
+                "recent_team": str(team).upper(),
+                "opponent_team": (opp_map or {}).get(str(team).upper(), ""),
+                "week": week,
+                "projected_points": 0.0,
+                "is_empty_projection": True,
+                "is_rookie_unknown": True,
+            })
+        except Exception:
+            continue
+    return rows
+
+
 def run_refresh(
     conn: sqlite3.Connection,
     season: int,
@@ -149,6 +245,15 @@ def run_refresh_with_data(
         data["injury_status"] = {}
         data["matchups"] = []
 
+    # Sleeper players map (id crosswalk + current teams + rookie class) —
+    # fetched once, reused by the team patch/rookies below and market
+    # consensus further down (which keeps its own fallback if this fails).
+    sleeper_players_map: dict = {}
+    try:
+        sleeper_players_map = sleeper.get_sleeper_players(session=sleeper_session) or {}
+    except Exception:
+        logger.exception("refresh: sleeper_players_map fetch failed")
+
     # Get NFLverse data
     try:
         player_stats = nflverse.get_weekly_player_stats(stats_season, nfl_module=nfl_module)
@@ -192,6 +297,31 @@ def run_refresh_with_data(
                 if pid in proj_map:
                     enriched["projected_points"] = proj_map[pid]["projected_points"]
                 enriched_player_stats.append(enriched)
+            # why Sleeper team patch: nflverse rows carry LAST season's team;
+            # without this, preseason boards show past teams (unacceptable).
+            # Match on (name, pos); opponent remapped from the target schedule.
+            # why rookie rows: the incoming class must be identified (name,
+            # team, pos), never invisible — zeros + is_empty flag, never
+            # imputed. Soft-fail each step; projections stand without them.
+            try:
+                from ffanalytics.adapters.schedule import get_nfl_team_matchups
+                _opp_map = get_nfl_team_matchups(sched, target_wk)
+                _team_map = build_sleeper_team_map(sleeper_players_map)
+                _n_patched = patch_proj_teams(projs, _team_map, _opp_map)
+                if _n_patched:
+                    logger.info(f"refresh: Sleeper team patch applied to {_n_patched} rows")
+                _have = {
+                    ((pr.get("player_display_name") or pr.get("player_name") or "").strip().lower(),
+                     str(pr.get("position") or pr.get("position_group") or "").upper())
+                    for pr in projs
+                }
+                _rookies = build_rookie_rows(sleeper_players_map, _have, _opp_map, target_wk)
+                if _rookies:
+                    projs.extend(_rookies)
+                    enriched_player_stats.extend(dict(r) for r in _rookies)
+                    logger.info(f"refresh: {len(_rookies)} rookie rows added as explicit unknowns")
+            except Exception as _patch_exc:
+                logger.warning(f"refresh: team-patch/rookie step skipped: {_patch_exc}")
             _model_projs = projs
             data["model_projections"] = projs
             data["player_stats"] = enriched_player_stats
@@ -216,12 +346,14 @@ def run_refresh_with_data(
 
         current_wk_m = compute_nfl_week()
         target_wk_m = current_wk_m if current_wk_m > 0 else 1
-        # Sleeper players map (gsis_id crosswalk) — cached fetch, okay to repeat
-        try:
-            sleeper_players_map = sleeper.get_sleeper_players(session=sleeper_session)
-        except Exception:
-            logger.exception("refresh: sleeper_players_map fetch failed")
-            sleeper_players_map = {}
+        # Sleeper players map (gsis_id crosswalk) — hoisted fetch above;
+        # reuse it, refetch only if the hoist failed (keeps old fallback).
+        if not sleeper_players_map:
+            try:
+                sleeper_players_map = sleeper.get_sleeper_players(session=sleeper_session)
+            except Exception:
+                logger.exception("refresh: sleeper_players_map fetch failed")
+                sleeper_players_map = {}
         # Market projections keyed by sleeper_id -> pts_ppr + stats
         try:
             market_raw = sleeper.get_sleeper_projections(season, target_wk_m, session=sleeper_session)
