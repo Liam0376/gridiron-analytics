@@ -147,9 +147,9 @@ def test_post_stores_and_previews_value():
         assert edge["calibration_verdict"] in ("edges_on", "tracking", "unknown")
         n = conn.execute("SELECT COUNT(*) AS n FROM prop_lines").fetchone()["n"]
         assert n == 1
-        # why 0 here: POST only previews — shadow rows are written when the
-        # edge is SERVED via GET (same as start-sit logging on serve).
-        assert shadow.count_logged(conn, "prop:passing_yards") == 0
+        # why 1 here: POST logs the surfaced VALUE at submit (explicit user
+        # action) — GET catch-up dedupes to the same row (council vote).
+        assert shadow.count_logged(conn, "prop:passing_yards") == 1
     finally:
         _restore(snap)
         conn.close()
@@ -348,4 +348,89 @@ def test_nan_fair_line_quarantines_row_not_board():
         assert edges["7500"]["decision"] == "VALUE"
     finally:
         _restore(snap)
+        conn.close()
+
+
+def test_shadow_logging_is_idempotent_across_polls():
+    # why: council vote (8 agents) — bare INSERT per GET inflated n and the
+    # trust gate. POST + GET + GET must converge on exactly one shadow row.
+    conn, tmp = _fresh_db()
+    snap = _snap()
+    try:
+        _warm()
+        with patch("ffanalytics.db._get_conn", return_value=conn):
+            client.post("/props/lines", json=_line())
+            assert shadow.count_logged(conn, "prop:passing_yards") == 1
+            client.get(f"/props/edges?season={SEASON}&week={WEEK}")
+            client.get(f"/props/edges?season={SEASON}&week={WEEK}")
+            assert shadow.count_logged(conn, "prop:passing_yards") == 1
+    finally:
+        _restore(snap)
+        conn.close()
+
+
+def test_book_scoped_upsert_keeps_books_separate():
+    # why (api-tester sign-off): same player/market/side across two books must
+    # persist as two rows — book-blind upsert would last-write-wins data loss.
+    conn, tmp = _fresh_db()
+    snap = _snap()
+    try:
+        _warm()
+        with patch("ffanalytics.db._get_conn", return_value=conn):
+            assert client.post("/props/lines", json=_line(book="draftkings")).status_code == 200
+            assert client.post("/props/lines", json=_line(book="fanduel")).status_code == 200
+            rows = conn.execute("SELECT book FROM prop_lines").fetchall()
+            assert sorted(r["book"] for r in rows) == ["draftkings", "fanduel"]
+            resp = client.get(f"/props/edges?season={SEASON}&week={WEEK}")
+            assert resp.json()["count"] == 2
+    finally:
+        _restore(snap)
+        conn.close()
+
+
+def test_credential_shaped_book_rejected():
+    # why (secrets sign-off, CWE-312): book is stored verbatim + served.
+    conn, tmp = _fresh_db()
+    snap = _snap()
+    try:
+        _warm()
+        with patch("ffanalytics.db._get_conn", return_value=conn):
+            for bad in ("sk-live-abc123", "AKIAIOSFODNN7EXAMPLE", "ghp_deadbeef", "xoxb-123"):
+                resp = client.post("/props/lines", json=_line(book=bad))
+                assert resp.status_code == 422, bad
+            n = conn.execute("SELECT COUNT(*) AS n FROM prop_lines").fetchone()["n"]
+            assert n == 0
+    finally:
+        _restore(snap)
+        conn.close()
+
+
+def test_edge_carries_calibration_detail():
+    # why (analytics-reporter sign-off): a bare "tracking" label is
+    # unauditable — each row must carry its n/coverage.
+    conn, tmp = _fresh_db()
+    snap = _snap()
+    try:
+        _warm()
+        with patch("ffanalytics.db._get_conn", return_value=conn):
+            client.post("/props/lines", json=_line())
+            edge = client.get(f"/props/edges?season={SEASON}&week={WEEK}").json()["edges"][0]
+            cal = edge.get("calibration") or {}
+            assert edge["calibration_verdict"] in ("edges_on", "tracking", "unknown")
+            assert cal.get("n", 0) >= 0
+    finally:
+        _restore(snap)
+        conn.close()
+
+
+def test_v6_dedupe_index_exists():
+    conn, tmp = _fresh_db()
+    try:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'idx_shadow_prop_dedupe'"
+        ).fetchone()
+        assert row is not None and "prop:%" in (row["sql"] or "")
+        ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        assert ver >= 6
+    finally:
         conn.close()

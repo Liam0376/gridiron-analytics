@@ -192,7 +192,8 @@ _REFRESH_LOCK = threading.Lock()
 _CACHE: dict = {
     "league_settings": None,  # scoring_settings, roster_positions
     "rosters": None,          # list of roster dicts from Sleeper
-    "player_stats": None,     # list of player stat dicts from nflverse
+    "player_stats": None,    # list of player stat dicts from nflverse
+    "model_projections": None,  # weekly model fair-stat rows (props fair lines)
     "injury_status": None,    # dict mapping player_id to injury status
     "matchups": None,         # list of matchup dicts from Sleeper
     "trending": None,         # trending waiver adds
@@ -285,6 +286,7 @@ def update_cache(
     trending: list[dict] | None = None,
     detailed_injuries: list[dict] | None = None,
     league_id: str | None = None,
+    model_projections: list[dict] | None = None,
 ) -> None:
     target = _cache_for(league_id)
     if league_settings:
@@ -293,6 +295,8 @@ def update_cache(
         target["rosters"] = rosters
     if player_stats:
         target["player_stats"] = player_stats
+    if model_projections:
+        target["model_projections"] = model_projections
     if injury_status:
         target["injury_status"] = injury_status
     if matchups:
@@ -1028,21 +1032,60 @@ class PropLineIn(BaseModel):
     book: str = Field(default="manual", min_length=1, max_length=32)
 
 
-def _props_calibration_verdicts() -> dict:
-    """Best-effort per-market calibration verdicts from the Task-4 backtest
-    artifact. Missing artifact => {} (callers show 'unknown', never an edge
-    claim). Read per request — 3KB, always fresh after backtest reruns."""
+def _props_calibration() -> dict:
+    """Best-effort per-market calibration info from the Task-4 backtest
+    artifact: {market: {verdict, n, coverage_80|brier, ...}}. Missing
+    artifact => {} (callers show 'unknown', never an edge claim). Read per
+    request — 3KB, always fresh after backtest reruns."""
     try:
         from pathlib import Path as _Path
 
         root = _Path(__file__).resolve().parents[2]
         doc = json.loads((root / "data" / "props" / "backtest_props_results.json").read_text())
-        return {
-            name: info.get("verdict", "unknown")
-            for name, info in (doc.get("markets") or {}).items()
-        }
+        out = {}
+        for name, info in (doc.get("markets") or {}).items():
+            entry = {"verdict": info.get("verdict", "unknown"), "n": info.get("n")}
+            if info.get("kind") == "poisson":
+                entry.update({
+                    "brier": info.get("brier"),
+                    "naive_brier": info.get("naive_brier"),
+                    "base_rate": info.get("base_rate"),
+                })
+            else:
+                entry.update({
+                    "coverage_80": info.get("coverage_80"),
+                    "pit_max_dev": info.get("pit_max_dev"),
+                    "fair_mae": info.get("fair_mae"),
+                })
+            out[name] = entry
+        return out
     except Exception:
         return {}
+
+
+def _props_calibration_verdicts() -> dict:
+    """Verdict-only projection of _props_calibration (kept for callers that
+    need just the label)."""
+    return {m: info.get("verdict", "unknown") for m, info in _props_calibration().items()}
+
+
+def _prop_shadow_rec(edge: dict) -> dict:
+    """Canonical shadow record for a VALUE edge. Single construction site for
+    POST-time and GET-time logging so the dedupe JSON matches byte-for-byte
+    (log_prop_edge_once also sort_keys, belt and suspenders)."""
+    return {
+        "player_id": edge["player_id"],
+        "market": edge["market"],
+        "side": edge["side"],
+        "book_line": edge["book_line"],
+        "book_price": edge["book_price"],
+        "fair_line": edge["fair_line"],
+        "p_model": edge["p_model"],
+        "edge_pp": edge["edge_pp"],
+        "ev_per_unit": edge["ev_per_unit"],
+        "decision": edge["decision"],
+        "calibration_verdict": edge["calibration_verdict"],
+    }
 
 
 def _validate_prop_line(body: PropLineIn) -> dict:
@@ -1094,13 +1137,26 @@ def _validate_prop_line(body: PropLineIn) -> dict:
     player_id = (body.player_id or "").strip()
     if not player_id:
         raise HTTPException(status_code=422, detail="player_id must not be blank.")
+    book = (body.book or "manual").strip() or "manual"
+    # why credential-shaped rejection (secrets sign-off): `book` is free text
+    # stored verbatim in SQLite and served in JSON — one paste becomes a
+    # persistent, retrievable compromise (CWE-312). Prefix-only list avoids
+    # false positives on real book names (draftkings/fanduel/manual).
+    lowered_book = book.lower()
+    if any(t in lowered_book for t in (
+        "sk-", "akia", "ghp_", "gho_", "xoxb", "xoxp", "xoxa", "xoxs",
+        "-----begin",
+    )):
+        raise HTTPException(
+            status_code=422, detail="book looks like a credential — use a bookmaker name."
+        )
     return {
         "player_id": player_id,
         "market": market,
         "side": side,
         "line": None if body.line is None else float(body.line),
         "price": float(body.price),
-        "book": (body.book or "manual").strip() or "manual",
+        "book": book,
     }
 
 
@@ -1117,7 +1173,11 @@ def _evaluate_prop_edge(
     an edge, and one poisoned row never 500s the board (per-row quarantine)."""
     market, side = stored["market"], stored["side"]
     is_poisson = market == "anytime_td"
-    cal = calibration.get(market, "unknown")
+    # why full info, not just the label (analytics-reporter sign-off): a bare
+    # "tracking" verdict is unauditable — the edge carries its n/coverage.
+    info = calibration.get(market) or {}
+    cal = info.get("verdict", "unknown")
+    cal_detail = {k: v for k, v in info.items() if k != "verdict"}
     base = {
         "player_id": stored["player_id"],
         "market": market,
@@ -1126,6 +1186,7 @@ def _evaluate_prop_edge(
         "book_price": stored["price"],
         "book": stored["book"],
         "calibration_verdict": cal,
+        "calibration": cal_detail,
     }
 
     def _unknown(note):
@@ -1268,10 +1329,31 @@ def post_prop_line(
     if projs and cache.get("player_stats"):
         by_id = {str(p.get("player_id") or ""): p for p in projs}
         hist = _props_history_lookup(cache.get("player_stats")).get(stored["player_id"], [])
+        # why same REG/week filter as GET (data-engineer sign-off): POST preview
+        # and GET must compute identical sigmas or the dedupe JSON diverges and
+        # one stored line logs twice.
+        hist = [h for h in hist
+                if (h.get("season_type") or "REG") == "REG"
+                and (h.get("week") or 0) < body.week]
         edge = _evaluate_prop_edge(
             by_id.get(stored["player_id"]), hist, stored,
-            _props_calibration_verdicts(), week=body.week,
+            _props_calibration(), week=body.week,
         )
+        # why log at submit (explicit user action): GET-time logging alone
+        # makes crawlers/page-views the experiment's authors. POST logs the
+        # surfaced VALUE once; GET catch-up below dedupes to the same row.
+        if edge is not None and edge.get("decision") == "VALUE":
+            with _league_conn(league_id) as log_conn:
+                if log_conn is not None:
+                    try:
+                        shadow.log_prop_edge_once(
+                            log_conn, f"prop:{edge['market']}", season,
+                            body.week, edge["player_id"],
+                            _prop_shadow_rec(edge),
+                            datetime.datetime.now().isoformat(),
+                        )
+                    except Exception:
+                        logger.exception("api: prop shadow log failed")
     else:
         note = "Stored. Cache cold — run /refresh for the edge preview."
     return {"stored": {**stored, "id": row_id}, "edge": edge, "note": note}
@@ -1291,7 +1373,7 @@ def get_prop_edges(
         )
     season = season if season is not None else (cache.get("season") or get_stats_season())
     week = week if week is not None else (cache.get("week") or compute_nfl_week() or 1)
-    calibration = _props_calibration_verdicts()
+    calibration = _props_calibration()
     with _league_conn(league_id) as conn:
         if conn is None:
             raise HTTPException(status_code=503, detail="DB not available.")
@@ -1334,26 +1416,21 @@ def get_prop_edges(
                 trusted = False
             edge["shadow_status"] = "trusted" if trusted else "tracking"
             edges.append(edge)
-        # why log VALUE only: NO EDGE rows carry no claim to backtest; every
-        # surfaced edge gets a shadow row for later resolution (refresh.py).
-        by_market: dict[str, list[dict]] = {}
+        # why log-once, not batch: GETs poll — a bare INSERT duplicates every
+        # view and inflates n, hit-rate, and the 20-resolved trust gate until
+        # no calibration claim can stand (8-agent council vote). First serve
+        # records the edge; re-polls are ignored. POST logs at submit time
+        # (explicit action); both paths share _prop_shadow_rec + dedupe key.
         for e in edges:
             if e["decision"] == "VALUE":
-                by_market.setdefault(f"prop:{e['market']}", []).append({
-                    "player_id": e["player_id"],
-                    "market": e["market"],
-                    "side": e["side"],
-                    "book_line": e["book_line"],
-                    "book_price": e["book_price"],
-                    "fair_line": e["fair_line"],
-                    "p_model": e["p_model"],
-                    "edge_pp": e["edge_pp"],
-                    "ev_per_unit": e["ev_per_unit"],
-                    "decision": e["decision"],
-                    "calibration_verdict": e["calibration_verdict"],
-                })
-        for kind, recs in by_market.items():
-            _batch_log_recommendations(kind, recs, league_id)
+                try:
+                    shadow.log_prop_edge_once(
+                        conn, f"prop:{e['market']}", season, week,
+                        e["player_id"], _prop_shadow_rec(e),
+                        datetime.datetime.now().isoformat(),
+                    )
+                except Exception:
+                    logger.exception("api: prop shadow log failed")
     return {
         "edges": edges,
         "count": len(edges),

@@ -132,6 +132,13 @@ CREATE TABLE IF NOT EXISTS prop_lines (
     UNIQUE(player_id, season, week, market, side, book)
 );
 
+-- Props shadow dedupe (council vote 2026-09-09): exact-match lookups for
+-- log_prop_edge_once. Partial to prop kinds + non-unique so legacy rows
+-- (NULL players, repeated trade snapshots) can never fail creation on old DBs.
+CREATE INDEX IF NOT EXISTS idx_shadow_prop_dedupe
+ON shadow_recommendations(kind, season, week, player_id)
+WHERE kind LIKE 'prop:%';
+
 -- P0 audit: per-source refresh history lookups (hub refresh-log, /ready checks)
 -- why: refresh_log grows unbounded (one row per source per refresh); without
 -- this index every ORDER BY ran_at DESC scan is a full table scan.

@@ -171,3 +171,14 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             )"""
         )
         conn.execute("PRAGMA user_version=5")
+
+    if cur_version < 6:
+        # Props council vote v6 — dedupe index for idempotent shadow logging.
+        # Partial (prop kinds only) + non-unique: legacy rows can never fail
+        # creation. Additive only, safe to re-run.
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_shadow_prop_dedupe "
+            "ON shadow_recommendations(kind, season, week, player_id) "
+            "WHERE kind LIKE 'prop:%'"
+        )
+        conn.execute("PRAGMA user_version=6")

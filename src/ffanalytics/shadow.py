@@ -53,6 +53,44 @@ def log_recommendations_batch(
         return 0
 
 
+def log_prop_edge_once(
+    conn: sqlite3.Connection,
+    kind: str,
+    season: int,
+    week: int,
+    player_id: str,
+    recommendation: dict,
+    logged_at_iso: str,
+) -> bool:
+    """Idempotent prop-edge insert: the same edge logs once, ever.
+
+    Council mandate (8-agent vote): GETs poll, and a bare INSERT duplicates
+    every view — inflating n, hit-rate, and the 20-resolved trust gate until
+    no calibration claim can stand. Dedupe key is (kind, season, week,
+    player, exact JSON with sort_keys), so POST-time and first-serve GET
+    logging converge on one row. Callers must build the rec dict from one
+    shared helper or key order still diverges. Returns True if inserted.
+    Sped by idx_shadow_prop_dedupe (v6 migration; partial to prop kinds so
+    legacy rows can never fail index creation on old DBs).
+    """
+    blob = json.dumps(recommendation, sort_keys=True)
+    hit = conn.execute(
+        "SELECT id FROM shadow_recommendations WHERE kind = ? AND season = ? "
+        "AND week = ? AND player_id = ? AND recommendation = ? LIMIT 1",
+        (kind, season, week, player_id, blob),
+    ).fetchone()
+    if hit is not None:
+        return False
+    conn.execute(
+        """INSERT INTO shadow_recommendations
+           (kind, season, week, player_id, recommendation, logged_at, actual_outcome)
+           VALUES (?, ?, ?, ?, ?, ?, NULL)""",
+        (kind, season, week, player_id, blob, logged_at_iso),
+    )
+    conn.commit()
+    return True
+
+
 def record_outcome(conn: sqlite3.Connection, recommendation_id: int, actual_outcome: dict) -> None:
     conn.execute(
         "UPDATE shadow_recommendations SET actual_outcome = ? WHERE id = ?",
