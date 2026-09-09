@@ -906,10 +906,12 @@ def build_league_analytics(conn, league_id: str | None = None):
 
             pts = gridiron_pts
 
-            # Conformal interval logic
+            # Conformal interval logic — width is HALF-width (unified 2026-09-09;
+            # src/comparison carry qhat scale, as does the 5.0 fallback which
+            # mirrors decision.py's 5.0-factor path). Floor matches src max(0,…).
             width = float(comp.get("interval_width") or comp.get("width") or 5.0)
-            proj_lower = round(pts - (width / 2.0), 2)
-            proj_upper = round(pts + (width / 2.0), 2)
+            proj_lower = round(max(0.0, pts - width), 2)
+            proj_upper = round(pts + width, 2)
 
             # Full season projected stats
             m_season = comp.get("model_season_stats") or {}
@@ -1629,8 +1631,9 @@ class Handler(BaseHTTPRequestHandler):
 
             width = float(comp.get("interval_width") or comp.get("width") or (5.0 * _pos_factor(pos) * _point_factor(pts)))
             width = max(3.0, min(14.0, width))
-            low = pts - (width / 2.0)
-            high = pts + (width / 2.0)
+            # why no /2: width is HALF-width (unified 2026-09-09). Floor matches src.
+            low = max(0.0, pts - width)
+            high = pts + width
             # Try GSIS map first, then name+team+pos lookup against Sleeper cache
             # why _norm_n: matches the normalized build side (suffix-proof).
             sleeper_id = gsis_to_sleeper.get(pid)

@@ -145,6 +145,9 @@ def compute_conformal_bounds(
     """Compute split-conformal prediction interval for a projected score.
 
     Returns dict with keys: point_estimate, lower_bound, upper_bound, width, confidence.
+    width is the HALF-width (qhat scale): lower = max(0, point - width),
+    upper = point + width — same definition as projection.py (pinned Task 1,
+    2026-09-09 props plan). Do not halve again downstream.
     """
     from ffanalytics import conformal
 
@@ -161,8 +164,8 @@ def compute_conformal_bounds(
         "upper_bound": round(high, 2),
         "projection_lower": round(low, 2),
         "projection_upper": round(high, 2),
-        "width": round(high - low, 2),
-        "projection_width": round(high - low, 2),
+        "width": round(width, 2),
+        "projection_width": round(width, 2),
         "confidence": conf,
     }
 POS_TD_MEANS = {

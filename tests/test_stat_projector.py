@@ -2,6 +2,7 @@ import pytest
 from ffanalytics.stat_projector import (
     project_player_stats,
     build_weekly_projections,
+    compute_conformal_bounds,
     weighted_recent_avg,
 )
 
@@ -146,3 +147,21 @@ def test_build_game_context_observed_weather_limitation():
     doc = (stat_projector.build_game_context.__doc__ or "")
     assert "OBSERVED" in doc or "observed" in doc
     assert "forecast" in doc.lower()
+
+
+def test_conformal_bounds_width_is_half_width():
+    # Canonical width semantics (pinned 2026-09-09, unified across src/hub):
+    # width IS the half-width (qhat scale, same as projection.py) —
+    # lower = max(0, point - width), upper = point + width.
+    # Guards the 2026-09 regression where compute_conformal_bounds returned
+    # full-span (high - low) while projection.py returned half-width, and the
+    # hub halved one but not the other.
+    b = compute_conformal_bounds(14.2, "WR", residuals=[1.0, 2.0, 3.0, 4.0])
+    assert b["lower_bound"] == pytest.approx(max(0.0, 14.2 - b["width"]))
+    assert b["upper_bound"] == pytest.approx(14.2 + b["width"])
+    assert b["width"] == pytest.approx(b["projection_width"])
+    assert b["upper_bound"] - b["lower_bound"] == pytest.approx(2 * b["width"])
+    # Floor parity with projection.py: near-zero points clamp at 0, never negative.
+    tiny = compute_conformal_bounds(1.0, "K", residuals=[5.0, 6.0, 7.0, 8.0])
+    assert tiny["lower_bound"] == pytest.approx(0.0)
+    assert tiny["lower_bound"] <= 1.0 <= tiny["upper_bound"]

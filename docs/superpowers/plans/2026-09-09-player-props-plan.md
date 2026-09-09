@@ -48,6 +48,18 @@ mandatory on every props surface.
   when `week < 1` filter empties). DECISION: week 1 excluded from props backtest
   + edge until the hole is fixed.
 
+**Task-1 correction (2026-09-09, width fix):** the divergence writeup above was
+incompletely researched. `compute_conformal_bounds` ALSO returns `width`, but
+as FULL span (`high - low`), while `projection.py`/`decision.py` use HALF-width —
+the inconsistency lived in src, not just the hub. For `interval_width` rows
+flowing through `comparison` (full-span), the hub's `/2` rendered the CORRECT
+band; only fallbacks and the JS rebuild were wrong. Fixed at the root instead:
+`compute_conformal_bounds` now returns half-width (qhat scale, matching
+`projection.py`, its own `<4/<7` confidence bands, and the Task-4 sigma
+convention), `comparison` fallback `width 20.0→5.0`, hub renders `±width`
+with `max(0,…)` floor everywhere. Pinned by
+`test_conformal_bounds_width_is_half_width`.
+
 **Commit:** none (research only).
 
 ---

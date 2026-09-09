@@ -17,8 +17,9 @@ export function enrichPlayer(p, compRow, opts = {}) {
   const weekly = num(p.projected_points ?? comp.projected_points ?? comp.weekly, 0);
   const season = num(comp.ros ?? comp.marketRos ?? weekly * 17, weekly * 17);
   const width = num(p.width ?? p.projection_width ?? comp.interval_width ?? comp.projection_width ?? comp.width, 5.0);
-  const lower = num(p.projection_lower ?? p.lower_bound ?? p.lower, weekly - width / 2);
-  const upper = num(p.projection_upper ?? p.upper_bound ?? p.upper, weekly + width / 2);
+  // why no /2: width is HALF-width (unified 2026-09-09). Floor matches src.
+  const lower = num(p.projection_lower ?? p.lower_bound ?? p.lower, Math.max(0, weekly - width));
+  const upper = num(p.projection_upper ?? p.upper_bound ?? p.upper, weekly + width);
 
   const compPlayers = opts.compPlayers || (comp && comp.__compPlayers) || null;
   const vbdParams = opts.vbdParams || (comp && comp.__vbdParams) || (compPlayers ? computeVbdParams(compPlayers, opts.league) : null);

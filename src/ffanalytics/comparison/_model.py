@@ -608,7 +608,11 @@ def build_fallback_rows(
             "point_estimate": round(model_pts_fp, 2),
             "projection_lower": None,
             "projection_upper": None,
-            "width": 20.0,
+            # why 5.0, not 20.0: width is HALF-width everywhere since the
+            # 2026-09-09 unification (was full-span 20.0, mismatched with its
+            # own interval_width 5.0 on the next line). Fallback rows are the
+            # least-known players — ±5.0 stays honestly wide.
+            "width": 5.0,
             "interval_width": 5.0,
             "wind_mph": None,
         })

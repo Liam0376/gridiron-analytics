@@ -164,8 +164,10 @@ export async function renderProjections(root) {
 
     const width = Number(c?.interval_width ?? c?.width ?? p.width ?? 5.0);
     p.width = Number(width.toFixed(2));
-    p.projection_lower = Number((weekly - width / 2).toFixed(2));
-    p.projection_upper = Number((weekly + width / 2).toFixed(2));
+    // why no /2: width is HALF-width (unified 2026-09-09). Floor restores
+    // src's max(0,…) that the old symmetric rebuild discarded.
+    p.projection_lower = Number(Math.max(0, weekly - width).toFixed(2));
+    p.projection_upper = Number((weekly + width).toFixed(2));
     p.lower = p.projection_lower;
     p.upper = p.projection_upper;
     p.ecr = p.fp_ecr;
