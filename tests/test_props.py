@@ -4,12 +4,22 @@ import pytest
 from ffanalytics.props import (
     american_to_prob,
     apply_prop_edge_rule,
+    band_coverage,
+    base_rate_brier,
+    bins_monotonic,
+    brier_score,
     build_prop_fair_lines,
     ev_per_unit,
+    fair_mae,
     normal_over_prob,
+    pit_deciles,
+    pit_value,
     poisson_anytime_td,
     prob_to_american,
     prop_over_prob,
+    reliability_bins,
+    verdict_normal_market,
+    verdict_td_market,
 )
 
 
@@ -216,3 +226,69 @@ def test_fair_lines_deterministic():
     a = build_prop_fair_lines(_wr_history(), "WR", {"implied_total": 22.0}, week=5)
     b = build_prop_fair_lines(_wr_history(), "WR", {"implied_total": 22.0}, week=5)
     assert a == b
+
+
+def test_pit_value_symmetric_and_ordered():
+    assert pit_value(100.0, 100.0, 15.0) == pytest.approx(0.5)
+    assert pit_value(115.0, 100.0, 15.0) == pytest.approx(1 - pit_value(85.0, 100.0, 15.0))
+    assert pit_value(200.0, 100.0, 15.0) > 0.99
+    assert pit_value(0.0, 100.0, 15.0) < 0.01
+    with pytest.raises(ValueError, match="sigma"):
+        pit_value(100.0, 100.0, 0.0)
+    with pytest.raises(ValueError, match="finite|number"):
+        pit_value(float("nan"), 100.0, 15.0)
+
+
+def test_band_coverage_constructed():
+    # 3 of 4 inside the 80% band (band half-width 12.816 at sigma=10).
+    obs = [(100.0, 10.0, 105.0), (100.0, 10.0, 95.0), (100.0, 10.0, 100.0),
+           (100.0, 10.0, 200.0)]
+    assert band_coverage(obs) == pytest.approx(0.75)
+    assert band_coverage([]) is None
+    assert fair_mae(obs) == pytest.approx((5 + 5 + 0 + 100) / 4)
+
+
+def test_pit_deciles_seeded_gaussian_near_uniform():
+    import random
+
+    rng = random.Random(0)
+    obs = [(100.0, 15.0, rng.gauss(100.0, 15.0)) for _ in range(5000)]
+    res = pit_deciles(obs)
+    assert res["max_dev"] < 0.03
+    assert abs(band_coverage(obs) - 0.80) < 0.03
+
+
+def test_brier_known_values():
+    assert brier_score([(1.0, 1), (0.0, 0)]) == pytest.approx(0.0)
+    assert brier_score([(0.5, 1), (0.5, 0)]) == pytest.approx(0.25)
+    assert brier_score([]) is None
+    # Base rate 0.5 naive => 0.25; a perfect model beats it.
+    assert base_rate_brier([1, 0, 1, 0]) == pytest.approx(0.25)
+    assert brier_score([(0.9, 1), (0.1, 0), (0.8, 1), (0.2, 0)]) < base_rate_brier([1, 0, 1, 0])
+
+
+def test_reliability_bins_shape_and_monotonic():
+    pairs = [(0.1, 0), (0.2, 0), (0.3, 0), (0.4, 1), (0.5, 0),
+             (0.6, 1), (0.7, 1), (0.8, 1), (0.9, 1), (0.95, 1)]
+    bins = reliability_bins(pairs, k=5)
+    assert len(bins) == 5
+    assert all(b["n"] == 2 for b in bins)
+    assert bins_monotonic(bins) is True
+    assert bins_monotonic(list(reversed(bins))) is False
+    assert reliability_bins([], k=5) == []
+    assert bins_monotonic([]) is False
+
+
+def test_verdict_normal_market_gates():
+    assert verdict_normal_market(600, 0.81, 0.03) == "edges_on"
+    assert verdict_normal_market(499, 0.81, 0.03) == "tracking"   # small n
+    assert verdict_normal_market(600, 0.70, 0.03) == "tracking"   # bad coverage
+    assert verdict_normal_market(600, 0.81, 0.06) == "tracking"   # bad PIT
+    assert verdict_normal_market(600, None, 0.03) == "tracking"   # missing
+
+
+def test_verdict_td_market_gates():
+    assert verdict_td_market(600, 0.18, 0.23, True) == "edges_on"
+    assert verdict_td_market(499, 0.18, 0.23, True) == "tracking"
+    assert verdict_td_market(600, 0.24, 0.23, True) == "tracking"  # loses to naive
+    assert verdict_td_market(600, 0.18, 0.23, False) == "tracking"  # non-monotonic
