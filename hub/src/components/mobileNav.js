@@ -11,6 +11,7 @@ const MORE_TABS = [
   { id: 'tierlists', label: 'Tierlists' },
   { id: 'waiver', label: 'Waiver' },
   { id: 'trade', label: 'Trade Lab' },
+  { id: 'props', label: 'Props' },
 ];
 
 export function renderMobileNav(currentRouteId) {

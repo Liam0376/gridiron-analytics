@@ -257,6 +257,52 @@ export async function fetchRefreshLog() {
   return await tryHub('/refresh-log') || { entries: [] };
 }
 
+// Player props (spec 2026-09-09). Model-direct: fair lines live in :8000
+// memory (never stored), so no hub-proxy computation exists — same direct
+// pattern as triggerRefresh. Reads never write; entry POSTs below.
+export async function fetchPropEdges(args = {}) {
+  return withCache('fetchPropEdges', args, async () => {
+    const { week, season } = args;
+    const qs = new URLSearchParams();
+    if (week != null && week !== '') qs.set('week', String(week));
+    if (season != null && season !== '') qs.set('season', String(season));
+    const suffix = qs.toString() ? `?${qs}` : '';
+    try {
+      const data = await getJSON(modelUrl(`/props/edges${suffix}`));
+      return { edges: data.edges || [], meta: { timestamp: data.timestamp, week: data.week, season: data.season } };
+    } catch (_) {
+      return { edges: [], meta: { cold: true } };
+    }
+  });
+}
+
+export async function postPropLine(body) {
+  // why direct model POST, not hub proxy: hub/server.py is mode=ro and
+  // never writes (isolation contract). Precedent: triggerRefresh POSTs
+  // /refresh to API_BASE the same way. verify-isolation.sh stays green —
+  // this fetch targets the MODEL base URL, not the hub proxy.
+  const res = await fetch(modelUrl('/props/lines'), {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      const err = await res.json();
+      if (typeof err.detail === 'string') detail = err.detail;
+      else if (Array.isArray(err.detail)) detail = err.detail.map(d => d.msg || JSON.stringify(d)).join('; ');
+    } catch (_) { /* keep status text */ }
+    throw new Error(detail);
+  }
+  // why surgical, not invalidateApiCache(): a full clear would nuke the heavy
+  // projections/comparison entries on every manual submit — drop only edges.
+  for (const k of _ttlCache.keys()) {
+    if (k.includes('::fetchPropEdges::')) _ttlCache.delete(k);
+  }
+  return res.json();
+}
+
 export async function fetchTeamRatings() {
   return await tryHub('/team-ratings') || { ratings: [] };
 }
