@@ -58,6 +58,10 @@ Production build: `npm run build` → `hub/dist/`
 - **My Roster** — starters vs bench with overlap confidence (HIGH if intervals don't overlap)
 - **Waiver** — ranked by `improvement_over_roster`, not raw points; includes trending from `news_data`
 - **Trade** — two `owner_id` inputs → `GET /recommendations/trade` or hub-proxy fallback
+- **Props** — model fair lines vs manual book lines (`GET /props/edges` on `:8000`);
+  entry form POSTs to the model directly (hub never writes). Chips read
+  `VALUE / TRACKING / NO EDGE` — never "LOCK". Entertainment-only RG notice on
+  every view; only `passing_yards` earned edge labels in 2025 calibration.
 
 ## Search
 

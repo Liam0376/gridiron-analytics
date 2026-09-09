@@ -94,3 +94,18 @@ issues under load, US-only (fine for NFL, but no upside over Open-Meteo).
 - Biggest real risk isn't cost, it's **breakage without notice** on the unofficial
   ESPN path and the "experimental" tag on nflreadpy — spec should isolate both
   behind an adapter layer so a breaking change is a one-file fix, not a rewrite.
+
+## 6. Odds feeds for player props (September 2026) — REJECTED under $0
+
+**The Odds API** (live check 2026-09-09, theoddsapi.com pricing/FAQ/docs):
+player-prop markets — incl. NFL in season — require the **Business plan
+$99/mo** (props + Pinnacle-anchored edges/fair-odds/intelligence layer).
+Free ($0) covers only NBA/MLB moneylines at 25 req/day; Pro ($29/mo) adds
+sports and h2h/spreads/totals but **no props on any tier below Business**.
+
+`# REJECTED — evidence: live pricing/FAQ verification 2026-09-09 (see spec
+docs/superpowers/specs/2026-09-09-player-props-spec.md Non-Goals).` An automated
+props feed would also need an outbound-allowlist exception (AGENTS.md permits
+only Sleeper/nflverse/Open-Meteo). Decision: model-derived fair lines +
+manual book-line entry (`prop_lines` table); adapter seam reserved in spec,
+ships nothing. Revisit only if $0-forever is explicitly lifted.

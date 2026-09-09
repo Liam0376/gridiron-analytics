@@ -1,5 +1,10 @@
 # Spec: Player Props Section — Model Fair Lines + Manual Book-Line Edge (separate from fantasy)
 
+> Status (2026-09-09): implemented Tasks 1–6 (odds math, fair lines, 2025
+> calibration, prop_lines API + shadow, hub tab). Task 7 closeout pending.
+> Calibration verdict: only `passing_yards` earned edge labels; all other
+> markets ship as tracking.
+
 ## Context
 
 `src/ffanalytics/stat_projector.py:project_player_stats()` already predicts per-stat
