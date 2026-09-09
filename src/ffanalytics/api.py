@@ -762,10 +762,17 @@ def get_projections(
         pid = str(p.get("player_id") or p.get("id") or "")
         pos = (p.get("position") or p.get("position_group") or "UNK").upper()
         pts = float(p.get("projected_points") or p.get("fantasy_points") or 0)
-        if pts == 0 and scoring:
+        # why rescore-when-nonzero (backend sign-off): league scoring is live
+        # truth and can change mid-season — a stale stored value (e.g. 4pt-era
+        # pass TDs) must not survive. Rescore whenever raw stat keys exist;
+        # keep the stored value only when rescoring yields 0 (stat-less rows
+        # like market fallbacks would otherwise zero out).
+        if scoring:
             from ffanalytics.scoring import calculate_fantasy_points
             try:
-                pts = calculate_fantasy_points(p, scoring)
+                rescored = calculate_fantasy_points(p, scoring)
+                if rescored != 0:
+                    pts = rescored
             except Exception:
                 pass
         injury = (cache.get("injury_status") or {}).get(pid)
@@ -1296,6 +1303,14 @@ def _evaluate_prop_edge(
     rule = props_math.apply_prop_edge_rule(
         p_model, stored["price"], is_empty=is_empty
     )
+    decision = rule["decision"]
+    # why gate, not label (council: trend/economy/autonomous, spec Gate 2):
+    # an uncalibrated green VALUE is the endorsement the RG copy disavows.
+    # Only edges_on markets emit VALUE; everything else that clears the math
+    # emits TRACKING — numbers preserved, shadow still logs the evaluated
+    # claim (callers log VALUE and TRACKING), hub renders amber, never green.
+    if decision == "VALUE" and cal != "edges_on":
+        decision = "TRACKING"
     if is_empty:
         return {**base, "player_name": name, "position": pos,
                 "team": proj_row.get("team") or proj_row.get("recent_team") or "",
@@ -1305,7 +1320,7 @@ def _evaluate_prop_edge(
                 "book_prob": round(rule["book_prob"], 4),
                 "edge_pp": round(rule["edge_pp"], 4),
                 "ev_per_unit": round(rule["ev_per_unit"], 4),
-                "decision": rule["decision"],
+                "decision": decision,
                 "note": "empty history: projection unknown"}
     return {
         **base,
@@ -1318,7 +1333,7 @@ def _evaluate_prop_edge(
         "book_prob": round(rule["book_prob"], 4),
         "edge_pp": round(rule["edge_pp"], 4),
         "ev_per_unit": round(rule["ev_per_unit"], 4),
-        "decision": rule["decision"],
+        "decision": decision,
     }
 
 
@@ -1387,8 +1402,9 @@ def post_prop_line(
         )
         # why log at submit (explicit user action): GET-time logging alone
         # makes crawlers/page-views the experiment's authors. POST logs the
-        # surfaced VALUE once; GET catch-up below dedupes to the same row.
-        if edge is not None and edge.get("decision") == "VALUE":
+        # surfaced claim once (VALUE and TRACKING both — the experiment needs
+        # evaluated claims, not just winners); GET catch-up below dedupes.
+        if edge is not None and edge.get("decision") in ("VALUE", "TRACKING"):
             with _league_conn(league_id) as log_conn:
                 if log_conn is not None:
                     try:
@@ -1464,10 +1480,12 @@ def get_prop_edges(
         # why log-once, not batch: GETs poll — a bare INSERT duplicates every
         # view and inflates n, hit-rate, and the 20-resolved trust gate until
         # no calibration claim can stand (8-agent council vote). First serve
-        # records the edge; re-polls are ignored. POST logs at submit time
-        # (explicit action); both paths share _prop_shadow_rec + dedupe key.
+        # records the evaluated claim (VALUE and TRACKING both — winners-only
+        # logging blinds false-negative analysis); re-polls are ignored.
+        # POST logs at submit time (explicit action); both paths share
+        # _prop_shadow_rec + dedupe key.
         for e in edges:
-            if e["decision"] == "VALUE":
+            if e["decision"] in ("VALUE", "TRACKING"):
                 try:
                     shadow.log_prop_edge_once(
                         conn, f"prop:{e['market']}", season, week,

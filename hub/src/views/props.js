@@ -14,9 +14,12 @@ const SIDES = ['over', 'under', 'yes', 'no'];
 
 function edgeChip(decision) {
   const d = String(decision || 'NO EDGE');
-  const kind = d === 'VALUE' ? 'value' : d.startsWith('NO EDGE (unknown)') ? 'unknown' : 'none';
-  const bg = kind === 'value' ? 'var(--emerald-dim)' : kind === 'unknown' ? 'var(--amber-dim)' : 'rgba(0,0,0,0.05)';
-  const fg = kind === 'value' ? 'var(--emerald)' : kind === 'unknown' ? 'var(--amber)' : 'var(--text-muted)';
+  // why explicit TRACKING branch (trend sign-off): the API now emits it for
+  // uncalibrated markets that clear the math — amber, never green. Unknown
+  // stays amber too (both mean "not endorsed"); only VALUE is green.
+  const kind = d === 'VALUE' ? 'value' : (d === 'TRACKING' || d.startsWith('NO EDGE (unknown)')) ? 'watch' : 'none';
+  const bg = kind === 'value' ? 'var(--emerald-dim)' : kind === 'watch' ? 'var(--amber-dim)' : 'var(--surface-raised)';
+  const fg = kind === 'value' ? 'var(--emerald)' : kind === 'watch' ? 'var(--amber)' : 'var(--text-muted)';
   return `<span class="badge" style="background:${bg}; color:${fg}; border:1px solid var(--border)">${escapeHtml(d)}</span>`;
 }
 
@@ -56,7 +59,7 @@ export async function renderProps(root) {
       <p>Model fair lines vs your book lines. Edges are tracked estimates, not tips.</p>
       <details style="margin-top:8px" aria-label="How props edges work">
         <summary style="cursor:pointer; font-weight:600" title="Toggle props explainer">How edges work</summary>
-        <p style="margin-top:8px">Fair line = stat-projection median (<code class="inline">stat_projector.py</code>). Edge needs model−book ≥ 5pp <em>and</em> EV ≥ +4%/unit, non-empty history, and is labeled by shadow state (20 resolved) + 2025 calibration. Only <code class="inline">passing_yards</code> earned edge labels in calibration — the rest stay tracking.</p>
+        <p style="margin-top:8px">Fair line = stat-projection median (<code class="inline">stat_projector.py</code>). Edge needs model−book ≥ 5pp <em>and</em> EV ≥ +4%/unit, non-empty history, and is labeled by shadow state (20 resolved) + 2025 calibration. Only <code class="inline">passing_yards</code> earned edge labels in 2025 calibration — but a 2024 rerun did not confirm it (coverage 0.714 vs 0.757), so treat even that as provisional until live shadow data adjudicates. The rest stay tracking.</p>
       </details>
     </div>
 
@@ -92,11 +95,11 @@ export async function renderProps(root) {
               <tbody>
                 ${edges.map(e => `
                   <tr>
-                    <td><span class="mono" style="font-weight:700">${escapeHtml(e.player_name || e.player_id || '')}</span> ${posBadge(e.position)}<br><span class="mono" style="font-size:11px; color:var(--text-faint)">${escapeHtml(e.team || '')} · ${escapeHtml(e.book || 'manual')}</span></td>
-                    <td class="mono" style="font-size:12px">${escapeHtml(e.market || '')}</td>
+                    <td><span style="font-weight:700">${escapeHtml(e.player_name || e.player_id || '')}</span> ${posBadge(e.position)}<br><span class="mono" style="font-size:11px; color:var(--text-faint)">${escapeHtml(e.team || '')} · ${escapeHtml(e.book || 'manual')}</span></td>
+                    <td style="font-size:12px">${escapeHtml(e.market || '')}</td>
                     <td class="mono">${e.fair_line == null ? '—' : Number(e.fair_line).toFixed(1)}${e.sigma == null ? '' : `<br><span style="font-size:11px; color:var(--text-faint)">±${Number(e.sigma).toFixed(1)}</span>`}</td>
                     <td class="mono">${fmtLine(e)} @ ${fmtPrice(e.book_price)}</td>
-                    <td class="mono">${e.p_model == null ? '—' : Number(e.p_model).toFixed(3)}</td>
+                    <td class="mono">${e.p_model == null ? '—' : Number(e.p_model).toFixed(2)}</td>
                     <td class="mono">${e.edge_pp == null ? '—' : (Number(e.edge_pp) >= 0 ? '+' : '') + (Number(e.edge_pp) * 100).toFixed(1) + 'pp'}</td>
                     <td class="mono">${e.ev_per_unit == null ? '—' : (Number(e.ev_per_unit) >= 0 ? '+' : '') + (Number(e.ev_per_unit) * 100).toFixed(1) + '%'}</td>
                     <td>${edgeChip(e.decision)}<br>${shadowChip(e.shadow_status, e.calibration_verdict)}</td>
@@ -114,15 +117,15 @@ export async function renderProps(root) {
       <div class="card-header"><h3>Add a book line</h3><span class="kicker">manual entry → model :8000</span></div>
       <div class="card-body">
         <form id="props-form" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px" aria-label="Add a book line">
-          <label style="font-size:12px">Player ID <input name="player_id" required maxlength="64" placeholder="2544" style="width:100%"></label>
-          <label style="font-size:12px">Market <select name="market" style="width:100%">${MARKETS.map(m => `<option value="${m}">${m}</option>`).join('')}</select></label>
-          <label style="font-size:12px">Side <select name="side" style="width:100%">${SIDES.map(s => `<option value="${s}">${s}</option>`).join('')}</select></label>
-          <label style="font-size:12px">Line <input name="line" type="number" step="0.5" placeholder="over/under only" style="width:100%"></label>
-          <label style="font-size:12px">Price <input name="price" type="number" step="1" required placeholder="-110" style="width:100%"></label>
-          <label style="font-size:12px">Book <input name="book" maxlength="32" placeholder="manual" style="width:100%"></label>
-          <label style="font-size:12px">Week <input name="week" type="number" min="1" max="18" required placeholder="5" style="width:100%"></label>
+          <label style="font-size:12px">Player ID <input name="player_id" required maxlength="64" placeholder="2544" style="width:100%; min-height:44px"></label>
+          <label style="font-size:12px">Market <select name="market" style="width:100%; min-height:44px">${MARKETS.map(m => `<option value="${m}">${m}</option>`).join('')}</select></label>
+          <label style="font-size:12px">Side <select name="side" style="width:100%; min-height:44px">${SIDES.map(s => `<option value="${s}">${s}</option>`).join('')}</select></label>
+          <label style="font-size:12px">Line <input name="line" type="number" step="0.5" placeholder="over/under only" style="width:100%; min-height:44px"></label>
+          <label style="font-size:12px">Price <input name="price" type="number" step="1" required placeholder="-110" style="width:100%; min-height:44px"></label>
+          <label style="font-size:12px">Book <input name="book" maxlength="32" placeholder="manual" style="width:100%; min-height:44px"></label>
+          <label style="font-size:12px">Week <input name="week" type="number" min="1" max="18" required placeholder="5" style="width:100%; min-height:44px"></label>
           <div style="grid-column:1/-1; display:flex; gap:10px; align-items:center">
-            <button type="submit" class="sidebar-tab" style="border:1px solid var(--border-active); padding:8px 16px">Store line</button>
+            <button type="submit" style="border:1px solid var(--border-active); background:var(--primary); color:var(--text-inverse); border-radius:12px; padding:8px 16px; min-height:44px; font:600 13px Helvetica, Arial, sans-serif; cursor:pointer">Store line</button>
             <span id="props-form-msg" class="mono" style="font-size:12px" role="status" aria-live="polite"></span>
           </div>
         </form>
@@ -178,7 +181,7 @@ function bindPropsForm(root) {
       const res = await postPropLine(body);
       const edge = res.edge;
       msg.textContent = edge
-        ? `Stored. Edge: ${edge.decision} (P=${Number(edge.p_model).toFixed(3)}, EV=${(Number(edge.ev_per_unit) * 100).toFixed(1)}%/u).`
+        ? `Stored. Edge: ${edge.decision} (P=${Number(edge.p_model).toFixed(2)}, EV=${(Number(edge.ev_per_unit) * 100).toFixed(1)}%/u).`
         : `Stored. ${(res.note || 'Edge computes after refresh.').replace(/</g, '')}`;
       msg.style.color = 'var(--emerald)';
       // Simplest honest refresh: re-render the tab (edges cache was invalidated).

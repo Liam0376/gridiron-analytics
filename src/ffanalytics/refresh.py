@@ -158,6 +158,38 @@ def build_sleeper_xwalk(sleeper_players: dict) -> dict:
     return out
 
 
+PROPS_RETENTION_DAYS = 180
+
+
+def prune_props_tables(conn, now_iso: str, ttl_days: int = PROPS_RETENTION_DAYS) -> dict:
+    """Delete stale props experiment data. prop_lines past TTL go; RESOLVED
+    shadow prop rows past TTL go; UNRESOLVED stay regardless of age (still
+    awaiting outcomes — deleting them destroys pending experiment data;
+    volume is bounded by manual entry anyway). Cutoff computed in Python
+    (lexicographic ISO compare, no SQLite date-function dependence).
+    Returns counts. Missing tables (old DBs) => zeros, no raise."""
+    from datetime import datetime as _dt, timedelta as _td
+
+    try:
+        cutoff = (_dt.fromisoformat(now_iso) - _td(days=ttl_days)).isoformat()
+    except Exception:
+        return {"prop_lines": 0, "shadow_resolved": 0}
+    counts = {"prop_lines": 0, "shadow_resolved": 0}
+    try:
+        cur = conn.execute("DELETE FROM prop_lines WHERE created_at < ?", (cutoff,))
+        counts["prop_lines"] = cur.rowcount or 0
+        cur = conn.execute(
+            "DELETE FROM shadow_recommendations WHERE kind LIKE 'prop:%' "
+            "AND actual_outcome IS NOT NULL AND logged_at < ?",
+            (cutoff,),
+        )
+        counts["shadow_resolved"] = cur.rowcount or 0
+        conn.commit()
+    except Exception:
+        return {"prop_lines": 0, "shadow_resolved": 0}
+    return counts
+
+
 def run_refresh(
     conn: sqlite3.Connection,
     season: int,
@@ -671,6 +703,16 @@ def run_refresh_with_data(
                 """DELETE FROM market_consensus WHERE season = ? AND week < ?""",
                 (season, prune_threshold),
             )
+            # Props experiment retention (council vote): prop_lines snapshots
+            # and resolved shadow rows age out at 180d (a full season); pending
+            # rows never auto-delete. Manual-entry volume is tiny, but an
+            # unbounded table on a $0 local file is still a leak.
+            try:
+                _pruned = prune_props_tables(conn, now.isoformat())
+                if _pruned["prop_lines"] or _pruned["shadow_resolved"]:
+                    logger.info(f"props retention pruned: {_pruned}")
+            except Exception as _prune_props_exc:
+                logger.warning(f"props retention prune failed: {_prune_props_exc}")
             # player_stats retention: keep trailing 8 season-week blobs max,
             # mirror rosters style (DELETE week < threshold). 8-week window covers
             # ~half season of weekly snapshots on $0 local SQLite; older blobs

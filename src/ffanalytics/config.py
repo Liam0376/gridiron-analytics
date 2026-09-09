@@ -165,7 +165,12 @@ def league_economics(
     budget = float(auction_budget or 200)
     positions = list(roster_positions or [])
     bench = sum(1 for p in positions if p == "BN") or 4
-    flex = sum(1 for p in positions if p == "FLEX")
+    # why default flex=2 (economy sign-off): the reference league IS 12-team
+    # 2-FLEX — starters=10, bench=4, and the _base() fallbacks below already
+    # assume it. flex=0 here was the odd one out, yielding RB24/WR24 against
+    # POS_REPL_COUNTS (RB28/WR32) and every legacy fallback. Unknown shape =
+    # reference shape, documented.
+    flex = sum(1 for p in positions if p == "FLEX") if positions else 2
     starters = (len(positions) - bench) if positions else 10
     starters = max(1, starters)
 

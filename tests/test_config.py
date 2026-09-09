@@ -42,3 +42,17 @@ def test_get_feature_status_known_and_unknown(monkeypatch):
     assert config_module.get_feature_status("target_share") == "included"
     with pytest.raises(KeyError):
         config_module.get_feature_status("not_a_real_feature")
+
+
+def test_league_economics_default_reproduces_reference():
+    # why (economy sign-off): no-arg league_economics() yielded RB24/WR24
+    # against POS_REPL_COUNTS (RB28/WR32) and every legacy fallback while its
+    # docstring claimed exact reproduction. Unknown shape = reference shape.
+    from ffanalytics import config as config_module
+
+    econ = config_module.league_economics()
+    assert econ["repl_counts"] == config_module.POS_REPL_COUNTS
+    assert econ["repl_counts"]["RB"] == 28 and econ["repl_counts"]["WR"] == 32
+    assert econ["starter_pool"] == config_module.STARTER_BUDGET_POOL == 2352
+    assert econ["starter_slots_total"] == 120
+    assert econ["flex_slots"] == 2

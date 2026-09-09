@@ -183,3 +183,36 @@ def test_league_draft_requires_id_or_env(monkeypatch):
     finally:
         monkeypatch.setenv("SLEEPER_LEAGUE_ID", "test")
         importlib.reload(config_module)
+
+
+def test_projections_rescore_stale_nonzero():
+    # why (backend sign-off): stored points could come from an older scoring
+    # table — rescore whenever raw stat keys exist; keep stored only when the
+    # rescore is 0 (stat-less rows would otherwise zero out).
+    snap = _snapshot_cache()
+    try:
+        _clear_cache()
+        _CACHE.update({
+            "league_settings": {"scoring_settings": {"rec": 1.0, "rec_yd": 0.1},
+                                "roster_positions": [], "users": []},
+            "rosters": [],
+            "player_stats": [
+                {"player_id": "1", "short_name": "Stale WR",
+                 "position": "WR", "position_group": "WR",
+                 "projected_points": 999.0,
+                 "receptions": 10, "receiving_yards": 100},
+                {"player_id": "2", "short_name": "Statless",
+                 "position": "WR", "position_group": "WR",
+                 "projected_points": 7.5},
+            ],
+            "injury_status": {},
+            "season": 2025,
+            "week": 5,
+        })
+        resp = client.get("/projections")
+        assert resp.status_code == 200
+        players = {p["player_id"]: p for p in resp.json()["players"]}
+        assert players["1"]["projected_points"] == 20.0
+        assert players["2"]["projected_points"] == 7.5
+    finally:
+        _restore_cache(snap)

@@ -205,11 +205,22 @@ def evaluate(normal_obs, td_pairs, n_empty, n_total):
 
 
 def main():
+    import argparse
+
+    # why args, not constants (research-synthesist sign-off): single-season
+    # calibration is one data point — reruns on other holdouts corroborate
+    # without touching the 2025 verdicts that gate production.
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--holdout", type=int, default=HOLDOUT_SEASON)
+    parser.add_argument("--prior", type=int, default=PRIOR_SEASON)
+    parser.add_argument("--out", default="data/props/backtest_props_results.json")
+    args = parser.parse_args()
+    holdout, prior = args.holdout, args.prior
     t0 = time.time()
-    print("downloading 2024 + 2025 weekly stats + 2025 schedule (memory only) ...", flush=True)
-    stats_holdout = nflverse.get_weekly_player_stats(HOLDOUT_SEASON)
-    stats_prior = nflverse.get_weekly_player_stats(PRIOR_SEASON)
-    sched = sched_adapter.get_schedule(HOLDOUT_SEASON)
+    print(f"downloading {prior} + {holdout} weekly stats + {holdout} schedule (memory only) ...", flush=True)
+    stats_holdout = nflverse.get_weekly_player_stats(holdout)
+    stats_prior = nflverse.get_weekly_player_stats(prior)
+    sched = sched_adapter.get_schedule(holdout)
     print(f"  holdout rows={len(stats_holdout)} prior rows={len(stats_prior)} "
           f"sched rows={len(sched)} ({time.time()-t0:.0f}s)", flush=True)
     game_ctx = build_game_context(sched)
@@ -217,7 +228,9 @@ def main():
     print(f"  player-weeks={n_total} empty-excluded={n_empty} "
           f"({time.time()-t0:.0f}s)", flush=True)
     results = evaluate(normal_obs, td_pairs, n_empty, n_total)
-    out_path = REPO_ROOT / "data" / "props" / "backtest_props_results.json"
+    results["holdout_season"] = holdout
+    results["prior_season"] = prior
+    out_path = REPO_ROOT / args.out
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(results, indent=2))
     print(f"wrote {out_path} ({time.time()-t0:.0f}s total)", flush=True)

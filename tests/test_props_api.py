@@ -197,13 +197,16 @@ def test_get_edges_multi_decisions_and_tracking():
         edges = {e["player_id"]: e for e in resp.json()["edges"]}
         assert resp.json()["count"] == 4
         assert edges["2544"]["decision"] == "VALUE"
-        assert edges["7500"]["decision"] == "VALUE"
+        # why TRACKING, not VALUE: receptions never earned edges_on — the math
+        # clears but calibration gates the label (council vote). Numbers kept.
+        assert edges["7500"]["decision"] == "TRACKING"
+        assert edges["7500"]["p_model"] > 0.9
         assert edges["9999"]["decision"] == "NO EDGE (unknown)"
         assert edges["0000"]["decision"] == "NO EDGE (unknown)"
         assert edges["0000"]["fair_line"] is None
         # 0 resolved => tracking everywhere (resolved-not-logged semantics).
         assert {e["shadow_status"] for e in edges.values()} == {"tracking"}
-        # only VALUE rows logged (2 markets).
+        # evaluated claims log (VALUE and TRACKING); unknowns never do.
         assert shadow.count_logged(conn, "prop:passing_yards") == 1
         assert shadow.count_logged(conn, "prop:receptions") == 1
     finally:
@@ -344,7 +347,8 @@ def test_nan_fair_line_quarantines_row_not_board():
         edges = {e["player_id"]: e for e in resp.json()["edges"]}
         assert edges["2544"]["decision"] == "NO EDGE (unknown)"
         assert "non-finite" in (edges["2544"].get("note") or "").lower()
-        assert edges["7500"]["decision"] == "VALUE"
+        # receptions never earned edges_on: VALUE math grades TRACKING.
+        assert edges["7500"]["decision"] == "TRACKING"
     finally:
         _restore(snap)
         conn.close()

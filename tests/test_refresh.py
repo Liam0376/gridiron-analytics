@@ -225,3 +225,35 @@ def test_preseason_refresh_patches_teams_and_adds_rookies():
         "SELECT sleeper_id, gsis_id FROM sleeper_xwalk").fetchall()}
     assert db_rows == {"99": "gsis-vet1"}
     conn.close()
+
+
+def test_prune_props_tables_keeps_pending():
+    from ffanalytics import shadow
+
+    conn, tmp = _fresh_conn()
+    try:
+        conn.execute(
+            "INSERT INTO prop_lines (player_id, season, week, market, side,"
+            " line, price, book, created_at) VALUES "
+            "('1', 2025, 4, 'passing_yards', 'over', 250.5, -110, 'manual', '2025-01-01T00:00:00'),"
+            "('2', 2026, 5, 'passing_yards', 'over', 250.5, -110, 'manual', '2026-09-01T00:00:00')"
+        )
+        conn.commit()
+        old_res = shadow.log_recommendation(
+            conn, kind="prop:passing_yards", season=2025, week=4, player_id="1",
+            recommendation={"a": 1}, logged_at_iso="2025-01-01T00:00:00")
+        shadow.record_outcome(conn, old_res, {"hit": True})
+        old_unres = shadow.log_recommendation(
+            conn, kind="prop:passing_yards", season=2025, week=4, player_id="3",
+            recommendation={"a": 2}, logged_at_iso="2025-01-01T00:00:00")
+        out = refresh.prune_props_tables(conn, "2026-09-09T00:00:00", ttl_days=180)
+        assert out == {"prop_lines": 1, "shadow_resolved": 1}
+        remaining_lines = {r["player_id"] for r in
+                           conn.execute("SELECT player_id FROM prop_lines").fetchall()}
+        assert remaining_lines == {"2"}
+        remaining_shadow = {r["id"] for r in conn.execute(
+            "SELECT id FROM shadow_recommendations").fetchall()}
+        # resolved-old gone; unresolved-old stays pending.
+        assert old_unres in remaining_shadow and old_res not in remaining_shadow
+    finally:
+        conn.close()
