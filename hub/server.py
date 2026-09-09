@@ -25,6 +25,12 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timedelta
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
 # Audit: thread safety for global caches (if moved to ThreadingHTTPServer)
 _CACHE_LOCK = threading.Lock()
 # Single-flight locks for Sleeper refresh — never hold _CACHE_LOCK across network I/O.

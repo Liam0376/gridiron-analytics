@@ -48,7 +48,11 @@ def db_path_for_league(league_id: str | None = None) -> Path:
     allowlists data/ so ?league_id= can only resolve inside it.
     """
     if "FFANALYTICS_DB_PATH" in os.environ:
-        return Path(os.environ["FFANALYTICS_DB_PATH"])
+        p = Path(os.environ["FFANALYTICS_DB_PATH"]).resolve()
+        allowed = Path("data").resolve()
+        if not str(p).startswith(str(allowed) + os.sep) and p.parent != allowed:
+            raise ValueError(f"FFANALYTICS_DB_PATH must be inside data/: {p}")
+        return p
     lid = get_league_id(league_id)
     default_lid = (LEAGUE_ID or "").strip()
     if not lid or (default_lid and lid == default_lid):
