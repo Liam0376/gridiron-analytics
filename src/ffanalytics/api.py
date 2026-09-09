@@ -29,6 +29,7 @@ from ffanalytics.decision import (
     calculate_roster_value
 )
 from ffanalytics import shadow
+from ffanalytics import props as props_math
 
 logger = logging.getLogger("ffanalytics.api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] rid=%(rid)s %(message)s")
@@ -213,6 +214,7 @@ def _blank_cache() -> dict:
         "league_settings": None,
         "rosters": None,
         "player_stats": None,
+        "model_projections": None,
         "injury_status": None,
         "matchups": None,
         "trending": None,
@@ -560,6 +562,13 @@ def _do_refresh_job(season: int, stats_season: int, ran_at_iso: str, week: int, 
             new_cache["rosters"] = data["rosters"]
         if data.get("player_stats"):
             new_cache["player_stats"] = data["player_stats"]
+        if data.get("model_projections"):
+            # why cached: props edges read fair stat lines + is_empty flags
+            # from the real pipeline output (with Vegas/weather ctx) instead
+            # of rebuilding without ctx. Small (~500 rows), same lifetime as
+            # player_stats, same truthy-only overwrite (failed refresh keeps
+            # last good).
+            new_cache["model_projections"] = data["model_projections"]
         if data.get("injury_status"):
             new_cache["injury_status"] = data["injury_status"]
         if data.get("matchups"):
@@ -705,7 +714,7 @@ def get_projections(
             scoring = json.loads(srow["data"]).get("scoring_settings", {}) if srow else {}
 
     out = []
-    for p in players[offset:offset + limit]:
+    for p in players:
         pid = str(p.get("player_id") or p.get("id") or "")
         pos = (p.get("position") or p.get("position_group") or "UNK").upper()
         pts = float(p.get("projected_points") or p.get("fantasy_points") or 0)
@@ -721,14 +730,14 @@ def get_projections(
             "player_name": p.get("player_display_name") or p.get("short_name") or p.get("player_name") or pid,
             "position": pos,
             "position_group": pos,
-            # why canonical `team` first: `recent_team` lags for traded players.
             "team": p.get("team") or p.get("recent_team") or "",
             "opponent_team": p.get("opponent_team") or "",
             "projected_points": round(pts, 2),
             "injury_status": injury,
         })
     out.sort(key=lambda x: x["projected_points"], reverse=True)
-    return {"players": out, "count": len(out), "meta": {"cached": bool(cache["player_stats"])}}
+    page = out[offset:offset + limit]
+    return {"players": page, "count": len(page), "meta": {"cached": bool(cache["player_stats"]), "total": len(out)}}
 
 
 @app.get("/league/draft")
@@ -997,3 +1006,307 @@ def get_trade_evaluation(
     except Exception as exc:
         logger.exception("api: trade failed: %s", _sanitize_log(exc))
         raise HTTPException(status_code=500, detail="internal error")
+
+
+# ---------------------------------------------------------------------------
+# Player props (spec 2026-09-09): manual book-line entry + edges vs model
+# fair lines. Separate from fantasy — never touches decision/comparison.
+# Fair lines come from cached model_projections (real pipeline output with
+# Vegas/weather ctx); sigmas from same-season history dispersion
+# (props.sigma_for_stat, prior=None — conservative, floors bind sooner).
+# Hub stays read-only: it GETs edges here; manual entry POSTs to :8000.
+# ---------------------------------------------------------------------------
+
+class PropLineIn(BaseModel):
+    player_id: str = Field(..., min_length=1, max_length=64)
+    season: int | None = Field(default=None, ge=2000, le=2100)
+    week: int = Field(..., ge=1, le=18)
+    market: str = Field(..., min_length=1, max_length=32)
+    side: str = Field(..., min_length=1, max_length=8)
+    line: float | None = None
+    price: float
+    book: str = Field(default="manual", min_length=1, max_length=32)
+
+
+def _props_calibration_verdicts() -> dict:
+    """Best-effort per-market calibration verdicts from the Task-4 backtest
+    artifact. Missing artifact => {} (callers show 'unknown', never an edge
+    claim). Read per request — 3KB, always fresh after backtest reruns."""
+    try:
+        from pathlib import Path as _Path
+
+        root = _Path(__file__).resolve().parents[2]
+        doc = json.loads((root / "data" / "props" / "backtest_props_results.json").read_text())
+        return {
+            name: info.get("verdict", "unknown")
+            for name, info in (doc.get("markets") or {}).items()
+        }
+    except Exception:
+        return {}
+
+
+def _validate_prop_line(body: PropLineIn) -> dict:
+    """Semantic validation beyond Pydantic shape. Returns normalized dict.
+    Raises HTTPException(422) with a user-facing reason."""
+    market = (body.market or "").strip().lower()
+    side = (body.side or "").strip().lower()
+    all_markets = {
+        m for _pos in props_math.PROP_MARKETS.values() for (m, _s, _model) in _pos
+    }
+    if market not in all_markets:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown market '{body.market}'. Allowed: {sorted(all_markets)}.",
+        )
+    # why any(), not a static set: anytime_td is poisson for every position
+    # while normal markets differ per position — derive from PROP_MARKETS so
+    # market adds flow through without a second allowlist.
+    is_poisson = any(
+        m == market and model == "poisson"
+        for _pos in props_math.PROP_MARKETS.values()
+        for (m, _s, model) in _pos
+    )
+    if is_poisson:
+        if side not in ("yes", "no"):
+            raise HTTPException(
+                status_code=422, detail="anytime_td takes side 'yes' or 'no' (yes/no market)."
+            )
+        if body.line is not None:
+            raise HTTPException(
+                status_code=422, detail="anytime_td takes no line (yes/no market)."
+            )
+    else:
+        if side not in ("over", "under"):
+            raise HTTPException(
+                status_code=422, detail=f"Market '{market}' takes side 'over' or 'under'."
+            )
+        if body.line is None or body.line != body.line or abs(body.line) == float("inf"):
+            raise HTTPException(status_code=422, detail="Over/under requires a finite line.")
+    try:
+        props_math.american_to_prob(float(body.price))
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=422, detail=f"Invalid American price '{body.price}' (non-zero, finite)."
+        )
+    return {
+        "player_id": body.player_id.strip(),
+        "market": market,
+        "side": side,
+        "line": None if body.line is None else float(body.line),
+        "price": float(body.price),
+        "book": (body.book or "manual").strip() or "manual",
+    }
+
+
+def _evaluate_prop_edge(
+    proj_row: dict | None,
+    history_rows: list[dict],
+    stored: dict,
+    calibration: dict,
+) -> dict:
+    """Edge for one stored book line. proj_row None (unknown player) or
+    is_empty flag => NO EDGE (unknown) — unknown is never an edge."""
+    market, side = stored["market"], stored["side"]
+    is_poisson = market == "anytime_td"
+    cal = calibration.get(market, "unknown")
+    base = {
+        "player_id": stored["player_id"],
+        "market": market,
+        "side": side,
+        "book_line": stored["line"],
+        "book_price": stored["price"],
+        "book": stored["book"],
+        "calibration_verdict": cal,
+    }
+    if proj_row is None:
+        return {**base, "fair_line": None, "sigma": None, "p_model": None,
+                "book_prob": None, "edge_pp": None, "ev_per_unit": None,
+                "decision": "NO EDGE (unknown)"}
+    is_empty = bool(proj_row.get("is_empty_projection", False))
+    pos = (proj_row.get("position") or proj_row.get("position_group") or "").upper()
+    name = (proj_row.get("player_display_name") or proj_row.get("player_name")
+            or stored["player_id"])
+    if is_poisson:
+        sources = next(
+            (src.split("+") for _p, ms in props_math.PROP_MARKETS.items() if _p == pos
+             for (m, src, model) in ms if m == market and model == "poisson"),
+            ("rushing_tds", "receiving_tds"),
+        )
+        lam = 0.0
+        for src in sources:
+            try:
+                lam += float(proj_row.get(src, 0) or 0)
+            except (TypeError, ValueError):
+                pass
+        p_yes = props_math.poisson_anytime_td(lam)
+        p_model = p_yes if side == "yes" else 1.0 - p_yes
+        fair, sigma = lam, None
+    else:
+        stat_key = market  # normal markets are 1:1 with stat keys by construction
+        try:
+            fair = float(proj_row.get(stat_key, 0) or 0)
+        except (TypeError, ValueError):
+            fair = 0.0
+        sigma = props_math.sigma_for_stat(history_rows, None, stat_key)
+        # why side-adjust here, not in props_math: prop_over_prob answers
+        # P(over) only; the ticket side decides which tail the user holds.
+        p_over = props_math.prop_over_prob(
+            {"model": "normal", "fair_line": fair, "sigma": sigma}, stored["line"]
+        )
+        p_model = p_over if side == "over" else 1.0 - p_over
+    rule = props_math.apply_prop_edge_rule(
+        p_model, stored["price"], is_empty=is_empty
+    )
+    return {
+        **base,
+        "player_name": name,
+        "position": pos,
+        "team": proj_row.get("team") or proj_row.get("recent_team") or "",
+        "fair_line": round(fair, 2),
+        "sigma": None if sigma is None else round(sigma, 3),
+        "p_model": round(p_model, 4),
+        "book_prob": round(rule["book_prob"], 4),
+        "edge_pp": round(rule["edge_pp"], 4),
+        "ev_per_unit": round(rule["ev_per_unit"], 4),
+        "decision": rule["decision"],
+    }
+
+
+def _props_history_lookup(player_stats: list[dict]) -> dict[str, list[dict]]:
+    grouped: dict[str, list[dict]] = {}
+    for s in player_stats or []:
+        pid = str(s.get("player_id") or s.get("id") or "")
+        if pid:
+            grouped.setdefault(pid, []).append(s)
+    return grouped
+
+
+@app.post("/props/lines")
+@app.post("/v1/props/lines")
+def post_prop_line(
+    body: PropLineIn,
+    league_id: str | None = _league_query(),
+) -> dict:
+    cache = _cache_for(league_id)
+    norm = _validate_prop_line(body)
+    season = body.season if body.season is not None else (cache.get("season") or get_stats_season())
+    stored = {**norm, "season": season, "week": body.week}
+    # why lazy init_schema, not a migration-only path: POST /refresh never
+    # calls init_schema (db.py documents this), so first props write on an
+    # old DB would hit "no such table". init_schema is idempotent
+    # (IF NOT EXISTS + versioned migrations) — schema.sql stays the source.
+    with _league_conn(league_id) as conn:
+        if conn is None:
+            raise HTTPException(status_code=503, detail="DB not available.")
+        db.init_schema(conn)
+        import datetime as _dt
+
+        conn.execute(
+            """INSERT INTO prop_lines
+               (player_id, season, week, market, side, line, price, book, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(player_id, season, week, market, side, book)
+               DO UPDATE SET line=excluded.line, price=excluded.price,
+                             created_at=excluded.created_at""",
+            (stored["player_id"], season, body.week, norm["market"], norm["side"],
+             norm["line"], norm["price"], norm["book"], _dt.datetime.now().isoformat()),
+        )
+        conn.commit()
+        row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    # Edge preview when the cache is warm; cold cache still stores (200).
+    edge, note = None, None
+    projs = (cache.get("model_projections") or [])
+    if projs and cache.get("player_stats"):
+        by_id = {str(p.get("player_id") or ""): p for p in projs}
+        hist = _props_history_lookup(cache.get("player_stats")).get(stored["player_id"], [])
+        edge = _evaluate_prop_edge(
+            by_id.get(stored["player_id"]), hist, stored, _props_calibration_verdicts()
+        )
+    else:
+        note = "Stored. Cache cold — run /refresh for the edge preview."
+    return {"stored": {**stored, "id": row_id}, "edge": edge, "note": note}
+
+
+@app.get("/props/edges")
+@app.get("/v1/props/edges")
+def get_prop_edges(
+    week: int | None = Query(default=None, ge=1, le=18),
+    season: int | None = Query(default=None, ge=2000, le=2100),
+    league_id: str | None = _league_query(),
+) -> dict:
+    cache = _cache_for(league_id)
+    if not cache.get("model_projections") or not cache.get("player_stats"):
+        raise HTTPException(
+            status_code=503, detail="Data not available. Run /refresh first to load data."
+        )
+    season = season if season is not None else (cache.get("season") or get_stats_season())
+    week = week if week is not None else (cache.get("week") or compute_nfl_week() or 1)
+    calibration = _props_calibration_verdicts()
+    with _league_conn(league_id) as conn:
+        if conn is None:
+            raise HTTPException(status_code=503, detail="DB not available.")
+        try:
+            rows = conn.execute(
+                "SELECT player_id, market, side, line, price, book FROM prop_lines "
+                "WHERE season = ? AND week = ?",
+                (season, week),
+            ).fetchall()
+        except Exception:
+            # why retry-once, not unconditional init_schema per GET: old DBs
+            # predate the table; pay the DDL cost once, only when missing.
+            db.init_schema(conn)
+            rows = conn.execute(
+                "SELECT player_id, market, side, line, price, book FROM prop_lines "
+                "WHERE season = ? AND week = ?",
+                (season, week),
+            ).fetchall()
+        lines = [dict(r) for r in rows]
+        by_id = {str(p.get("player_id") or ""): p for p in (cache.get("model_projections") or [])}
+        hist_lookup = _props_history_lookup(cache.get("player_stats"))
+        edges = []
+        for ln in lines:
+            stored = {
+                "player_id": str(ln["player_id"]),
+                "market": ln["market"],
+                "side": ln["side"],
+                "line": None if ln["line"] is None else float(ln["line"]),
+                "price": float(ln["price"]),
+                "book": ln["book"],
+            }
+            hist = [h for h in hist_lookup.get(stored["player_id"], [])
+                    if (h.get("season_type") or "REG") == "REG"
+                    and (h.get("week") or 0) < week]
+            edge = _evaluate_prop_edge(by_id.get(stored["player_id"]), hist, stored, calibration)
+            try:
+                trusted = shadow.is_trusted(conn, f"prop:{stored['market']}")
+            except Exception:
+                trusted = False
+            edge["shadow_status"] = "trusted" if trusted else "tracking"
+            edges.append(edge)
+        # why log VALUE only: NO EDGE rows carry no claim to backtest; every
+        # surfaced edge gets a shadow row for later resolution (refresh.py).
+        by_market: dict[str, list[dict]] = {}
+        for e in edges:
+            if e["decision"] == "VALUE":
+                by_market.setdefault(f"prop:{e['market']}", []).append({
+                    "player_id": e["player_id"],
+                    "market": e["market"],
+                    "side": e["side"],
+                    "book_line": e["book_line"],
+                    "book_price": e["book_price"],
+                    "fair_line": e["fair_line"],
+                    "p_model": e["p_model"],
+                    "edge_pp": e["edge_pp"],
+                    "ev_per_unit": e["ev_per_unit"],
+                    "decision": e["decision"],
+                    "calibration_verdict": e["calibration_verdict"],
+                })
+        for kind, recs in by_market.items():
+            _batch_log_recommendations(kind, recs, league_id)
+    return {
+        "edges": edges,
+        "count": len(edges),
+        "season": season,
+        "week": week,
+        "timestamp": cache["last_updated"],
+    }

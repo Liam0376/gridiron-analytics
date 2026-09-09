@@ -115,6 +115,23 @@ CREATE TABLE IF NOT EXISTS league_transactions (
     created_at TEXT NOT NULL
 );
 
+-- Player props (spec 2026-09-09): manually entered book lines. Manual entry
+-- only — no odds feed ($0 constraint). why side in UNIQUE: over and under on
+-- the same market/book are independent trackable positions.
+CREATE TABLE IF NOT EXISTS prop_lines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id TEXT NOT NULL,
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    market TEXT NOT NULL,   -- passing_yards, passing_tds, rushing_yards, receiving_yards, receptions, anytime_td
+    side TEXT NOT NULL,     -- 'over'/'under' (normal) or 'yes'/'no' (anytime_td)
+    line REAL,              -- book line; NULL for yes/no markets
+    price REAL NOT NULL,    -- American price on `side`
+    book TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT NOT NULL,
+    UNIQUE(player_id, season, week, market, side, book)
+);
+
 -- P0 audit: per-source refresh history lookups (hub refresh-log, /ready checks)
 -- why: refresh_log grows unbounded (one row per source per refresh); without
 -- this index every ORDER BY ran_at DESC scan is a full table scan.

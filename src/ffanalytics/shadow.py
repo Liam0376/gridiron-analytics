@@ -161,3 +161,100 @@ def is_trusted(
         return count_resolved(conn, kind) >= int(threshold)
     except Exception:
         return False
+
+
+# Market -> actual-stat keys. Canonical market set lives in
+# props.PROP_MARKETS; this mirrors it without importing props so shadow stays
+# dependency-free (props pulls stat_projector). Keep in sync on market adds.
+_PROP_STAT_KEYS = {
+    "passing_yards": ("passing_yards",),
+    "passing_tds": ("passing_tds",),
+    "rushing_yards": ("rushing_yards",),
+    "receiving_yards": ("receiving_yards",),
+    "receptions": ("receptions",),
+    "anytime_td": ("rushing_tds", "receiving_tds"),
+}
+
+
+def _prop_actual(row: dict, market: str):
+    """Actual stat total for a market from one weekly player row (None if unknown)."""
+    keys = _PROP_STAT_KEYS.get(market)
+    if not keys:
+        return None
+    total = 0.0
+    for k in keys:
+        try:
+            v = float(row.get(k, 0) or 0)
+        except (TypeError, ValueError):
+            return None
+        if v != v or abs(v) == float("inf"):
+            return None
+        total += v
+    return total
+
+
+def evaluate_unresolved_prop_recommendations(
+    conn: sqlite3.Connection,
+    player_stats: list[dict],
+) -> int:
+    """Resolve kind='prop:<market>' rows against actual STATS (not fantasy points).
+
+    The logged recommendation JSON carries {market, side, book_line} (see
+    api.py props endpoints). Outcome records {"actual_stat", "hit", "week"}
+    where hit is True/False, or "push" when an over/under lands exactly on
+    the line. Yes/no markets resolve on TD>0. Unknown markets/stats resolve
+    nothing (row stays pending — never force an outcome).
+    """
+    if not player_stats:
+        return 0
+
+    rows = conn.execute(
+        "SELECT id, week, player_id, recommendation FROM shadow_recommendations "
+        "WHERE actual_outcome IS NULL AND player_id IS NOT NULL AND kind LIKE 'prop:%'"
+    ).fetchall()
+    if not rows:
+        return 0
+
+    by_key = {}
+    for p in player_stats:
+        pid = str(p.get("player_id") or p.get("id") or "")
+        wk = p.get("week")
+        if pid and wk:
+            by_key[(pid, int(wk))] = p
+
+    resolved = 0
+    for r in rows:
+        try:
+            rec = json.loads(r["recommendation"])
+        except Exception:
+            continue
+        market = rec.get("market")
+        side = rec.get("side")
+        key = (str(r["player_id"]), int(r["week"]))
+        actual_row = by_key.get(key)
+        if actual_row is None:
+            continue
+        actual = _prop_actual(actual_row, market)
+        if actual is None:
+            continue
+        line = rec.get("book_line")
+        if side in ("over", "under"):
+            if line is None:
+                continue
+            if actual == float(line):
+                hit = "push"
+            elif side == "over":
+                hit = actual > float(line)
+            else:
+                hit = actual < float(line)
+        elif side == "yes":
+            hit = actual > 0
+        elif side == "no":
+            hit = actual == 0
+        else:
+            continue
+        record_outcome(
+            conn, r["id"], {"actual_stat": actual, "hit": hit, "week": r["week"]}
+        )
+        resolved += 1
+    return resolved

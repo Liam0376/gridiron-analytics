@@ -386,6 +386,20 @@ CAL_COVERAGE_TOL = 0.05
 CAL_PIT_MAX_DEV = 0.04
 
 
+def sigma_for_stat(player_history, prior_season_stats, stat_key):
+    """Public sigma for one stat: own-history sample std, floored.
+
+    Thin wrapper over the privates so serving layers (api.py) never reach
+    into underscore helpers. Same uncalibrated honesty as _dispersion_sigma.
+    Prior-season pooling included when provided; the API passes None
+    (current-season history only — conservative: floors bind sooner, fewer
+    VALUEs; documented in the endpoint).
+    """
+    return _dispersion_sigma(
+        _stat_values(player_history, prior_season_stats, stat_key), stat_key
+    )
+
+
 def pit_value(actual, fair, sigma):
     """Probability integral transform: Phi((actual - fair) / sigma).
 

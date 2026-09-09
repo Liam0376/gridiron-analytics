@@ -149,3 +149,25 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             "ON injury_status(season)"
         )
         conn.execute("PRAGMA user_version=4")
+
+    if cur_version < 5:
+        # Props section v5 — manual book-line store (spec 2026-09-09).
+        # Mirrors schema.sql; additive CREATE TABLE only, safe to re-run.
+        # why side in UNIQUE: over and under on the same market/book are
+        # independent trackable positions.
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS prop_lines (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                player_id TEXT NOT NULL,
+                season INTEGER NOT NULL,
+                week INTEGER NOT NULL,
+                market TEXT NOT NULL,
+                side TEXT NOT NULL,
+                line REAL,
+                price REAL NOT NULL,
+                book TEXT NOT NULL DEFAULT 'manual',
+                created_at TEXT NOT NULL,
+                UNIQUE(player_id, season, week, market, side, book)
+            )"""
+        )
+        conn.execute("PRAGMA user_version=5")
