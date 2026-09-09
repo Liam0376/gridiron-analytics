@@ -139,6 +139,14 @@ CREATE INDEX IF NOT EXISTS idx_shadow_prop_dedupe
 ON shadow_recommendations(kind, season, week, player_id)
 WHERE kind LIKE 'prop:%';
 
+-- Sleeper->GSIS id crosswalk for roster joins (start-sit/waiver/trade).
+-- Derived cache, whole-table replaced per refresh; single global snapshot
+-- (per-league DBs each hold their own copy).
+CREATE TABLE IF NOT EXISTS sleeper_xwalk (
+    sleeper_id TEXT PRIMARY KEY,
+    gsis_id TEXT NOT NULL
+);
+
 -- P0 audit: per-source refresh history lookups (hub refresh-log, /ready checks)
 -- why: refresh_log grows unbounded (one row per source per refresh); without
 -- this index every ORDER BY ran_at DESC scan is a full table scan.

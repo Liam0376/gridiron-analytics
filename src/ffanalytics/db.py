@@ -182,3 +182,14 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             "WHERE kind LIKE 'prop:%'"
         )
         conn.execute("PRAGMA user_version=6")
+
+    if cur_version < 7:
+        # Roster-join crosswalk v7 — Sleeper ids (rosters) to GSIS ids
+        # (nflverse stats). Additive CREATE TABLE only, safe to re-run.
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS sleeper_xwalk (
+                sleeper_id TEXT PRIMARY KEY,
+                gsis_id TEXT NOT NULL
+            )"""
+        )
+        conn.execute("PRAGMA user_version=7")

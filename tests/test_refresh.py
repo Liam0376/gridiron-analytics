@@ -183,7 +183,7 @@ def test_preseason_refresh_patches_teams_and_adds_rookies():
     conn, tmp = _fresh_conn()
     players_map = {
         "99": {"full_name": "Test Veteran", "position": "WR", "team": "BUF",
-               "years_exp": 5, "active": True},
+               "years_exp": 5, "active": True, "gsis_id": "gsis-vet1"},
         "100": {"full_name": "Test Rookie", "position": "WR", "team": "KC",
                 "years_exp": 0, "active": True, "status": "Active"},
     }
@@ -219,4 +219,9 @@ def test_preseason_refresh_patches_teams_and_adds_rookies():
     assert projs["100"]["is_empty_projection"] is True
     blob_ids = {str(p.get("player_id")) for p in data["player_stats"]}
     assert {"gsis-vet1", "100"} <= blob_ids
+    # Crosswalk: stored to DB + returned for cache (roster joins need it).
+    assert data["sleeper_xwalk"] == {"99": "gsis-vet1"}
+    db_rows = {r["sleeper_id"]: r["gsis_id"] for r in conn.execute(
+        "SELECT sleeper_id, gsis_id FROM sleeper_xwalk").fetchall()}
+    assert db_rows == {"99": "gsis-vet1"}
     conn.close()

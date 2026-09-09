@@ -141,6 +141,23 @@ def build_rookie_rows(sleeper_players: dict, have_keys: set, opp_map: dict, week
     return rows
 
 
+def build_sleeper_xwalk(sleeper_players: dict) -> dict:
+    """Sleeper id -> GSIS id crosswalk for roster joins.
+
+    League rosters carry Sleeper ids (e.g. "4046"); nflverse stats carry GSIS
+    ids (e.g. "00-0033873") — direct dict joins match NOTHING in production
+    (verified live: 169 rostered vs 2025 stats universe, 0 overlap), silently
+    emptying start/sit, waiver and trade teams. Sleeper entries carry gsis_id;
+    this maps it. Skips entries missing either side.
+    """
+    out = {}
+    for sid, sp in (sleeper_players or {}).items():
+        gsis = (sp or {}).get("gsis_id")
+        if sid is not None and gsis:
+            out[str(sid)] = str(gsis)
+    return out
+
+
 def run_refresh(
     conn: sqlite3.Connection,
     season: int,
@@ -509,6 +526,26 @@ def run_refresh_with_data(
             )
         else:
             logger.warning("refresh: sleeper status=false — skipping rosters INSERT (preserve last-good)")
+        # Sleeper->GSIS crosswalk store (derived cache for roster joins).
+        # Whole-table replace per refresh; lazy DDL mirrors market_consensus
+        # (POST /refresh never calls init_schema).
+        if sleeper_players_map:
+            try:
+                conn.execute(
+                    """CREATE TABLE IF NOT EXISTS sleeper_xwalk (
+                        sleeper_id TEXT PRIMARY KEY,
+                        gsis_id TEXT NOT NULL
+                    )"""
+                )
+                xwalk = build_sleeper_xwalk(sleeper_players_map)
+                conn.execute("DELETE FROM sleeper_xwalk")
+                conn.executemany(
+                    "INSERT OR REPLACE INTO sleeper_xwalk (sleeper_id, gsis_id) VALUES (?, ?)",
+                    list(xwalk.items()),
+                )
+                data["sleeper_xwalk"] = xwalk
+            except Exception as xw_exc:
+                logger.warning(f"sleeper_xwalk store failed: {xw_exc}")
         # keep ~2*current_week snapshots. Floor at 1 (per file max(1, ...) convention
         # like target_wk above): max(0, week-1) kept everything when week=1
         # (threshold 0, DELETE week<0 deletes nothing, week=0 blob never pruned);

@@ -194,6 +194,7 @@ _CACHE: dict = {
     "rosters": None,          # list of roster dicts from Sleeper
     "player_stats": None,    # list of player stat dicts from nflverse
     "model_projections": None,  # weekly model fair-stat rows (props fair lines)
+    "sleeper_xwalk": None,  # Sleeper id -> GSIS id (roster joins)
     "injury_status": None,    # dict mapping player_id to injury status
     "matchups": None,         # list of matchup dicts from Sleeper
     "trending": None,         # trending waiver adds
@@ -216,6 +217,7 @@ def _blank_cache() -> dict:
         "rosters": None,
         "player_stats": None,
         "model_projections": None,
+        "sleeper_xwalk": None,
         "injury_status": None,
         "matchups": None,
         "trending": None,
@@ -316,6 +318,37 @@ def _create_player_lookup(player_stats: list[dict]) -> dict[str, dict]:
     return {str(p.get("player_id")): p for p in player_stats}
 
 
+def _sleeper_xwalk_for(cache: dict, league_id: str | None) -> dict:
+    """Sleeper->GSIS map for roster joins: warm cache first, DB fallback.
+    Missing everywhere => {} (callers degrade to direct-ID matching)."""
+    xw = cache.get("sleeper_xwalk")
+    if xw:
+        return xw
+    try:
+        with _league_conn(league_id) as conn:
+            if conn is None:
+                return {}
+            rows = conn.execute("SELECT sleeper_id, gsis_id FROM sleeper_xwalk").fetchall()
+            return {r["sleeper_id"]: r["gsis_id"] for r in rows}
+    except Exception:
+        return {}
+
+
+def _resolve_base_stats(stats_lookup: dict, xwalk: dict, player_id_str: str) -> dict:
+    """Roster-id -> stats row. Direct match first (covers Sleeper-keyed rows
+    like rookies and gsis-keyed fixtures), then the Sleeper->GSIS crosswalk
+    (covers veterans: rosters carry Sleeper ids, stats carry GSIS — direct
+    joins match nothing in production, verified live 169-vs-2025 zero
+    overlap). Missing everywhere => {} (caller skips, as before)."""
+    hit = stats_lookup.get(player_id_str)
+    if hit:
+        return hit
+    gsis = (xwalk or {}).get(player_id_str)
+    if gsis:
+        return stats_lookup.get(gsis, {})
+    return {}
+
+
 def _build_player_dict(
     player_id_str: str,
     base_stats: dict,
@@ -353,7 +386,8 @@ def _process_roster_data(
     player_stats: list[dict],
     injury_status: dict[str, str | None],
     league_settings: dict,
-    owner_id: str | None = None
+    owner_id: str | None = None,
+    sleeper_xwalk: dict | None = None,
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """
     Process raw Sleeper rosters and nflverse stats into roster_players,
@@ -391,7 +425,7 @@ def _process_roster_data(
         team_players = []
         for player_id in player_ids:
             player_id_str = str(player_id)
-            base_stats = stats_lookup.get(player_id_str, {})
+            base_stats = _resolve_base_stats(stats_lookup, sleeper_xwalk, player_id_str)
             if not base_stats:
                 continue
             team_players.append(
@@ -573,6 +607,9 @@ def _do_refresh_job(season: int, stats_season: int, ran_at_iso: str, week: int, 
             # player_stats, same truthy-only overwrite (failed refresh keeps
             # last good).
             new_cache["model_projections"] = data["model_projections"]
+        if data.get("sleeper_xwalk"):
+            # why cached: roster joins need it per request without DB reads.
+            new_cache["sleeper_xwalk"] = data["sleeper_xwalk"]
         if data.get("injury_status"):
             new_cache["injury_status"] = data["injury_status"]
         if data.get("matchups"):
@@ -792,7 +829,8 @@ def get_start_sit(owner_id: str = Query(..., max_length=64, pattern=r"^\d+$"), l
 
     try:
         roster_players, bench_players, _ = _process_roster_data(
-            rosters, player_stats, injury_status, league_settings, owner_id=owner_id
+            rosters, player_stats, injury_status, league_settings, owner_id=owner_id,
+            sleeper_xwalk=_sleeper_xwalk_for(cache, league_id),
         )
 
         recommendations = get_start_sit_recommendations(
@@ -847,7 +885,8 @@ def get_waiver(owner_id: str = Query(..., max_length=64, pattern=r"^\d+$"), leag
 
     try:
         roster_players, _, free_agents = _process_roster_data(
-            rosters, player_stats, injury_status, league_settings, owner_id=owner_id
+            rosters, player_stats, injury_status, league_settings, owner_id=owner_id,
+            sleeper_xwalk=_sleeper_xwalk_for(cache, league_id),
         )
 
         econ = _league_econ_from_settings(league_settings)
@@ -894,6 +933,7 @@ def get_trade_evaluation(
 
     try:
         stats_lookup = _create_player_lookup(player_stats)
+        xwalk = _sleeper_xwalk_for(cache, league_id)
         team_a_players = []
         team_b_players = []
 
@@ -906,7 +946,7 @@ def get_trade_evaluation(
 
             for player_id in player_ids:
                 player_id_str = str(player_id)
-                base_stats = stats_lookup.get(player_id_str, {})
+                base_stats = _resolve_base_stats(stats_lookup, xwalk, player_id_str)
                 if not base_stats:
                     continue
 
