@@ -1,4 +1,4 @@
-# Fantasy Hub — Local Command Center
+# Gridiron Hub — Local Command Center
 
 **Zero tokens. $0. 127.0.0.1 only. Read-only.**
 

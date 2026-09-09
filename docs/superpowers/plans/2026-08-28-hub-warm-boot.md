@@ -46,7 +46,7 @@ Failure never blocks the hub: if `POST /refresh` returns `{"sleeper": true, "nfl
 
 - Terminal progress (the only visible orchestrator):
   ```
-  → Fantasy Hub — one-click start (Ctrl+C to stop)
+  → Gridiron Hub — one-click start (Ctrl+C to stop)
     Model: http://127.0.0.1:8000  Hub: http://127.0.0.1:8001
   → checking data freshness… last 2026-08-27 07:00 (stale, week 0→1)
   → refresh now? [Y/n] Y

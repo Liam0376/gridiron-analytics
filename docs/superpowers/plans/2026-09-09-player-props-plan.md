@@ -54,6 +54,10 @@ mandatory on every props surface.
     schedule). Builder/API week-1 vetoes removed; K/DEF veto stays.
     Week-1 edges inherit market-level calibration (unvalidated for week 1
     specifically) — shadow resolves them like any other week.
+  - Freeze-safety proof (2026-09-09): old-vs-new `build_weekly_projections`
+    over restored 2024 cache, weeks 4–18 (8,391 player-weeks): 0 value diffs,
+    0 dropped/added rows. The empty-filter branch never triggers mid-season
+    with full data — frozen gates (4.563/0.648/74.1%) untouched by the fix.
 
 **Task-1 correction (2026-09-09, width fix):** the divergence writeup above was
 incompletely researched. `compute_conformal_bounds` ALSO returns `width`, but
