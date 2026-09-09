@@ -1,7 +1,8 @@
 # Spec: Player Props Section — Model Fair Lines + Manual Book-Line Edge (separate from fantasy)
 
-> Status (2026-09-09): implemented Tasks 1–6 (odds math, fair lines, 2025
-> calibration, prop_lines API + shadow, hub tab). Task 7 closeout pending.
+> Status (2026-09-09): implemented Tasks 1–7, width unification (f35dc9f),
+> and the 22-agent sign-off RED batch (missed renderers, API veto gates, NaN
+> quarantine, upsert id, whitespace validation, docstring corrections).
 > Calibration verdict: only `passing_yards` earned edge labels; all other
 > markets ship as tracking.
 
@@ -69,9 +70,16 @@ Out of scope v1: interceptions, fumbles, K props (sample too thin — audit foun
 coverage weakest), DEF props, combo markets (rush+rec yds needs covariance we
 don't estimate — `# REJECTED v1 — evidence: no joint-residual artifact`).
 
-### Sigma (honest approximation, flagged)
+### Sigma (honest approximation, flagged) — SHIPPED AS HISTORY-STD (see note)
 
-v1: sigma = displayed half-width / 1.2816 (80% normal quantile), where displayed
+> 2026-09-09 correction: the width/1.2816 design below was SUPERSEDED during
+> Task 3. Fantasy-points widths don't transfer to stat units, so shipped sigma
+> is the player's own-history sample std per stat, floored per market
+> (`props.py: SIGMA_FLOORS`, starting values judged by Task-4 calibration).
+> Uncalibrated by construction — same labeling mitigations apply.
+
+Original design (rejected — evidence: stat-unit mismatch): sigma = displayed
+half-width / 1.2816 (80% normal quantile), where displayed
 half-width is the `projection.py` heuristic width for that row. Known limitation:
 audit proved these widths are heuristic, not calibrated (QB 1.45× overcovers raw,
 K 0.55× undercovers to 58.6% displayed) — so P(over) inherits that distortion.
@@ -79,7 +87,7 @@ Mitigations: (a) label probabilities "model-implied, uncalibrated until shadow�
 (b) calibration backtest must report per-market reliability before edge labels;
 (c) K props excluded v1. Dependency: src-vs-hub width-semantics divergence
 (half- vs full-width, found in 22-agent audit) must be pinned to ONE definition
-before props ships — Task 1 does this.
+before props ships — Task 1 does this (RESOLVED at the root 2026-09-09, f35dc9f).
 
 ### Odds math (pure functions, fully tested)
 
@@ -99,6 +107,10 @@ before props ships — Task 1 does this.
   `{fair_line, p_over, book, book_line, edge_pp, ev}`; resolve vs actual stat.
 - Calibration gate: 2025-holdout backtest (`scripts/backtest_props.py`) reports
   per-market Brier score + reliability bins (predicted decile vs hit rate).
+  SHIPPED (2026-09-09): normal markets gate on 80%-band coverage + PIT
+  uniformity (Brier needs book lines, which don't exist under manual entry —
+  P(over=fair) is 0.5 by construction); Brier + reliability bins retained for
+  anytime_td only. Documented in `props.py` calibration section.
   Edge labels ship only for market groups with monotonic reliability; others stay
   "tracking only".
 - CLV: skipped v1 (no closing feed without paid API) — noted, not faked.
