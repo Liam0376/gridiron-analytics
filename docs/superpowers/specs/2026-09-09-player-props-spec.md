@@ -97,6 +97,11 @@ before props ships — Task 1 does this (RESOLVED at the root 2026-09-09, f35dc9
 - Edge rule v1 (mirrors `_edge.py` discipline): surface only if
   `|model_prob − novig_prob(book_line)| ≥ 5pp` AND `EV ≥ +4%` per unit AND
   `is_empty_projection == False` AND shadow gate status shown (baseline vs trusted).
+- Calibration gates the LABEL (council vote, shipped): math-clearing edges on
+  `edges_on` markets decide VALUE; the same math on any other market decides
+  TRACKING (numbers preserved, amber, never green). Shadow logs evaluated
+  claims (VALUE and TRACKING) for later resolution; NO EDGE rows are not
+  logged. Hub renders VALUE green, TRACKING/unknown amber, NO EDGE grey.
 - Book line payload: `{player_id, week, market, line, over_price, under_price,
   book}` — manual entry via CLI/API; stored `prop_lines` table (model writes —
   hub stays `mode=ro` and only GETs, preserving isolation contract).
@@ -111,6 +116,12 @@ before props ships — Task 1 does this (RESOLVED at the root 2026-09-09, f35dc9
   uniformity (Brier needs book lines, which don't exist under manual entry —
   P(over=fair) is 0.5 by construction); Brier + reliability bins retained for
   anytime_td only. Documented in `props.py` calibration section.
+  CORROBORATION (2026-09-09): 2024-holdout rerun (`backtest_props_2024.json`)
+  did NOT confirm 2025 — passing_yards flipped to tracking (cov 0.714,
+  pitdev 0.049), receptions/anytime_td flipped to edges_on. Verdicts are
+  season-unstable at n≈538/market: the pre-registered 2025 gates stand
+  (rules don't move on contradictory small samples either direction), and
+  live 2026 shadow adjudicates. Hub copy states the non-replication.
   Edge labels ship only for market groups with monotonic reliability; others stay
   "tracking only".
 - CLV: skipped v1 (no closing feed without paid API) — noted, not faked.
