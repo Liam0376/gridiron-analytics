@@ -9,7 +9,9 @@ Gridiron Analytics combines statistical projection models, conformal uncertainty
 ## Features
 
 - **Statistical Projections:** weighted-recent averages, position-level TD regression, volume trends, Vegas totals, weather penalties.
-- **Calibrated Uncertainty:** conformal prediction intervals (80% confidence bounds) per player.
+- **Uncertainty, honestly labeled:** heuristic intervals targeting 80% coverage
+  (measured 82% overall; QB/K deviate — see `data/models/coverage_2025.json`),
+  per player. Not calibrated claims.
 - **Auction Draft Guide:** custom Value Over Replacement (VOR) pricing calibrated for your roster and budget.
 - **Matchup & Weather:** integrated wind speed and temperature impact models.
 - **Local Privacy:** runs entirely on `127.0.0.1`.

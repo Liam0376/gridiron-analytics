@@ -2,7 +2,7 @@
 
 **Zero tokens. $0. 127.0.0.1 only. Read-only.**
 
-A local fantasy football hub that turns your updated model (`data/fantasy.db` + `127.0.0.1:8000`) into a searchable, sortable UI: projections with calibrated intervals, matchups with wind badges, tierlists for your 2-FLEX board, roster start/sit with overlap confidence, waiver priority, and trade lab.
+A local fantasy football hub that turns your updated model (`data/fantasy.db` + `127.0.0.1:8000`) into a searchable, sortable UI: projections with heuristic 80%-target intervals (measured 82% overall; QB/K deviate — see `data/models/coverage_2025.json`), matchups with wind badges, tierlists for your 2-FLEX board, roster start/sit with overlap confidence, waiver priority, and trade lab.
 
 This is a **completely separate product** that lives alongside `src/ffanalytics` in one repo but shares no code, no deps, and no writes.
 
@@ -53,9 +53,9 @@ Production build: `npm run build` → `hub/dist/`
 
 - **Dashboard** — season/week, lastUpdated staleness, refresh log, zero-token explainer
 - **Matchups** — week picker (1–18), league matchups + NFL slate, wind badges. Weather currently `⚠ placeholder` (coords 40.0,−74.0 in `refresh.py:256` until stadium map lands)
-- **Projections** — searchable table (all numbers mono). Interval bar shows `low — point — high` (conformal `α=0.2, 80%`). Search chips: `pos:WR wind>15 healthy:true trending:true interval<3`
+- **Projections** — searchable table (all numbers mono). Interval bar shows `low — point — high` (model range, half-width scale; overlap ≈ toss-up, not a statistical test). Search chips: `pos:WR wind>15 healthy:true trending:true interval<3`
 - **Tierlists** — deterministic tiers by gap > `max(2.0, 0.7×medianWidth)` or cap=6. Tabs: QB/RB/WR/TE/FLEX
-- **My Roster** — starters vs bench with overlap confidence (HIGH if intervals don't overlap)
+- **My Roster** — starters vs bench with overlap confidence (bench ceiling ≥ starter point ⇒ TOSS-UP, LOW confidence; otherwise HIGH if projected > 12 else MEDIUM)
 - **Waiver** — ranked by `improvement_over_roster`, not raw points; includes trending from `news_data`
 - **Trade** — two `owner_id` inputs → `GET /recommendations/trade` or hub-proxy fallback
 - **Props** — model fair lines vs manual book lines (`GET /props/edges` on `:8000`);

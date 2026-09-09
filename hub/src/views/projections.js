@@ -192,7 +192,7 @@ export async function renderProjections(root) {
   root.innerHTML = `
     <div class="hero reveal in">
       <h1>Projections</h1>
-      <p>Weekly projections. Bars show ±1 SD range; overlap = toss-up.</p>
+      <p>Weekly projections. Bars show the model range (floor–ceiling); overlap = toss-up (heuristic, not a statistical test).</p>
     </div>
 
     ${hasComparison ? `
