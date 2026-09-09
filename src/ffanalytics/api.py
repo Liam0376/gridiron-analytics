@@ -1088,8 +1088,14 @@ def _validate_prop_line(body: PropLineIn) -> dict:
         raise HTTPException(
             status_code=422, detail=f"Invalid American price '{body.price}' (non-zero, finite)."
         )
+    # why strip-then-check, not min_length: Pydantic sees "   " as length 3
+    # and passes it; the stored row would be player_id="" — junk that always
+    # evaluates unknown. Caught live by the api-tester agent sign-off.
+    player_id = (body.player_id or "").strip()
+    if not player_id:
+        raise HTTPException(status_code=422, detail="player_id must not be blank.")
     return {
-        "player_id": body.player_id.strip(),
+        "player_id": player_id,
         "market": market,
         "side": side,
         "line": None if body.line is None else float(body.line),
@@ -1103,9 +1109,12 @@ def _evaluate_prop_edge(
     history_rows: list[dict],
     stored: dict,
     calibration: dict,
+    week: int | None = None,
 ) -> dict:
-    """Edge for one stored book line. proj_row None (unknown player) or
-    is_empty flag => NO EDGE (unknown) — unknown is never an edge."""
+    """Edge for one stored book line. Unknown-by-construction inputs
+    (missing player, empty history, week 1, out-of-scope position, or
+    non-finite numbers) => NO EDGE (unknown) with a note — unknown is never
+    an edge, and one poisoned row never 500s the board (per-row quarantine)."""
     market, side = stored["market"], stored["side"]
     is_poisson = market == "anytime_td"
     cal = calibration.get(market, "unknown")
@@ -1118,12 +1127,27 @@ def _evaluate_prop_edge(
         "book": stored["book"],
         "calibration_verdict": cal,
     }
-    if proj_row is None:
+
+    def _unknown(note):
         return {**base, "fair_line": None, "sigma": None, "p_model": None,
                 "book_prob": None, "edge_pp": None, "ev_per_unit": None,
-                "decision": "NO EDGE (unknown)"}
+                "decision": "NO EDGE (unknown)", "note": note}
+
+    if proj_row is None:
+        return _unknown("no model projection for player")
+    # why week gate here, not just build_prop_fair_lines: the serving path
+    # reads stored fair lines, never calls the builder — the builder's
+    # week<2 exclusion would otherwise be dead code in production.
+    if week is not None and week < 2:
+        return _unknown("week 1 excluded: history filter leaks future weeks")
     is_empty = bool(proj_row.get("is_empty_projection", False))
     pos = (proj_row.get("position") or proj_row.get("position_group") or "").upper()
+    # why position gate: markets are position-scoped (PROP_MARKETS) — a
+    # kicker's passing_yards line must not grade as a confident edge.
+    allowed = {m for (m, _s, _model)
+               in props_math.PROP_MARKETS.get(pos, [])}
+    if market not in allowed:
+        return _unknown(f"market '{market}' out of scope for position '{pos or '?'}'")
     name = (proj_row.get("player_display_name") or proj_row.get("player_name")
             or stored["player_id"])
     if is_poisson:
@@ -1138,6 +1162,8 @@ def _evaluate_prop_edge(
                 lam += float(proj_row.get(src, 0) or 0)
             except (TypeError, ValueError):
                 pass
+        if lam != lam or abs(lam) == float("inf"):
+            return _unknown("non-finite projected TD mean")
         p_yes = props_math.poisson_anytime_td(lam)
         p_model = p_yes if side == "yes" else 1.0 - p_yes
         fair, sigma = lam, None
@@ -1147,16 +1173,33 @@ def _evaluate_prop_edge(
             fair = float(proj_row.get(stat_key, 0) or 0)
         except (TypeError, ValueError):
             fair = 0.0
+        # why quarantine, not 500: one NaN/inf projection must not take down
+        # the whole edges board — the row vetoes itself with a note.
+        line = stored["line"]
+        if (fair != fair or abs(fair) == float("inf")
+                or line is None or line != line or abs(line) == float("inf")):
+            return _unknown("non-finite fair line or book line")
         sigma = props_math.sigma_for_stat(history_rows, None, stat_key)
         # why side-adjust here, not in props_math: prop_over_prob answers
         # P(over) only; the ticket side decides which tail the user holds.
         p_over = props_math.prop_over_prob(
-            {"model": "normal", "fair_line": fair, "sigma": sigma}, stored["line"]
+            {"model": "normal", "fair_line": fair, "sigma": sigma}, line
         )
         p_model = p_over if side == "over" else 1.0 - p_over
     rule = props_math.apply_prop_edge_rule(
         p_model, stored["price"], is_empty=is_empty
     )
+    if is_empty:
+        return {**base, "player_name": name, "position": pos,
+                "team": proj_row.get("team") or proj_row.get("recent_team") or "",
+                "fair_line": round(fair, 2),
+                "sigma": None if sigma is None else round(sigma, 3),
+                "p_model": round(p_model, 4),
+                "book_prob": round(rule["book_prob"], 4),
+                "edge_pp": round(rule["edge_pp"], 4),
+                "ev_per_unit": round(rule["ev_per_unit"], 4),
+                "decision": rule["decision"],
+                "note": "empty history: projection unknown"}
     return {
         **base,
         "player_name": name,
@@ -1201,18 +1244,24 @@ def post_prop_line(
         db.init_schema(conn)
         import datetime as _dt
 
-        conn.execute(
+        # why RETURNING, not last_insert_rowid(): after ON CONFLICT DO UPDATE
+        # SQLite leaves last_insert_rowid at the last actual INSERT — a
+        # re-POST would return a stale id. RETURNING gives the real row.
+        # why fetch-before-commit: the RETURNING cursor holds an open read;
+        # committing first raises "cannot commit - statements in progress".
+        cur = conn.execute(
             """INSERT INTO prop_lines
                (player_id, season, week, market, side, line, price, book, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(player_id, season, week, market, side, book)
                DO UPDATE SET line=excluded.line, price=excluded.price,
-                             created_at=excluded.created_at""",
+                             created_at=excluded.created_at
+               RETURNING id""",
             (stored["player_id"], season, body.week, norm["market"], norm["side"],
              norm["line"], norm["price"], norm["book"], _dt.datetime.now().isoformat()),
         )
+        row_id = cur.fetchone()[0]
         conn.commit()
-        row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     # Edge preview when the cache is warm; cold cache still stores (200).
     edge, note = None, None
     projs = (cache.get("model_projections") or [])
@@ -1220,7 +1269,8 @@ def post_prop_line(
         by_id = {str(p.get("player_id") or ""): p for p in projs}
         hist = _props_history_lookup(cache.get("player_stats")).get(stored["player_id"], [])
         edge = _evaluate_prop_edge(
-            by_id.get(stored["player_id"]), hist, stored, _props_calibration_verdicts()
+            by_id.get(stored["player_id"]), hist, stored,
+            _props_calibration_verdicts(), week=body.week,
         )
     else:
         note = "Stored. Cache cold — run /refresh for the edge preview."
@@ -1276,7 +1326,8 @@ def get_prop_edges(
             hist = [h for h in hist_lookup.get(stored["player_id"], [])
                     if (h.get("season_type") or "REG") == "REG"
                     and (h.get("week") or 0) < week]
-            edge = _evaluate_prop_edge(by_id.get(stored["player_id"]), hist, stored, calibration)
+            edge = _evaluate_prop_edge(by_id.get(stored["player_id"]), hist, stored, calibration,
+                                       week=week)
             try:
                 trusted = shadow.is_trusted(conn, f"prop:{stored['market']}")
             except Exception:

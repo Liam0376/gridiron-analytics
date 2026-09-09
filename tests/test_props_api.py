@@ -117,6 +117,12 @@ def test_post_validation_422s():
             for body in cases:
                 resp = client.post("/props/lines", json=body)
                 assert resp.status_code == 422, body
+            # why strip-then-check: Pydantic min_length=1 passes "   " —
+            # caught live by the api-tester sign-off; must 422, not store "".
+            resp = client.post("/props/lines", json={**_line(), "player_id": "   "})
+            assert resp.status_code == 422
+            n = conn.execute("SELECT COUNT(*) AS n FROM prop_lines").fetchone()["n"]
+            assert n == 0
     finally:
         _restore(snap)
         conn.close()
@@ -155,11 +161,16 @@ def test_post_upsert_same_key_updates():
     try:
         _warm()
         with patch("ffanalytics.db._get_conn", return_value=conn):
-            assert client.post("/props/lines", json=_line(price=-110)).status_code == 200
-            assert client.post("/props/lines", json=_line(price=-120)).status_code == 200
-            rows = conn.execute("SELECT price FROM prop_lines").fetchall()
+            r1 = client.post("/props/lines", json=_line(price=-110))
+            assert r1.status_code == 200
+            r2 = client.post("/props/lines", json=_line(price=-120))
+            assert r2.status_code == 200
+            rows = conn.execute("SELECT id, price FROM prop_lines").fetchall()
         assert len(rows) == 1
         assert rows[0]["price"] == -120
+        # why RETURNING id: last_insert_rowid() goes stale on CONFLICT DO
+        # UPDATE — both responses must carry the real row id.
+        assert r1.json()["stored"]["id"] == rows[0]["id"] == r2.json()["stored"]["id"]
     finally:
         _restore(snap)
         conn.close()
@@ -280,6 +291,61 @@ def test_cold_cache_behaviors():
             assert post.status_code == 200
             assert post.json()["edge"] is None
             assert "refresh" in (post.json()["note"] or "").lower()
+    finally:
+        _restore(snap)
+        conn.close()
+
+
+_KICKER_PROJ = {
+    "player_id": "8100", "player_display_name": "Test K",
+    "position": "K", "position_group": "K", "team": "DAL",
+    "passing_yards": 0.0, "is_empty_projection": False, "week": WEEK,
+}
+
+
+def test_week1_and_position_gates_veto():
+    # why serving-layer gates: build_prop_fair_lines excludes week<2 and K,
+    # but the API reads stored fair lines and never calls the builder —
+    # without these vetoes a week-1 or kicker edge surfaces live.
+    conn, tmp = _fresh_db()
+    snap = _snap()
+    try:
+        _warm()
+        _CACHE["model_projections"] = _CACHE["model_projections"] + [_KICKER_PROJ]
+        with patch("ffanalytics.db._get_conn", return_value=conn):
+            w1 = client.post("/props/lines", json={**_line(), "week": 1})
+            assert w1.status_code == 200
+            assert w1.json()["edge"]["decision"] == "NO EDGE (unknown)"
+            assert "week 1" in (w1.json()["edge"].get("note") or "").lower()
+            kb = client.post("/props/lines", json={**_line(), "player_id": "8100"})
+            assert kb.status_code == 200
+            assert kb.json()["edge"]["decision"] == "NO EDGE (unknown)"
+            assert "out of scope" in (kb.json()["edge"].get("note") or "").lower()
+    finally:
+        _restore(snap)
+        conn.close()
+
+
+def test_nan_fair_line_quarantines_row_not_board():
+    # why per-row quarantine: one NaN projection must veto its own row, not
+    # 500 the whole GET /props/edges board (AI-remediation sign-off FAIL).
+    conn, tmp = _fresh_db()
+    snap = _snap()
+    try:
+        _warm()
+        poisoned = dict(_MAHOMES_PROJ, passing_yards=float("nan"))
+        _CACHE["model_projections"] = [poisoned, _WR_PROJ]
+        with patch("ffanalytics.db._get_conn", return_value=conn):
+            client.post("/props/lines", json=_line())
+            client.post("/props/lines", json=_line(
+                player_id="7500", market="receptions", side="under",
+                line=6.5, price=-110))
+            resp = client.get(f"/props/edges?season={SEASON}&week={WEEK}")
+        assert resp.status_code == 200, resp.text
+        edges = {e["player_id"]: e for e in resp.json()["edges"]}
+        assert edges["2544"]["decision"] == "NO EDGE (unknown)"
+        assert "non-finite" in (edges["2544"].get("note") or "").lower()
+        assert edges["7500"]["decision"] == "VALUE"
     finally:
         _restore(snap)
         conn.close()

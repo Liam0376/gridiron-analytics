@@ -11,9 +11,11 @@ export function playerCard(player, options = {}) {
   const p = player;
   const pos = (p.position || p.position_group || 'UNK').toUpperCase();
   const proj = Number(p.projected_points ?? p.point_estimate ?? 0);
-  const low = Number(p.projection_lower ?? p.lower_bound ?? proj - (p.width ?? 5) / 2);
-  const high = Number(p.projection_upper ?? p.upper_bound ?? proj + (p.width ?? 5) / 2);
-  const width = Number(p.width ?? p.projection_width ?? (high - low));
+  // why no /2: width is HALF-width (unified 2026-09-09); the (high-low)
+  // fallback derives from a full span, so it halves. Floor matches src.
+  const low = Number(p.projection_lower ?? p.lower_bound ?? Math.max(0, proj - (p.width ?? 5)));
+  const high = Number(p.projection_upper ?? p.upper_bound ?? proj + (p.width ?? 5));
+  const width = Number(p.width ?? p.projection_width ?? (high - low) / 2);
   const team = p.team || '';
   const opp = p.opponent_team || '';
 

@@ -1,4 +1,7 @@
-"""Player props odds math: fair odds, EV, edge rule. Pure functions only.
+"""Player props odds math: fair odds, EV, edge rule. Pure functions only,
+plus a fair-line builder on stat-projector outputs (Task 3: imports
+project_player_stats read-only — never modifies the projector, scoring,
+decision, or comparison layers).
 
 Separate from fantasy projections: fantasy asks "who scores more PPR?", props asks
 "is the book's line mispriced vs my distribution?". This module does the second
@@ -92,7 +95,8 @@ def ev_per_unit(p_model: float, book_price: float) -> float:
 
     Caller passes the side-adjusted model prob (P(over) with the over price,
     or P(under) = 1 - P(over) with the under price). -110 both sides at true
-    p=0.5 gives -0.0227 (the vig) — the bet must clear the juice, not just 50%.
+    p=0.5 gives EV = 0.5*(100/110) - 0.5 = -0.0455 per $1 — the full vig on
+    the staked dollar, not half. The bet must clear the juice, not just 50%.
     """
     p = _require_prob(p_model, "p_model", allow_degenerate=True)
     price = _require_price(book_price)

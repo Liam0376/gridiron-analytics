@@ -441,9 +441,11 @@ export async function renderProjections(root) {
       tbody.innerHTML = pagedRows.map(p=>{
         const pos = p.position || p.position_group || 'UNK';
         const proj = Number(p.projected_points ?? p.point_estimate ?? 0);
-        const low = Number(p.projection_lower ?? p.lower_bound ?? proj - (p.width ?? 5)/2);
-        const high = Number(p.projection_upper ?? p.upper_bound ?? proj + (p.width ?? 5)/2);
-        const width = Number(p.width ?? p.projection_width ?? (high - low));
+        // why no /2: width is HALF-width (unified 2026-09-09); the (high-low)
+        // fallback derives from a full span, so it halves. Floor matches src.
+        const low = Number(p.projection_lower ?? p.lower_bound ?? Math.max(0, proj - (p.width ?? 5)));
+        const high = Number(p.projection_upper ?? p.upper_bound ?? proj + (p.width ?? 5));
+        const width = Number(p.width ?? p.projection_width ?? (high - low) / 2);
         const market = p.market_points != null ? Number(p.market_points).toFixed(1) : '—';
         const ecr = p.fp_ecr != null ? `#${p.fp_ecr}${p.fp_ecr_pos ? ` (#${p.fp_ecr_pos} ${pos})` : ''}${p.fp_tier ? ` <span style="background:var(--violet-dim); color:var(--violet); border:1px solid rgba(168,85,247,0.18); border-radius:999px; padding:1px 5px; font:700 10px ui-monospace, SFMono-Regular,monospace">T${p.fp_tier}</span>` : ''}` : '—';
         const adp = p.fp_adp != null ? `#${p.fp_adp}` : '—';
