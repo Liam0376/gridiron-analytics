@@ -201,11 +201,17 @@ def test_fair_lines_empty_history_flagged_not_silent():
     assert out["markets"]["receiving_yards"]["fair_line"] == pytest.approx(0.0)
 
 
-def test_fair_lines_week1_excluded():
-    out = build_prop_fair_lines(_qb_history(), "QB", {"implied_total": 24.0}, week=1)
-    assert out["excluded"] is True
-    assert out["markets"] == {}
-    assert "week" in out["reason"].lower() or "leak" in out["reason"].lower()
+def test_fair_lines_week1_supported_via_prior():
+    # why no exclusion: week 1 runs on the prior-season baseline by
+    # construction (preseason refresh loads the prior season; same-season
+    # history filter is fail-closed). Vetoing it blocked the legitimate case.
+    prior = [
+        {"passing_yards": 250.0, "passing_tds": 2, "season_type": "REG"}
+        for _ in range(5)
+    ]
+    out = build_prop_fair_lines([], "QB", {}, prior_season_stats=prior, week=1)
+    assert out["excluded"] is False
+    assert out["markets"]["passing_yards"]["fair_line"] == pytest.approx(250.0)
 
 
 def test_fair_lines_kicker_excluded_v1():

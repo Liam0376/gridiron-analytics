@@ -47,6 +47,13 @@ mandatory on every props surface.
 - Week-1 leak CONFIRMED (`stat_projector.py:512-513` fallback to full `reg`
   when `week < 1` filter empties). DECISION: week 1 excluded from props backtest
   + edge until the hole is fixed.
+  - 2026-09-09 UPDATE (hole fixed, vetoes lifted): fallback scoped to
+    cross-season only (same-season empty filter now fail-closed); production
+    preseason never hit the hole (prior season arrives via cross-season
+    bypass — verified live: 652 week-1 projections from 2025 data + 2026
+    schedule). Builder/API week-1 vetoes removed; K/DEF veto stays.
+    Week-1 edges inherit market-level calibration (unvalidated for week 1
+    specifically) — shadow resolves them like any other week.
 
 **Task-1 correction (2026-09-09, width fix):** the divergence writeup above was
 incompletely researched. `compute_conformal_bounds` ALSO returns `width`, but

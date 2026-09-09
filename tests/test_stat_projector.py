@@ -165,3 +165,45 @@ def test_conformal_bounds_width_is_half_width():
     tiny = compute_conformal_bounds(1.0, "K", residuals=[5.0, 6.0, 7.0, 8.0])
     assert tiny["lower_bound"] == pytest.approx(0.0)
     assert tiny["lower_bound"] <= 1.0 <= tiny["upper_bound"]
+
+
+def test_same_season_week1_uses_no_future_history():
+    # why fail-closed: same-season target_week=1 with only weeks>=1 rows
+    # present must yield NO players (empty history, nothing to project from),
+    # never the old full-reg fallback that silently averaged future weeks as
+    # "history". Production preseason never hits this shape (prior season
+    # arrives via cross-season/prior params — see next test).
+    current = [
+        {"player_id": "QB1", "position": "QB", "team": "KC", "week": w,
+         "season": 2026, "season_type": "REG",
+         "passing_yards": 400.0, "passing_tds": 4, "passing_interceptions": 0,
+         "rushing_yards": 10.0, "rushing_tds": 0, "fumbles_lost_total": 0}
+        for w in (1, 2, 3)
+    ]
+    schedule = [{"week": 1, "game_type": "REG", "season": 2026,
+                 "home_team": "KC", "away_team": "BUF"}]
+    projs = build_weekly_projections(
+        current, schedule, target_week=1, scoring_settings={},
+    )
+    assert projs == []
+
+
+def test_preseason_week1_uses_full_prior_season():
+    # Production preseason shape: prior-season stats + new-season schedule
+    # (disjoint seasons) → full prior REG as history (documented baseline).
+    prior = [
+        {"player_id": "QB1", "position": "QB", "team": "KC", "week": w,
+         "season": 2025, "season_type": "REG",
+         "passing_yards": 200.0, "passing_tds": 1, "passing_interceptions": 1,
+         "rushing_yards": 10.0, "rushing_tds": 0, "fumbles_lost_total": 0}
+        for w in range(1, 18)
+    ]
+    schedule = [{"week": 1, "game_type": "REG", "season": 2026,
+                 "home_team": "KC", "away_team": "BUF"}]
+    projs = build_weekly_projections(
+        prior, schedule, target_week=1, scoring_settings={},
+    )
+    assert len(projs) == 1
+    # Full-prior baseline: constant 200/yd history, no Vegas/weather in the
+    # minimal fixture → fair equals the prior average, not a leak artifact.
+    assert projs[0]["passing_yards"] == pytest.approx(200.0)

@@ -289,14 +289,18 @@ def build_prop_fair_lines(
     """Fair lines + sigmas per prop market from stat projections.
 
     Args:
+    Args:
         player_history: game logs this season, ordered by week (same shape as
             `project_player_stats` expects).
         position: QB/RB/WR/TE. Anything else (K/DEF/unknown) is excluded v1.
         game_ctx: {implied_total, wind_mph|wind, temp_f|temp}. None = neutral.
         prior_season_stats: previous season logs (REG filtered for sigma).
-        week: target week. week == 1 is EXCLUDED (week-1 leakage guard hole at
-            `stat_projector.py:512-513`); None skips the check (caller must pass
-            week in production paths — Task 5 API does).
+        week: target week, passed through for context only. Week 1 is fully
+            supported: with no same-season history the projection degrades to
+            the prior-season baseline by construction (preseason refresh loads
+            the prior season via the cross-season path), and the same-season
+            history filter in build_weekly_projections is fail-closed (empty,
+            never future weeks).
 
     Returns envelope {"excluded", "reason", "position", "is_empty_projection",
     "markets"} where markets maps name -> {"model", "fair_line", "sigma", ...}
@@ -307,14 +311,6 @@ def build_prop_fair_lines(
         return {
             "excluded": True,
             "reason": f"position {pos or '?'} has no v1 prop markets (K/DEF out of scope)",
-            "position": pos,
-            "is_empty_projection": False,
-            "markets": {},
-        }
-    if week is not None and week < 2:
-        return {
-            "excluded": True,
-            "reason": "week 1 excluded: history filter leaks future weeks (stat_projector.py:512-513)",
             "position": pos,
             "is_empty_projection": False,
             "markets": {},

@@ -513,7 +513,12 @@ def build_weekly_projections(
         prior_data = reg
     else:
         filtered_prior = [s for s in reg if s.get("week", 0) < target_week]
-        prior_data = filtered_prior if filtered_prior else reg
+        # why fail-closed (no `else reg` fallback): when seasons match, an
+        # empty filter means "no history before target" (e.g. same-season
+        # target_week=1) — falling back to full reg would silently use weeks
+        # >= target as history (future leak). Preseason is unaffected: prior
+        # seasons arrive via cross_season or prior_season_stats, never here.
+        prior_data = filtered_prior
 
     game_ctx = build_game_context(schedule)
 

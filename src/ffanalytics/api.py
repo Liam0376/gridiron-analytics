@@ -1165,7 +1165,6 @@ def _evaluate_prop_edge(
     history_rows: list[dict],
     stored: dict,
     calibration: dict,
-    week: int | None = None,
 ) -> dict:
     """Edge for one stored book line. Unknown-by-construction inputs
     (missing player, empty history, week 1, out-of-scope position, or
@@ -1196,11 +1195,6 @@ def _evaluate_prop_edge(
 
     if proj_row is None:
         return _unknown("no model projection for player")
-    # why week gate here, not just build_prop_fair_lines: the serving path
-    # reads stored fair lines, never calls the builder — the builder's
-    # week<2 exclusion would otherwise be dead code in production.
-    if week is not None and week < 2:
-        return _unknown("week 1 excluded: history filter leaks future weeks")
     is_empty = bool(proj_row.get("is_empty_projection", False))
     pos = (proj_row.get("position") or proj_row.get("position_group") or "").upper()
     # why position gate: markets are position-scoped (PROP_MARKETS) — a
@@ -1337,7 +1331,7 @@ def post_prop_line(
                 and (h.get("week") or 0) < body.week]
         edge = _evaluate_prop_edge(
             by_id.get(stored["player_id"]), hist, stored,
-            _props_calibration(), week=body.week,
+            _props_calibration(),
         )
         # why log at submit (explicit user action): GET-time logging alone
         # makes crawlers/page-views the experiment's authors. POST logs the
@@ -1408,8 +1402,7 @@ def get_prop_edges(
             hist = [h for h in hist_lookup.get(stored["player_id"], [])
                     if (h.get("season_type") or "REG") == "REG"
                     and (h.get("week") or 0) < week]
-            edge = _evaluate_prop_edge(by_id.get(stored["player_id"]), hist, stored, calibration,
-                                       week=week)
+            edge = _evaluate_prop_edge(by_id.get(stored["player_id"]), hist, stored, calibration)
             try:
                 trusted = shadow.is_trusted(conn, f"prop:{stored['market']}")
             except Exception:

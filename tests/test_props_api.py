@@ -303,10 +303,10 @@ _KICKER_PROJ = {
 }
 
 
-def test_week1_and_position_gates_veto():
-    # why serving-layer gates: build_prop_fair_lines excludes week<2 and K,
-    # but the API reads stored fair lines and never calls the builder —
-    # without these vetoes a week-1 or kicker edge surfaces live.
+def test_week1_evaluates_position_gate_stays():
+    # why: the week<2 serving veto blocked the legitimate preseason case
+    # (prior-season baseline by construction) — week 1 evaluates normally now.
+    # The K/DEF position veto is unrelated scope and stays.
     conn, tmp = _fresh_db()
     snap = _snap()
     try:
@@ -315,8 +315,7 @@ def test_week1_and_position_gates_veto():
         with patch("ffanalytics.db._get_conn", return_value=conn):
             w1 = client.post("/props/lines", json={**_line(), "week": 1})
             assert w1.status_code == 200
-            assert w1.json()["edge"]["decision"] == "NO EDGE (unknown)"
-            assert "week 1" in (w1.json()["edge"].get("note") or "").lower()
+            assert w1.json()["edge"]["decision"] == "VALUE"
             kb = client.post("/props/lines", json={**_line(), "player_id": "8100"})
             assert kb.status_code == 200
             assert kb.json()["edge"]["decision"] == "NO EDGE (unknown)"
