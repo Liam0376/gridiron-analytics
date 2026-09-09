@@ -70,3 +70,17 @@ def test_fantasypros_live_key_if_present():
         assert isinstance(news, list)
         if news:
             assert "title" in news[0]
+
+
+def test_safe_float_rejects_nonfinite():
+    # why (data-eng sign-off): a literal nan/inf cell used to pass through
+    # and poison fpts/means downstream (NaN propagates through everything).
+    from ffanalytics.adapters.fantasypros_projections import _safe_float
+
+    assert _safe_float("1,234.5") == 1234.5
+    assert _safe_float("") is None
+    assert _safe_float(None) is None
+    assert _safe_float("nan") is None
+    assert _safe_float("inf") is None
+    assert _safe_float("-inf") is None
+    assert _safe_float(float("nan")) is None

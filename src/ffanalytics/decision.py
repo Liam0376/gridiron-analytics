@@ -339,7 +339,10 @@ def _ensure_intervals(p: Dict) -> Dict:
     width = max(3.0, min(14.0, 5.0 * pos_factor * pt_factor))
 
     p_copy = dict(p)
-    p_copy["projection_lower"] = round(pts - width, 2)
+    # why max(0, ...) floor (data-viz sign-off): without it a 2-pt projection
+    # with width 5 renders [-3, 7] — negative points are impossible; src and
+    # hub both floor at 0.
+    p_copy["projection_lower"] = round(max(0.0, pts - width), 2)
     p_copy["projection_upper"] = round(pts + width, 2)
     p_copy["width"] = round(width, 2)
     return p_copy

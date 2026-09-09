@@ -1,9 +1,13 @@
 export function intervalBar({ point, low, high, width, min = 0, max = 30 }) {
   const range = max - min;
   const pt = Number.isFinite(Number(point)) ? Number(point) : 0;
-  const w = Number.isFinite(Number(width)) ? Number(width) : (Number.isFinite(Number(high)) && Number.isFinite(Number(low)) ? (Number(high) - Number(low)) : 10);
-  const lo = Number.isFinite(Number(low)) ? Number(low) : (pt - w / 2);
-  const hi = Number.isFinite(Number(high)) ? Number(high) : (pt + w / 2);
+  // why no /2 (data-viz sign-off): width is HALF-width since unification —
+  // the old pt±w/2 drew half the band for width-only callers. Default 5.0
+  // matches src's base width so the no-data band keeps its old magnitude.
+  // Floor matches src max(0, …) via the scale min.
+  const w = Number.isFinite(Number(width)) ? Number(width) : (Number.isFinite(Number(high)) && Number.isFinite(Number(low)) ? (Number(high) - Number(low)) / 2 : 5.0);
+  const lo = Number.isFinite(Number(low)) ? Number(low) : Math.max(min, pt - w);
+  const hi = Number.isFinite(Number(high)) ? Number(high) : (pt + w);
   const leftPct = Math.max(0, Math.min(100, ((lo - min) / range) * 100));
   const widthPct = Math.max(4, Math.min(100 - leftPct, ((hi - lo) / range) * 100));
   const dotPct = Math.max(0, Math.min(100, ((pt - min) / range) * 100));

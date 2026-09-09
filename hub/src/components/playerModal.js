@@ -22,9 +22,12 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
 
   const weekly = Number(p.weekly ?? p.projected_points ?? 0);
   const seasonPts = Number(p.season ?? (weekly * 17));
-  const lower = Number(p.lower ?? p.projection_lower ?? Math.max(0, weekly - 2.5));
-  const upper = Number(p.upper ?? p.projection_upper ?? (weekly + 2.5));
-  const width = Number(p.width ?? (upper - lower));
+  // why ±5.0 fallback with halved width derivation (data-viz sign-off): width
+  // is HALF-width everywhere since unification — the old ±2.5 drew half the
+  // band its own width number claimed. Unenriched = less info = wider band.
+  const lower = Number(p.lower ?? p.projection_lower ?? Math.max(0, weekly - 5.0));
+  const upper = Number(p.upper ?? p.projection_upper ?? (weekly + 5.0));
+  const width = Number(p.width ?? (upper - lower) / 2);
 
   const gridironAuction = Number(p.gridironAuction ?? p.auction ?? Math.max(1, Math.round(weekly * 2.2)));
   const marketAuction = Number(p.marketAuction ?? p.market_auction ?? Math.max(1, Math.round(gridironAuction * 0.9)));

@@ -83,3 +83,25 @@ def test_v7_table_exists_after_init():
     ver = conn.execute("PRAGMA user_version").fetchone()[0]
     assert ver >= 7
     conn.close()
+
+
+def test_xwalk_loader_coerces_int_ids_to_str():
+    # why (code-reviewer sign-off): SQLite TEXT columns accept INTEGER
+    # values; an int-typed legacy row would silently miss the join (both
+    # sides must share one type contract) and drop players.
+    from unittest.mock import patch
+
+    from ffanalytics.api import _sleeper_xwalk_for
+
+    tmp = tempfile.TemporaryDirectory()
+    conn = db.get_connection(Path(tmp.name) / "test.db")
+    db.init_schema(conn)
+    conn.execute(
+        "INSERT INTO sleeper_xwalk (sleeper_id, gsis_id) VALUES (?, ?)", (99, "gsis-vet1")
+    )
+    conn.commit()
+    with patch("ffanalytics.db._get_conn", return_value=conn):
+        xw = _sleeper_xwalk_for({}, None)
+    assert xw == {"99": "gsis-vet1"}
+    assert all(isinstance(k, str) and isinstance(v, str) for k, v in xw.items())
+    conn.close()

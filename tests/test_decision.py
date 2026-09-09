@@ -270,3 +270,13 @@ def test_holdout_decision_quality_vor_vs_points_report_only():
     overlap_top3 = len({p["player_id"] for p in by_points[:3]} & {p["player_id"] for p in by_vor[:3]})
     print(f"[decision-quality] VOR vs points top-3 overlap {overlap_top3}/3 on fixture (report-only)")
     assert overlap_top3 >= 0  # report-only, never flips
+
+
+def test_ensure_intervals_floors_negative_lower():
+    # why floor at 0 (data-viz sign-off): a 2-pt projection with width 5
+    # rendered [-3, 7] — negative points are impossible; src and hub floor.
+    from ffanalytics.decision import _ensure_intervals
+    out = _ensure_intervals({"projected_points": 2.0, "position": "K"})
+    assert out["projection_lower"] == 0.0
+    assert out["projection_upper"] > 2.0
+    assert out["projection_lower"] <= 2.0 <= out["projection_upper"]

@@ -329,7 +329,10 @@ def _sleeper_xwalk_for(cache: dict, league_id: str | None) -> dict:
             if conn is None:
                 return {}
             rows = conn.execute("SELECT sleeper_id, gsis_id FROM sleeper_xwalk").fetchall()
-            return {r["sleeper_id"]: r["gsis_id"] for r in rows}
+            # why str() both sides (code-reviewer sign-off): SQLite TEXT
+            # usually returns str, but an int-typed legacy row would silently
+            # miss the join and drop players. One type contract both sides.
+            return {str(r["sleeper_id"]): str(r["gsis_id"]) for r in rows}
     except Exception:
         return {}
 
@@ -1235,6 +1238,15 @@ def _evaluate_prop_edge(
 
     if proj_row is None:
         return _unknown("no model projection for player")
+    # why quarantine price like fair/line (appsec sign-off): POST validates,
+    # but legacy/direct-DB rows can carry 0/inf/NaN — _require_price would
+    # raise and 500 the whole board instead of vetoing one row.
+    try:
+        _price = float(stored["price"])
+    except (TypeError, ValueError):
+        return _unknown("non-finite book price")
+    if _price == 0 or _price != _price or abs(_price) == float("inf"):
+        return _unknown("non-finite book price")
     is_empty = bool(proj_row.get("is_empty_projection", False))
     pos = (proj_row.get("position") or proj_row.get("position_group") or "").upper()
     # why position gate: markets are position-scoped (PROP_MARKETS) — a

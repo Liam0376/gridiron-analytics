@@ -84,7 +84,12 @@ def _safe_float(v) -> float | None:
     try:
         if v is None or str(v).strip() == "":
             return None
-        return float(str(v).strip().replace(",", ""))
+        f = float(str(v).strip().replace(",", ""))
+        # why NaN/inf -> None (data-eng sign-off): a literal nan/inf cell
+        # would otherwise poison fpts/means downstream (NaN propagates).
+        if f != f or abs(f) == float("inf"):
+            return None
+        return f
     except Exception:
         return None
 

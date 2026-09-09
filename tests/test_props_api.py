@@ -433,3 +433,34 @@ def test_v6_dedupe_index_exists():
         assert ver >= 6
     finally:
         conn.close()
+
+
+def test_legacy_bad_price_quarantines_row_not_board():
+    # why (appsec sign-off): POST validates prices, but a legacy/direct-DB
+    # row with 0/inf/NaN price made _require_price raise inside evaluation —
+    # 500ing the whole board instead of vetoing one row.
+    import math
+
+    conn, tmp = _fresh_db()
+    snap = _snap()
+    try:
+        _warm()
+        with patch("ffanalytics.db._get_conn", return_value=conn):
+            client.post("/props/lines", json=_line())
+            conn.execute(
+                "INSERT INTO prop_lines (player_id, season, week, market, side,"
+                " line, price, book, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ("2544", SEASON, WEEK, "passing_tds", "over", 1.5,
+                 float("inf"), "manual", "2026-09-09T00:00:00"),
+            )
+            conn.commit()
+            resp = client.get(f"/props/edges?season={SEASON}&week={WEEK}")
+        assert resp.status_code == 200, resp.text
+        edges = {e["market"]: e for e in resp.json()["edges"]}
+        assert edges["passing_yards"]["decision"] == "VALUE"
+        assert edges["passing_tds"]["decision"] == "NO EDGE (unknown)"
+        assert "price" in (edges["passing_tds"].get("note") or "").lower()
+        assert math.isfinite(edges["passing_yards"]["ev_per_unit"])
+    finally:
+        _restore(snap)
+        conn.close()
