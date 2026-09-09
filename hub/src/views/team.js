@@ -1,6 +1,6 @@
 // hub/src/views/team.js — Team Hub Executive Command Center
 import { fetchRoster, fetchRostersFull, fetchComparison, fetchMeta, fetchDraftInfo } from '../api.js';
-import { getLeagueEcon } from '../lib/league.js';
+import { getLeagueEcon, leagueTagline } from '../lib/league.js';
 import { getSelectedTeamId, setSelectedTeamId, renderTeamSelector, bindTeamSelector } from '../components/teamSelector.js';import { posBadge, injuryBadge } from '../components/badges.js';
 import { intervalBar } from '../components/intervalBar.js';
 import { playerAvatar } from '../components/playerAvatar.js';
@@ -80,7 +80,7 @@ export async function renderTeam(root) {
   const allPlayers = [...starters, ...bench, ...reserve];
 
   // League rank via single bulk pass (no N+1 fan-out); graceful fallback when bulk misses.
-  let rankText = '#— of 12';
+  let rankText = `#— of ${league ? league.teams : '?'}`;
   try {
     if (bulkRosters && typeof bulkRosters === 'object') {
       const rankedTeams = Object.entries(bulkRosters)
@@ -93,14 +93,14 @@ export async function renderTeam(root) {
         .sort((a, b) => b.fpts - a.fpts);
       const myRankIdx = rankedTeams.findIndex(t => String(t.roster_id) === String(selectedId));
       if (myRankIdx !== -1) {
-        rankText = `#${myRankIdx + 1} of 12`;
+        rankText = `#${myRankIdx + 1} of ${league ? league.teams : '?'}`;
       }
     } else if (Array.isArray(bulkData?.league_leaderboard) && bulkData.league_leaderboard.length) {
       const idx = bulkData.league_leaderboard.findIndex(e => String(e.roster_id) === String(selectedId));
-      if (idx !== -1) rankText = `#${idx + 1} of 12`;
+      if (idx !== -1) rankText = `#${idx + 1} of ${league ? league.teams : '?'}`;
     } else if (Array.isArray(rosterData.league_leaderboard) && rosterData.league_leaderboard.length) {
       const idx = rosterData.league_leaderboard.findIndex(e => String(e.roster_id) === String(selectedId));
-      if (idx !== -1) rankText = `#${idx + 1} of 12`;
+      if (idx !== -1) rankText = `#${idx + 1} of ${league ? league.teams : '?'}`;
     }
   } catch (_) {}
 
@@ -187,7 +187,7 @@ export async function renderTeam(root) {
                 <span class="badge badge-amber mono" style="font-size:12px; font-weight:700" aria-live="polite">Rank ${rankText}</span>
               </div>
               <div class="team-sub-row faint" style="margin-top:4px">
-                Roster #${teamMeta.roster_id || selectedId} <span style="color:var(--text-faint)">·</span> 12-team PPR
+                Roster #${teamMeta.roster_id || selectedId} <span style="color:var(--text-faint)">·</span> ${escapeHtml(leagueTagline(league || {}))}
                 <br><span class="micro">2 FLEX</span>
               </div>
             </div>
@@ -203,7 +203,7 @@ export async function renderTeam(root) {
           <div class="kpi-card">
             <span class="kicker">Roster Rank</span>
             <div class="mono kpi-val" style="color:var(--amber)">${rankText}</div>
-            <span class="micro faint">12-Team Starter FPTS Leaderboard</span>
+            <span class="micro faint">${league ? league.teams : '?'}-Team Starter FPTS Leaderboard</span>
           </div>
           <div class="kpi-card">
             <span class="kicker">Total Model $</span>

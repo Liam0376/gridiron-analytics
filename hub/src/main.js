@@ -1,7 +1,7 @@
 import './styles/app.css';
 import { allRoutes, getRoute } from './router.js';
-import { fetchHealth, fetchMeta, fetchReady, computeStaleness, fetchProjections, fetchComparison, fetchRoster } from './api.js';
-import { getLeagueId } from './lib/league.js';
+import { fetchHealth, fetchMeta, fetchReady, computeStaleness, fetchProjections, fetchComparison, fetchRoster, setActiveLeague, invalidateApiCache } from './api.js';
+import { getLeagueId, leagueTagline } from './lib/league.js';
 import { shimmer } from './components/shimmer.js';
 import { renderMobileNav, bindMobileNav } from './components/mobileNav.js';
 import { renderDashboard } from './views/dashboard.js';
@@ -58,7 +58,7 @@ function renderNav() {
     trade: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16V4"/><path d="M7 4l-3 3"/><path d="M7 4l3 3"/><path d="M17 8v12"/><path d="M17 20l3-3"/><path d="M17 20l-3-3"/></svg>',
   };
   tabs.innerHTML = allRoutes().map(r=>`
-    <button id="tab-${r.id}" class="sidebar-tab ${r.id===cur?'active':''}" data-route="${r.id}" role="tab" aria-selected="${r.id===cur}" aria-controls="app" tabindex="${r.id===cur?'0':'-1'}">${icons[r.id]||icons.dashboard}<span class="label">${r.label}</span></button>
+    <button id="tab-${r.id}" class="sidebar-tab ${r.id===cur?'active':''}" data-route="${r.id}" role="tab" aria-selected="${r.id===cur}" aria-controls="app" tabindex="${r.id===cur?'0':'-1'}" aria-label="${r.label}">${icons[r.id]||icons.dashboard}<span class="label">${r.label}</span></button>
   `).join('');
   // APG tabpanel wiring: #app is the controlled panel (index.html owns the element).
   const appPanel = document.getElementById('app');
@@ -481,39 +481,141 @@ document.addEventListener('keydown', (e)=>{
   }
 });
 
+// Theme toggle
+function initTheme() {
+  const saved = localStorage.getItem('fh-theme');
+  if (saved) document.documentElement.setAttribute('data-theme', saved);
+}
+initTheme();
+
+const themeToggle = document.getElementById('themeToggle');
+if (themeToggle) {
+  themeToggle.addEventListener('click', () => {
+    const html = document.documentElement;
+    const current = html.getAttribute('data-theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    let next;
+    if (current === 'dark') next = 'light';
+    else if (current === 'light') next = 'dark';
+    else next = prefersDark ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('fh-theme', next);
+  });
+}
+
 window.addEventListener('hashchange', render);
 render();
 setInterval(refreshStaleness, 30000);
 
-// League switcher entry point: topbar button (league name + draft badge) +
-// first-run setup gate. Non-blocking — fills in when meta resolves.
+// League switcher: topbar dropdown showing configured leagues + manage link.
+// Non-blocking — populates when meta resolves. Switching reloads all views.
 let _setupAutoOpened = false;
-async function renderLeagueButton() {
+async function renderLeagueSwitcher() {
   const slot = document.querySelector('.topbar-right');
-  if (!slot || document.getElementById('leagueBtn')) return;
+  if (!slot || document.getElementById('leagueSwitcher')) return;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'leagueSwitcher';
+  wrap.style.cssText = 'position:relative; margin-right:8px';
+
   const btn = document.createElement('button');
   btn.id = 'leagueBtn';
   btn.className = 'chip';
   btn.title = 'Switch fantasy league';
-  btn.setAttribute('aria-label', 'Switch fantasy league');
-  btn.style.marginRight = '8px';
-  btn.textContent = 'League…';
-  btn.addEventListener('click', async () => {
-    const { openSetupModal } = await import('./views/setup.js');
-    openSetupModal({ onDone: (saved) => { if (saved) { location.reload(); } } });
+  btn.setAttribute('aria-haspopup', 'listbox');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.textContent = '🏈 League…';
+
+  const dropdown = document.createElement('div');
+  dropdown.id = 'leagueDropdown';
+  dropdown.setAttribute('role', 'listbox');
+  dropdown.setAttribute('aria-label', 'Switch league');
+  dropdown.style.cssText = 'display:none; position:absolute; right:0; top:calc(100% + 6px); min-width:260px; max-height:320px; overflow-y:auto; background:var(--surface); border:1px solid var(--border-strong); border-radius:10px; box-shadow:0 12px 32px rgba(0,0,0,0.12); z-index:1001; padding:4px';
+
+  wrap.append(btn, dropdown);
+  slot.prepend(wrap);
+
+  const updateSidebar = (meta) => {
+    const sub = document.querySelector('.nav-sub');
+    if (sub) {
+      sub.textContent = meta ? leagueTagline(meta) : '—';
+    }
+  };
+
+  const populateDropdown = (leagues, activeId, meta) => {
+    const items = leagues.map(l => {
+      const id = String(l.league_id || '');
+      const isActive = id === activeId;
+      const label = l.league_name || `League ${id.slice(0, 8)}…`;
+      const season = l.season ? ` · ${l.season}` : '';
+      return `<div role="option" aria-selected="${isActive}" data-lid="${id}" class="search-item" style="padding:8px 10px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; ${isActive ? 'background:var(--amber-dim)' : ''}">
+        <div><div style="font:600 13px 'Helvetica Neue',Helvetica,sans-serif">${isActive ? '● ' : ''}${label}</div><div class="mono faint" style="font-size:11px">${id.slice(0, 10)}…${season}</div></div>
+        ${isActive ? '<span class="badge badge-amber" style="font-size:10px">active</span>' : ''}
+      </div>`;
+    }).join('');
+
+    dropdown.innerHTML = `${items}
+      <div style="border-top:1px solid var(--border); margin:4px 0"></div>
+      <div id="leagueManageBtn" role="option" class="search-item" style="padding:8px 10px; border-radius:8px; cursor:pointer; text-align:center; font:600 12px 'Helvetica Neue',Helvetica,sans-serif; color:var(--sky)">+ Add / manage leagues</div>`;
+
+    dropdown.querySelectorAll('[data-lid]').forEach(el => {
+      el.addEventListener('click', () => {
+        const lid = el.getAttribute('data-lid');
+        if (lid && lid !== activeId) {
+          setActiveLeague(lid);
+          location.reload();
+        }
+        dropdown.style.display = 'none';
+        btn.setAttribute('aria-expanded', 'false');
+      });
+    });
+
+    const manageBtn = dropdown.querySelector('#leagueManageBtn');
+    if (manageBtn) {
+      manageBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        dropdown.style.display = 'none';
+        btn.setAttribute('aria-expanded', 'false');
+        try {
+          const { openSetupModal } = await import('./views/setup.js');
+          openSetupModal({ onDone: (saved) => { if (saved) location.reload(); } });
+        } catch (err) {
+          console.error('Failed to open setup modal:', err);
+        }
+      });
+    }
+  };
+
+  btn.addEventListener('click', () => {
+    const open = dropdown.style.display === 'none';
+    dropdown.style.display = open ? 'block' : 'none';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
   });
-  slot.prepend(btn);
+
+  document.addEventListener('click', (e) => {
+    if (!wrap.contains(e.target)) {
+      dropdown.style.display = 'none';
+      btn.setAttribute('aria-expanded', 'false');
+    }
+  });
+
   try {
     const meta = await fetchMeta();
-    const name = meta.leagueName || (getLeagueId() ? `League ${getLeagueId().slice(0, 6)}…` : 'Set up league');
-    btn.textContent = `🏈 ${name}`;
-    btn.title = `Active league: ${meta.leagueName || getLeagueId() || 'none'} — click to switch`;
-    const sub = document.querySelector('.nav-sub');
-    if (sub && meta.totalRosters && meta.season) {
-      sub.textContent = `${meta.totalRosters}-Team · ${meta.season}`;
+    const activeId = getLeagueId();
+    const name = meta.leagueName || (activeId ? `League ${activeId.slice(0, 6)}…` : 'Set up league');
+    btn.textContent = `🏈 ${name} ▾`;
+    btn.title = `Active: ${meta.leagueName || activeId || 'none'}`;
+    updateSidebar(meta);
+    const leagues = meta.configuredLeagues || [];
+    if (leagues.length) {
+      populateDropdown(leagues, activeId, meta);
+    } else {
+      populateDropdown([], activeId, meta);
     }
   } catch (_) {
-    btn.textContent = '🏈 League';
+    btn.textContent = '🏈 League ▾';
+    updateSidebar(null);
+    populateDropdown([], '', null);
   }
 }
 
@@ -533,7 +635,7 @@ async function maybeAutoSetup() {
   } catch (_) {}
 }
 
-renderLeagueButton();
+renderLeagueSwitcher();
 maybeAutoSetup();
 
 // Pre-load search player cache in background for instant dropdown results

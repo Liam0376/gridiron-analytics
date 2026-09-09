@@ -1,41 +1,47 @@
+/* ═══════════════════════════════════════════════════════
+   Gridiron Hub — Design Tokens v2 (Draftea × FantasyPros)
+   Density: 8/10 · Variance: 6/10 · Motion: 5/10
+   ═══════════════════════════════════════════════════════ */
 :root {
-  /* Base — clean light background (FantasyPros-inspired) */
-  --bg: #F3F4F6;
-  --bg-rgb: 243, 244, 246;
+  /* Base — crisp light */
+  --bg: #F1F5F9;
+  --bg-rgb: 241, 245, 249;
   --surface: #FFFFFF;
   --surface-rgb: 255, 255, 255;
   --surface-raised: #F8FAFC;
   --surface-hover: #EFF6FF;
+  --surface-glass: rgba(255, 255, 255, 0.72);
   --border: #E2E8F0;
   --border-strong: #CBD5E1;
-  --border-active: #1E40AF;
+  --border-active: #1D4ED8;
 
-  /* Text — dark on light (text-faint darkened to #64748B for text use; #94A3B8 fails contrast) */
+  /* Text */
   --text: #0F172A;
   --text-rgb: 15, 23, 42;
   --text-muted: #475569;
-  --text-faint: #64748B;
+  --text-faint: #94A3B8;
   --text-inverse: #FFFFFF;
 
-  /* Typography — deliberate brand: Helvetica / Apple SF + SF Mono. Zero webfonts, no Google Fonts. */
-  --font-sans: "Helvetica Neue", Helvetica, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  /* Typography — system stack, zero webfonts, zero cost */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, "Segoe UI", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --font-display: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, "Segoe UI", Arial, sans-serif;
 
-  /* Primary — FantasyPros navy blue */
-  --primary: #1E40AF;
-  --primary-rgb: 30, 64, 175;
+  /* Primary — Draftea deep blue */
+  --primary: #1D4ED8;
+  --primary-rgb: 29, 78, 216;
   --primary-light: #3B82F6;
-  --primary-dim: rgba(30, 64, 175, 0.08);
-  --primary-hover: #1E3A8A;
+  --primary-dim: rgba(29, 78, 216, 0.08);
+  --primary-hover: #1E40AF;
 
-  /* Accent — warm gold (FantasyPros-style) */
+  /* Accent — Draftea gold */
   --amber: #D97706;
   --amber-rgb: 217, 119, 6;
   --amber-dim: rgba(217, 119, 6, 0.10);
-  --amber-glow: rgba(217, 119, 6, 0.20);
+  --amber-glow: rgba(217, 119, 6, 0.22);
   --amber-strong: #B45309;
 
-  /* Semantic Data Indicators (adjusted for light bg) */
+  /* Semantic */
   --emerald: #059669;
   --emerald-rgb: 5, 150, 105;
   --emerald-dim: rgba(5, 150, 105, 0.08);
@@ -46,9 +52,10 @@
   --sky-rgb: 2, 132, 199;
   --sky-dim: rgba(2, 132, 199, 0.08);
   --violet: #7C3AED;
+  --violet-rgb: 124, 58, 237;
   --violet-dim: rgba(124, 58, 237, 0.08);
 
-  /* Position Badges (richer for light bg) */
+  /* Position Badges — FantasyPros-inspired distinct hues */
   --pos-qb: #0369A1;
   --pos-rb: #059669;
   --pos-wr: #D97706;
@@ -64,31 +71,291 @@
   --weather-warn: #D97706;
   --weather-bad: #DC2626;
 
-  /* Elevation Shadows (light theme) */
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
-  --shadow-lg: 0 10px 24px rgba(0,0,0,0.12);
-  --shadow-glow: 0 0 0 3px rgba(30,64,175,0.15);
+  /* Elevation — light, bold */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.10);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+  --shadow-xl: 0 20px 48px rgba(0,0,0,0.16);
+  --shadow-glow: 0 0 0 3px rgba(29,78,216,0.12);
+  --shadow-glow-amber: 0 0 0 3px rgba(217,119,6,0.12);
 
-  /* Layout tokens — single source of truth (code wins over DESIGN.md drafts):
-     gap 10 / padding 14 / radius 12.
-     Radius rule: 16 modal / 12 card / 999 pill-only. */
-  --color-primary: #1E40AF;
+  /* Sidebar */
+  --sidebar-bg: #0F172A;
+  --sidebar-border: rgba(255,255,255,0.08);
+  --sidebar-text: rgba(255,255,255,0.5);
+  --sidebar-bg-hover: rgba(255,255,255,0.08);
+  --sidebar-bg-active: rgba(29,78,216,0.20);
+  --sidebar-text-active: #FFFFFF;
+
+  /* Topbar — solid */
+  --topbar-bg: #FFFFFF;
+  --topbar-border: var(--border);
+  --topbar-height: 56px;
+
+  /* Layout — density 8/10 */
+  --color-primary: #1D4ED8;
   --color-on-primary: #FFFFFF;
   --color-secondary: #0284C7;
   --color-accent: #D97706;
-  --grid-gap: 10px;
-  --card-padding: 14px;
+  --grid-gap: 8px;
+  --card-padding: 12px;
   --font-size-small: 12px;
-  --table-row-height: 40px;
-  --sidebar-width: 240px;
-  --header-height: 56px;
+  --table-row-height: 36px;
+  --sidebar-width: 220px;
+  --header-height: 52px;
   --kpi-good: #059669;
   --kpi-ok: #D97706;
   --kpi-bad: #DC2626;
 
-  --mobile-nav-height: 64px;
+  --mobile-nav-height: 60px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
   --team-accent: var(--primary);
+
+  /* Card treatment — sharp solid */
+  --card-radius: 6px;
+  --card-border: 1px solid var(--border);
+  --card-bg: var(--surface);
+  --badge-radius: 4px;
+
+  /* Visual richness */
+  --sidebar-gradient: linear-gradient(180deg, #0F172A 0%, #1E293B 100%);
+  --card-accent-width: 4px;
+  --glow-primary: 0 0 12px rgba(29, 78, 216, 0.15);
+  --glow-amber: 0 0 12px rgba(217, 119, 6, 0.15);
+  --glow-emerald: 0 0 12px rgba(5, 150, 105, 0.15);
+  --glow-sky: 0 0 12px rgba(2, 132, 199, 0.15);
+  --hero-gradient: none;
+  --surface-gradient: none;
+  --kpi-accent-good: var(--emerald);
+  --kpi-accent-ok: var(--amber);
+  --kpi-accent-bad: var(--crimson);
+
+  /* No glassmorphism — solid surfaces */
+  --glass-bg: var(--surface);
+  --glass-border: var(--border);
+  --glass-blur: 0px;
+
+  /* No mesh gradient blobs */
+  --mesh-1: transparent;
+  --mesh-2: transparent;
+  --mesh-3: transparent;
+
+  /* Spacing scale (density 8) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Dark Mode — Draftea-inspired deep navy
+   ═══════════════════════════════════════════════════════ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #080E1A;
+    --bg-rgb: 8, 14, 26;
+    --surface: #0F1729;
+    --surface-rgb: 15, 23, 41;
+    --surface-raised: #141E33;
+    --surface-hover: #1A2742;
+    --surface-glass: rgba(15, 23, 41, 0.65);
+    --border: rgba(255,255,255,0.07);
+    --border-strong: rgba(255,255,255,0.12);
+    --border-active: #3B82F6;
+
+    --text: #EDF2F7;
+    --text-rgb: 237, 242, 247;
+    --text-muted: #94A3B8;
+    --text-faint: #64748B;
+    --text-inverse: #0F172A;
+
+    --primary: #3B82F6;
+    --primary-rgb: 59, 130, 246;
+    --primary-light: #60A5FA;
+    --primary-dim: rgba(59, 130, 246, 0.10);
+    --primary-hover: #2563EB;
+
+    --amber: #F59E0B;
+    --amber-rgb: 245, 158, 11;
+    --amber-dim: rgba(245, 158, 11, 0.10);
+    --amber-glow: rgba(245, 158, 11, 0.20);
+    --amber-strong: #D97706;
+
+    --emerald: #10B981;
+    --emerald-rgb: 16, 185, 129;
+    --emerald-dim: rgba(16, 185, 129, 0.10);
+    --crimson: #EF4444;
+    --crimson-rgb: 239, 68, 68;
+    --crimson-dim: rgba(239, 68, 68, 0.10);
+    --sky: #38BDF8;
+    --sky-rgb: 56, 189, 248;
+    --sky-dim: rgba(56, 189, 248, 0.10);
+    --violet: #A78BFA;
+    --violet-rgb: 167, 139, 250;
+    --violet-dim: rgba(167, 139, 250, 0.10);
+
+    --pos-qb: #38BDF8;
+    --pos-rb: #34D399;
+    --pos-wr: #FBBF24;
+    --pos-te: #A78BFA;
+    --pos-k: #F472B6;
+    --pos-def: #94A3B8;
+
+    --conf-high: #10B981;
+    --conf-medium: #F59E0B;
+    --conf-low: #64748B;
+    --weather-ok: #10B981;
+    --weather-warn: #F59E0B;
+    --weather-bad: #EF4444;
+
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.35);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.45);
+    --shadow-xl: 0 16px 48px rgba(0,0,0,0.5);
+    --shadow-glow: 0 0 0 3px rgba(59,130,246,0.18);
+    --shadow-glow-amber: 0 0 0 3px rgba(245,158,11,0.18);
+
+    --sidebar-bg: #060B15;
+    --sidebar-border: rgba(255,255,255,0.04);
+    --sidebar-bg-hover: rgba(255,255,255,0.05);
+    --sidebar-bg-active: rgba(59,130,246,0.12);
+    --sidebar-text-active: #EDF2F7;
+
+    --topbar-bg: var(--surface);
+    --topbar-border: var(--border);
+
+    --color-primary: #3B82F6;
+    --color-on-primary: #FFFFFF;
+    --color-secondary: #38BDF8;
+    --color-accent: #F59E0B;
+    --kpi-good: #10B981;
+    --kpi-ok: #F59E0B;
+    --kpi-bad: #EF4444;
+
+    --card-bg: var(--surface);
+
+    --sidebar-gradient: linear-gradient(180deg, #0A0F1E 0%, #111827 100%);
+    --glow-primary: 0 0 20px rgba(59, 130, 246, 0.18);
+    --glow-amber: 0 0 20px rgba(245, 158, 11, 0.18);
+    --glow-emerald: 0 0 20px rgba(16, 185, 129, 0.18);
+    --glow-sky: 0 0 20px rgba(56, 189, 248, 0.18);
+    --hero-gradient: linear-gradient(135deg, #3B82F6 0%, #38BDF8 100%);
+    --kpi-accent-good: var(--emerald);
+    --kpi-accent-ok: var(--amber);
+    --kpi-accent-bad: var(--crimson);
+
+    --glass-bg: var(--surface);
+    --glass-border: var(--border);
+    --glass-blur: 0px;
+
+    --mesh-1: transparent;
+    --mesh-2: transparent;
+    --mesh-3: transparent;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #080E1A;
+  --bg-rgb: 8, 14, 26;
+  --surface: #0F1729;
+  --surface-rgb: 15, 23, 41;
+  --surface-raised: #141E33;
+  --surface-hover: #1A2742;
+  --surface-glass: rgba(15, 23, 41, 0.65);
+  --border: rgba(255,255,255,0.07);
+  --border-strong: rgba(255,255,255,0.12);
+  --border-active: #3B82F6;
+
+  --text: #EDF2F7;
+  --text-rgb: 237, 242, 247;
+  --text-muted: #94A3B8;
+  --text-faint: #64748B;
+  --text-inverse: #0F172A;
+
+  --primary: #3B82F6;
+  --primary-rgb: 59, 130, 246;
+  --primary-light: #60A5FA;
+  --primary-dim: rgba(59, 130, 246, 0.10);
+  --primary-hover: #2563EB;
+
+  --amber: #F59E0B;
+  --amber-rgb: 245, 158, 11;
+  --amber-dim: rgba(245, 158, 11, 0.10);
+  --amber-glow: rgba(245, 158, 11, 0.20);
+  --amber-strong: #D97706;
+
+  --emerald: #10B981;
+  --emerald-rgb: 16, 185, 129;
+  --emerald-dim: rgba(16, 185, 129, 0.10);
+  --crimson: #EF4444;
+  --crimson-rgb: 239, 68, 68;
+  --crimson-dim: rgba(239, 68, 68, 0.10);
+  --sky: #38BDF8;
+  --sky-rgb: 56, 189, 248;
+  --sky-dim: rgba(56, 189, 248, 0.10);
+  --violet: #A78BFA;
+  --violet-rgb: 167, 139, 250;
+  --violet-dim: rgba(167, 139, 250, 0.10);
+
+  --pos-qb: #38BDF8;
+  --pos-rb: #34D399;
+  --pos-wr: #FBBF24;
+  --pos-te: #A78BFA;
+  --pos-k: #F472B6;
+  --pos-def: #94A3B8;
+
+  --conf-high: #10B981;
+  --conf-medium: #F59E0B;
+  --conf-low: #64748B;
+  --weather-ok: #10B981;
+  --weather-warn: #F59E0B;
+  --weather-bad: #EF4444;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.35);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.45);
+  --shadow-xl: 0 16px 48px rgba(0,0,0,0.5);
+  --shadow-glow: 0 0 0 3px rgba(59,130,246,0.18);
+  --shadow-glow-amber: 0 0 0 3px rgba(245,158,11,0.18);
+
+  --sidebar-bg: #060B15;
+  --sidebar-border: rgba(255,255,255,0.04);
+  --sidebar-bg-hover: rgba(255,255,255,0.05);
+  --sidebar-bg-active: rgba(59,130,246,0.12);
+  --sidebar-text-active: #EDF2F7;
+
+  --topbar-bg: var(--surface);
+  --topbar-border: var(--border);
+
+  --color-primary: #3B82F6;
+  --color-on-primary: #FFFFFF;
+  --color-secondary: #38BDF8;
+  --color-accent: #F59E0B;
+  --kpi-good: #10B981;
+  --kpi-ok: #F59E0B;
+  --kpi-bad: #EF4444;
+
+  --card-bg: var(--surface);
+
+  --sidebar-gradient: linear-gradient(180deg, #0A0F1E 0%, #111827 100%);
+  --glow-primary: 0 0 20px rgba(59, 130, 246, 0.18);
+  --glow-amber: 0 0 20px rgba(245, 158, 11, 0.18);
+  --glow-emerald: 0 0 20px rgba(16, 185, 129, 0.18);
+  --glow-sky: 0 0 20px rgba(56, 189, 248, 0.18);
+  --hero-gradient: linear-gradient(135deg, #3B82F6 0%, #38BDF8 100%);
+  --kpi-accent-good: var(--emerald);
+  --kpi-accent-ok: var(--amber);
+  --kpi-accent-bad: var(--crimson);
+
+  --glass-bg: var(--surface);
+  --glass-border: var(--border);
+  --glass-blur: 0px;
+
+  --mesh-1: transparent;
+  --mesh-2: transparent;
+  --mesh-3: transparent;
 }

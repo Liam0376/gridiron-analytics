@@ -146,19 +146,7 @@ export async function renderAuction(root) {
     </div>
     ` : `<div class="alert alert-info reveal in" style="margin-top:12px">Market comparison not loaded. Showing model only.</div>`}
 
-    <div class="card reveal in" style="margin-top:12px; border-top:1px solid var(--crimson); background: linear-gradient(90deg, rgba(239,68,68,0.08), transparent)">
-      <div class="card-body" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 12px">
-        <span class="kicker" style="color:var(--crimson)">● Draft Live</span>
-        <span id="draftCountdown" class="mono" style="font-size:18px; font-weight:700; color:var(--crimson)">60:00</span>
-        <span class="micro faint">until draft: board frozen to FP season 596 + Week 10 model • <span class="mono" style="color:var(--text-muted)">VOR $200/12</span></span>
-        <span style="flex:1"></span>
-        <button class="chip" id="fullscreenAuction" title="Fullscreen draft board (F)">⛶ Fullscreen</button>
-        <button class="chip" id="printAuction" title="Print board (⌘P)">⎙ Print</button>
-        <button class="chip" id="resetCountdown" title="Reset 60-min timer">↺ Reset 60m</button>
-      </div>
-    </div>
-
-    <div class="kpi-row reveal in" id="auctionBudgetKpis" style="margin-top:12px; position:sticky; top:0; z-index:10; background:var(--surface); padding:8px; border-radius:8px">
+    <div class="kpi-row reveal in" id="auctionBudgetKpis" style="margin-top:12px; position:sticky; top:var(--header-height, 56px); z-index:10; background:var(--surface); padding:8px; border-radius:8px">
       <div class="kpi-card">
         <div class="kpi-label">My Budget</div>
         <div class="kpi-value mono" style="color:${myRemaining > 50 ? 'var(--color-accent)' : myRemaining > 20 ? 'var(--amber)' : 'var(--crimson)'}">$${myRemaining}</div>
@@ -228,7 +216,7 @@ export async function renderAuction(root) {
     </div>
 
     <div class="card reveal in" style="margin-top:16px">
-      <div class="card-header"><h3>Draft Strategy</h3><span class="kicker">$200 auction</span></div>
+      <div class="card-header"><h3>Draft Strategy</h3><span class="kicker">$${budget} auction</span></div>
       <div class="card-body" style="font:400 13px Helvetica Neue, Helvetica,sans-serif; color:var(--text-muted); line-height:1.6">
         <ol style="margin:0; padding-left:18px">
           <li><strong>Stars &amp; Scrubs:</strong> Spend 60-70% ($150-175) on 4-5 elite starters. Your 2-FLEX league means 7 RB/WR/TE start: premium on volume backs and target hogs.</li>
@@ -375,37 +363,6 @@ export async function renderAuction(root) {
     renderAuction(root);
   });
 
-  // Draft countdown (60 min, persists in localStorage so reloads keep time)
-  const countdownEl = root.querySelector('#draftCountdown');
-  if (countdownEl) {
-    const STORAGE_KEY = 'ffba-draft-target';
-    let target = Number(localStorage.getItem(STORAGE_KEY) || 0);
-    if (!target || target < Date.now()) {
-      target = Date.now() + 60 * 60 * 1000;
-      try { localStorage.setItem(STORAGE_KEY, String(target)); } catch (_) {
-        // localStorage unavailable in private mode
-      }
-    }
-    const tick = () => {
-      const remain = Math.max(0, target - Date.now());
-      const m = Math.floor(remain / 60000);
-      const s = Math.floor((remain % 60000) / 1000);
-      countdownEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-      countdownEl.style.color = remain < 5 * 60 * 1000 ? 'var(--crimson)' : remain < 15 * 60 * 1000 ? 'var(--amber)' : 'var(--crimson)';
-      if (remain === 0) countdownEl.textContent = '00:00: Draft now';
-    };
-    tick();
-    if (root._draftInterval) clearInterval(root._draftInterval);
-    root._draftInterval = setInterval(tick, 1000);
-    root.querySelector('#resetCountdown')?.addEventListener('click', () => {
-      const nt = Date.now() + 60 * 60 * 1000;
-      try { localStorage.setItem(STORAGE_KEY, String(nt)); } catch (_) {
-        // localStorage unavailable in private mode
-      }
-      target = nt;
-      tick();
-    });
-  }
 
   root.querySelector('#fullscreenAuction')?.addEventListener('click', () => {
     const el = root.querySelector('.table-wrap');

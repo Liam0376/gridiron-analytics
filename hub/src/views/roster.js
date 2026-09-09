@@ -135,7 +135,7 @@ export async function renderRoster(root) {
     .map((rd, i) => buildTeamRecord(rd, allTeamMetas[i]))
     .filter(Boolean);
 
-  // Sort all 12 teams by Starter FPTS descending to create the Financial & Power Leaderboard
+  // Sort all teams by Starter FPTS descending to create the Financial & Power Leaderboard
   processedTeams.sort((a, b) => b.starterFPTS - a.starterFPTS);
 
   // Attach Leaderboard Rank #1 - #12
@@ -165,7 +165,7 @@ export async function renderRoster(root) {
       <div class="card-body" style="padding:0">
         <div class="table-wrap" style="border:0; border-radius:0">
           <table aria-label="League leaderboard">
-            <caption class="sr-only">12-team financial and power leaderboard</caption>
+            <caption class="sr-only">${league ? league.teams : '?'}-team financial and power leaderboard</caption>
             <thead>
               <tr>
                 <th>Rank</th>

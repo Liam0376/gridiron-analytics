@@ -575,8 +575,8 @@ function renderSlotRow(pA, pB, slotLabel, idx) {
       </td>
       <td style="text-align:center">
         <div style="display:flex; gap:4px; align-items:center; justify-content:center">
-          ${pA ? `<div style="flex:1; max-width:80px">${intervalBar({ point: pA.weekly, low: pA.projection_lower ?? pA.lower_bound ?? pA.lower, high: pA.projection_upper ?? pA.upper_bound ?? pA.upper, width: pA.width ?? pA.projection_width ?? pA.interval_width, min: 0, max: 30 })}</div>` : ''}
-          ${pB ? `<div style="flex:1; max-width:80px">${intervalBar({ point: pB.weekly, low: pB.projection_lower ?? pB.lower_bound ?? pB.lower, high: pB.projection_upper ?? pB.upper_bound ?? pB.upper, width: pB.width ?? pB.projection_width ?? pB.interval_width, min: 0, max: 30 })}</div>` : ''}
+          ${pA ? `<div style="flex:1; max-width:110px">${intervalBar({ point: pA.weekly, low: pA.projection_lower ?? pA.lower_bound ?? pA.lower, high: pA.projection_upper ?? pA.upper_bound ?? pA.upper, width: pA.width ?? pA.projection_width ?? pA.interval_width, min: 0, max: 30 })}</div>` : ''}
+          ${pB ? `<div style="flex:1; max-width:110px">${intervalBar({ point: pB.weekly, low: pB.projection_lower ?? pB.lower_bound ?? pB.lower, high: pB.projection_upper ?? pB.upper_bound ?? pB.upper, width: pB.width ?? pB.projection_width ?? pB.interval_width, min: 0, max: 30 })}</div>` : ''}
         </div>
       </td>
     </tr>

@@ -43,7 +43,8 @@ const TTL_MS = 60_000;
 const _ttlCache = new Map(); // key -> { at: number, value: Promise }
 
 function cacheKey(fnName, argsObj) {
-  return `${fnName}::${JSON.stringify(argsObj ?? {})}`;
+  const lid = getLeagueId() || '';
+  return `${lid}::${fnName}::${JSON.stringify(argsObj ?? {})}`;
 }
 
 async function withCache(fnName, argsObj, fetcher) {
