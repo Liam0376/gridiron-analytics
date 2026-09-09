@@ -176,3 +176,19 @@ rejection row)
 - CLV tracking (needs closing feed) — noted, not faked.
 - Parlay optimizer, live/in-play, K/DEF props, combo markets (need covariance).
 - Fractional-Kelly staking — behind shadow gate, later.
+
+### Sign-off fix batches (post-Task-7, agent-driven)
+
+- **Batch 1 — 22-agent sign-off REDs:** missed width renderers (`playerCard.js`,
+  projections table), NaN per-row quarantine, week-1 + position serving gates,
+  upsert `RETURNING id`, whitespace `player_id` 422, vig/import docstrings.
+- **Batch 2 — council vote (idempotency wins 8–3–2):** `log_prop_edge_once`
+  dedupe (v6 partial index), logging at POST + idempotent GET catch-up,
+  POST/GET history parity, per-row calibration detail, credential-shaped
+  `book` rejection, `_CACHE`/`update_cache` model_projections seed.
+- **Deferred with reasons:** tracking-VALUE veto (needs experiment design, not a
+  patch), VALUE-only logging expansion (would rewrite experiment semantics
+  mid-flight — revisit after first 20 resolved), retention job + restore drill
+  (operational, needs a designed TTL), n=20 power upgrade (don't move gates
+  mid-experiment), UI polish batch, multi-season replication (needs 2024
+  holdout rerun — data work, separate task).
