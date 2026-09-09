@@ -17,6 +17,9 @@ Conventions (pinned Task 1, 2026-09-09):
 """
 
 import math
+import statistics
+
+from ffanalytics.stat_projector import project_player_stats
 
 # 80% central normal quantile: P(|Z| <= Z_80) = 0.8. Converts a pinned
 # half-width into sigma under the v1 normal approximation
@@ -171,3 +174,195 @@ def apply_prop_edge_rule(
         "ev_per_unit": ev,
         "decision": decision,
     }
+
+
+# ---------------------------------------------------------------------------
+# Fair lines from stat projections (Task 3). Reads `project_player_stats`
+# outputs; never modifies the projector, scoring, decision, or comparison
+# layers (g rep-guard: `git status` after this task shows only props.py +
+# tests/test_props.py).
+# ---------------------------------------------------------------------------
+
+# Position -> [(prop market, source stat key, probability model)].
+# K excluded v1: fg distance buckets don't map to standard K props and K has
+# the thinnest coverage (displayed 58.6%). DEF excluded: no player-stat base.
+PROP_MARKETS = {
+    "QB": [
+        ("passing_yards", "passing_yards", "normal"),
+        ("passing_tds", "passing_tds", "normal"),
+        ("rushing_yards", "rushing_yards", "normal"),
+        ("anytime_td", "rushing_tds", "poisson"),
+    ],
+    "RB": [
+        ("rushing_yards", "rushing_yards", "normal"),
+        ("receiving_yards", "receiving_yards", "normal"),
+        ("receptions", "receptions", "normal"),
+        ("anytime_td", "rushing_tds+receiving_tds", "poisson"),
+    ],
+    "WR": [
+        ("receiving_yards", "receiving_yards", "normal"),
+        ("receptions", "receptions", "normal"),
+        ("rushing_yards", "rushing_yards", "normal"),
+        ("anytime_td", "rushing_tds+receiving_tds", "poisson"),
+    ],
+    "TE": [
+        ("receiving_yards", "receiving_yards", "normal"),
+        ("receptions", "receptions", "normal"),
+        ("rushing_yards", "rushing_yards", "normal"),
+        ("anytime_td", "rushing_tds+receiving_tds", "poisson"),
+    ],
+}
+
+# Sigma floors per stat: sample std of a flat history (e.g. zeros every game)
+# is 0.0, which would make every line a false certainty. Floors are STARTING
+# values (~half a typical single-game std), not calibrated claims — Task 4
+# backtest (Brier + reliability) judges them and they move to config.py if kept.
+SIGMA_FLOORS = {
+    "passing_yards": 30.0,   # why: typical QB game std ~60-80; half is conservative
+    "passing_tds": 0.5,      # why: TDs are ~0/1/2 coin flips; 0.5 keeps P(over) sane
+    "rushing_yards": 10.0,   # why: typical skill game std ~20-30
+    "receiving_yards": 10.0,  # why: same scale as rushing
+    "receptions": 1.0,       # why: catch counts move in ones
+}
+
+# Pinned src width semantics (Task 1): width IS the half-width, so a normal
+# 80% half-width converts with the 80% quantile (see Z_80 above).
+
+
+def _stat_values(player_history, prior_season_stats, stat_key):
+    """All usable values for one stat: current history + prior REG rows."""
+    vals = []
+    for g in player_history or []:
+        try:
+            v = float(g.get(stat_key, 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(v):
+            vals.append(v)
+    for g in prior_season_stats or []:
+        if g.get("season_type", "REG") != "REG":
+            continue
+        try:
+            v = float(g.get(stat_key, 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(v):
+            vals.append(v)
+    return vals
+
+
+def _dispersion_sigma(values, stat_key):
+    """Sample std of the player's own history for that stat, floored.
+
+    Uncalibrated by construction — same-data dispersion, not a conformal
+    guarantee. Task 4 measures whether it predicts (Brier/reliability).
+    """
+    floor = SIGMA_FLOORS.get(stat_key, 1.0)
+    if len(values) >= 2:
+        try:
+            return max(float(statistics.stdev(values)), floor)
+        except statistics.StatisticsError:
+            return floor
+    return floor
+
+
+def _coerce_finite(v):
+    """scoring.py discipline: non-finite projection output coerces to 0.0."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return 0.0
+    return f if math.isfinite(f) else 0.0
+
+
+def build_prop_fair_lines(
+    player_history,
+    position,
+    game_ctx=None,
+    prior_season_stats=None,
+    week=None,
+):
+    """Fair lines + sigmas per prop market from stat projections.
+
+    Args:
+        player_history: game logs this season, ordered by week (same shape as
+            `project_player_stats` expects).
+        position: QB/RB/WR/TE. Anything else (K/DEF/unknown) is excluded v1.
+        game_ctx: {implied_total, wind_mph|wind, temp_f|temp}. None = neutral.
+        prior_season_stats: previous season logs (REG filtered for sigma).
+        week: target week. week == 1 is EXCLUDED (week-1 leakage guard hole at
+            `stat_projector.py:512-513`); None skips the check (caller must pass
+            week in production paths — Task 5 API does).
+
+    Returns envelope {"excluded", "reason", "position", "is_empty_projection",
+    "markets"} where markets maps name -> {"model", "fair_line", "sigma", ...}
+    (poisson entries carry "p_yes" instead of a sigma).
+    """
+    pos = (position or "").upper()
+    if pos not in PROP_MARKETS:
+        return {
+            "excluded": True,
+            "reason": f"position {pos or '?'} has no v1 prop markets (K/DEF out of scope)",
+            "position": pos,
+            "is_empty_projection": False,
+            "markets": {},
+        }
+    if week is not None and week < 2:
+        return {
+            "excluded": True,
+            "reason": "week 1 excluded: history filter leaks future weeks (stat_projector.py:512-513)",
+            "position": pos,
+            "is_empty_projection": False,
+            "markets": {},
+        }
+
+    ctx = game_ctx or {}
+    implied = ctx.get("implied_total", 0) or 0
+    wind = ctx.get("wind_mph", ctx.get("wind", 0)) or 0
+    temp = ctx.get("temp_f", ctx.get("temp", None))
+
+    proj = project_player_stats(
+        player_history=player_history or [],
+        position=pos,
+        prior_season_stats=prior_season_stats,
+        implied_total=implied,
+        wind_mph=wind,
+        temp_f=temp,
+    )
+    is_empty = bool(proj.get("is_empty_projection", False))
+
+    markets = {}
+    for market, source, model in PROP_MARKETS[pos]:
+        if model == "poisson":
+            lam = sum(_coerce_finite(proj.get(k, 0)) for k in source.split("+"))
+            markets[market] = {
+                "model": "poisson",
+                "fair_line": lam,
+                "sigma": None,
+                "p_yes": poisson_anytime_td(lam),
+            }
+        else:
+            fair = _coerce_finite(proj.get(source, 0))
+            sigma = _dispersion_sigma(
+                _stat_values(player_history, prior_season_stats, source), source
+            )
+            markets[market] = {"model": "normal", "fair_line": fair, "sigma": sigma}
+
+    return {
+        "excluded": False,
+        "reason": "",
+        "position": pos,
+        "is_empty_projection": is_empty,
+        "markets": markets,
+    }
+
+
+def prop_over_prob(market_entry, line):
+    """P(stat > line) for a normal-market entry from `build_prop_fair_lines`.
+
+    Poisson (yes/no) markets carry p_yes directly — over/under lines don't
+    apply, so this raises instead of guessing.
+    """
+    if market_entry.get("model") == "poisson":
+        raise ValueError("poisson markets are yes/no — use entry['p_yes']")
+    return normal_over_prob(market_entry["fair_line"], market_entry["sigma"], line)

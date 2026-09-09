@@ -4,11 +4,30 @@ import pytest
 from ffanalytics.props import (
     american_to_prob,
     apply_prop_edge_rule,
+    build_prop_fair_lines,
     ev_per_unit,
     normal_over_prob,
     poisson_anytime_td,
     prob_to_american,
+    prop_over_prob,
 )
+
+
+def _qb_history(n=5, base_yards=250.0):
+    return [
+        {"passing_yards": base_yards + (i % 2) * 20.0, "passing_tds": 2,
+         "rushing_yards": 15.0 + i, "rushing_tds": 0, "season_type": "REG"}
+        for i in range(n)
+    ]
+
+
+def _wr_history(n=5):
+    return [
+        {"receiving_yards": 60.0 + (i % 3) * 15.0, "receiving_tds": i % 2,
+         "receptions": 4 + (i % 2), "rushing_yards": 0.0, "rushing_tds": 0,
+         "season_type": "REG"}
+        for i in range(n)
+    ]
 
 
 def test_american_known_values():
@@ -125,3 +144,75 @@ def test_edge_rule_empty_projection_veto():
     res = apply_prop_edge_rule(p_model=0.80, book_price=-110, is_empty=True)
     assert res["decision"] == "NO EDGE (unknown)"
     assert res["edge_pp"] == pytest.approx(0.80 - 110 / 210)
+
+
+def test_fair_lines_qb_markets_match_projector():
+    from ffanalytics.stat_projector import project_player_stats
+
+    hist = _qb_history()
+    out = build_prop_fair_lines(hist, "QB", {"implied_total": 24.0}, week=5)
+    assert out["excluded"] is False
+    assert out["is_empty_projection"] is False
+    assert {"passing_yards", "passing_tds", "rushing_yards", "anytime_td"} <= set(out["markets"])
+    # Fair line must equal the projector's own output for that stat key.
+    proj = project_player_stats(hist, "QB", implied_total=24.0)
+    assert out["markets"]["passing_yards"]["fair_line"] == pytest.approx(proj["passing_yards"])
+    assert out["markets"]["passing_tds"]["fair_line"] == pytest.approx(proj["passing_tds"])
+
+
+def test_fair_lines_wr_markets():
+    out = build_prop_fair_lines(_wr_history(), "WR", {"implied_total": 22.0}, week=5)
+    assert out["excluded"] is False
+    assert {"receiving_yards", "receptions", "anytime_td"} <= set(out["markets"])
+    assert out["markets"]["receiving_yards"]["fair_line"] > 0
+    assert out["markets"]["anytime_td"]["p_yes"] == pytest.approx(
+        1 - math.exp(-out["markets"]["anytime_td"]["fair_line"])
+    )
+
+
+def test_fair_lines_sigma_floor_and_dispersion():
+    stable = build_prop_fair_lines(_qb_history(base_yards=250.0), "QB", {}, week=5)
+    volatile_hist = [dict(g, passing_yards=150.0 + (i % 2) * 200.0) for i, g in enumerate(_qb_history())]
+    volatile = build_prop_fair_lines(volatile_hist, "QB", {}, week=5)
+    s_stable = stable["markets"]["passing_yards"]["sigma"]
+    s_vol = volatile["markets"]["passing_yards"]["sigma"]
+    assert s_stable > 0 and s_vol > 0
+    assert s_vol > s_stable  # dispersion must flow into sigma
+    # Floor: zero-variance history still yields a usable (non-degenerate) sigma.
+    flat_hist_zero_var = [dict(g, passing_yards=200.0) for g in _qb_history()]
+    flat = build_prop_fair_lines(flat_hist_zero_var, "QB", {}, week=5)
+    assert flat["markets"]["passing_yards"]["sigma"] > 0
+
+
+def test_fair_lines_empty_history_flagged_not_silent():
+    out = build_prop_fair_lines([], "WR", {}, week=5)
+    assert out["excluded"] is False
+    assert out["is_empty_projection"] is True
+    assert out["markets"]["receiving_yards"]["fair_line"] == pytest.approx(0.0)
+
+
+def test_fair_lines_week1_excluded():
+    out = build_prop_fair_lines(_qb_history(), "QB", {"implied_total": 24.0}, week=1)
+    assert out["excluded"] is True
+    assert out["markets"] == {}
+    assert "week" in out["reason"].lower() or "leak" in out["reason"].lower()
+
+
+def test_fair_lines_kicker_excluded_v1():
+    out = build_prop_fair_lines(_qb_history(), "K", {}, week=5)
+    assert out["excluded"] is True
+    assert out["markets"] == {}
+
+
+def test_prop_over_prob_dispatch():
+    out = build_prop_fair_lines(_qb_history(), "QB", {}, week=5)
+    entry = out["markets"]["passing_yards"]
+    assert prop_over_prob(entry, entry["fair_line"]) == pytest.approx(0.5)
+    assert prop_over_prob(entry, entry["fair_line"] - 100) > 0.5
+    assert prop_over_prob(entry, entry["fair_line"] + 100) < 0.5
+
+
+def test_fair_lines_deterministic():
+    a = build_prop_fair_lines(_wr_history(), "WR", {"implied_total": 22.0}, week=5)
+    b = build_prop_fair_lines(_wr_history(), "WR", {"implied_total": 22.0}, week=5)
+    assert a == b
