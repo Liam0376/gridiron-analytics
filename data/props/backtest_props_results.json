@@ -1,0 +1,157 @@
+{
+  "generated_at": "2026-09-09T22:36:50.291759+00:00",
+  "holdout_season": 2025,
+  "prior_season": 2024,
+  "weeks": [
+    4,
+    18
+  ],
+  "n_player_weeks": 4978,
+  "n_empty_excluded": 75,
+  "markets": {
+    "passing_tds": {
+      "kind": "normal",
+      "n": 538,
+      "fair_mae": 0.9410854641577889,
+      "coverage_80": 0.7100371747211895,
+      "pit_max_dev": 0.0970260223048327,
+      "pit_deciles": [
+        0.1729,
+        0.197,
+        0.0874,
+        0.0874,
+        0.052,
+        0.0576,
+        0.0892,
+        0.0651,
+        0.0743,
+        0.1171
+      ],
+      "verdict": "tracking"
+    },
+    "passing_yards": {
+      "kind": "normal",
+      "n": 538,
+      "fair_mae": 70.00548844343945,
+      "coverage_80": 0.7565055762081785,
+      "pit_max_dev": 0.024535315985130104,
+      "pit_deciles": [
+        0.119,
+        0.1097,
+        0.1022,
+        0.0855,
+        0.0929,
+        0.0967,
+        0.0836,
+        0.0929,
+        0.0929,
+        0.1245
+      ],
+      "verdict": "edges_on"
+    },
+    "receiving_yards": {
+      "kind": "normal",
+      "n": 4365,
+      "fair_mae": 15.8373537545042,
+      "coverage_80": 0.8265750286368843,
+      "pit_max_dev": 0.0452462772050401,
+      "pit_deciles": [
+        0.0548,
+        0.1093,
+        0.1297,
+        0.129,
+        0.1317,
+        0.1434,
+        0.0664,
+        0.055,
+        0.0621,
+        0.1187
+      ],
+      "verdict": "tracking"
+    },
+    "receptions": {
+      "kind": "normal",
+      "n": 4365,
+      "fair_mae": 1.2063086762217325,
+      "coverage_80": 0.8215349369988545,
+      "pit_max_dev": 0.04387170675830468,
+      "pit_deciles": [
+        0.0719,
+        0.104,
+        0.1134,
+        0.1267,
+        0.1086,
+        0.1439,
+        0.0767,
+        0.0719,
+        0.0763,
+        0.1065
+      ],
+      "verdict": "tracking"
+    },
+    "rushing_yards": {
+      "kind": "normal",
+      "n": 4903,
+      "fair_mae": 6.834640132209102,
+      "coverage_80": 0.9231083010401795,
+      "pit_max_dev": 0.39602284315725067,
+      "pit_deciles": [
+        0.0261,
+        0.0304,
+        0.0591,
+        0.0763,
+        0.1685,
+        0.496,
+        0.0398,
+        0.029,
+        0.0241,
+        0.0508
+      ],
+      "verdict": "tracking"
+    },
+    "anytime_td": {
+      "kind": "poisson",
+      "n": 4903,
+      "base_rate": 0.18192943096063635,
+      "brier": 0.13843516656692156,
+      "naive_brier": 0.14883111311097538,
+      "reliability_bins": [
+        {
+          "n": 980,
+          "mean_pred": 0.0639,
+          "hit_rate": 0.0908
+        },
+        {
+          "n": 981,
+          "mean_pred": 0.1031,
+          "hit_rate": 0.0866
+        },
+        {
+          "n": 980,
+          "mean_pred": 0.1644,
+          "hit_rate": 0.1337
+        },
+        {
+          "n": 981,
+          "mean_pred": 0.2626,
+          "hit_rate": 0.2324
+        },
+        {
+          "n": 981,
+          "mean_pred": 0.4336,
+          "hit_rate": 0.366
+        }
+      ],
+      "bins_monotonic": false,
+      "verdict": "tracking"
+    }
+  },
+  "notes": [
+    "OOS: history = same-player holdout weeks < target; prior = 2024 REG.",
+    "Empty-history rows excluded from calibration, counted separately.",
+    "Schedule temp/wind are OBSERVED post-game (live uses Open-Meteo forecast).",
+    "Week 1 not evaluated (leakage-guard hole stat_projector.py:512-513).",
+    "K/DEF have no v1 markets (excluded by design).",
+    "verdict edges_on requires n>=500, |coverage-0.80|<=0.05, PIT max_dev<=0.04 (normal) or beating base-rate Brier + monotonic bins (anytime_td)."
+  ]
+}
