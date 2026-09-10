@@ -389,8 +389,18 @@ def _build_player_dict(
     player: dict = {
         "player_id": player_id_str,
         "player_name": base_stats.get("short_name", f"Player {player_id_str}"),
-        "position_group": (base_stats.get("position_group") or base_stats.get("position", "UNK")).upper(),
-        "position": (base_stats.get("position") or base_stats.get("position_group", "UNK")).upper(),
+        # why `or ... or "UNK"`, not `.get(key, "UNK")` (user-caught live
+        # bug): dict.get's default only fires when the KEY is missing, not
+        # when its value is explicitly None — a row with both
+        # position_group and position present-but-None (confirmed live,
+        # /recommendations/start-sit 500ed on 'NoneType' has no attribute
+        # 'upper') crashed the whole endpoint on one bad row instead of
+        # falling back. This is also why shadow_recommendations had zero
+        # start_sit/waiver/trade rows ever, despite the logging call being
+        # correctly wired (api.py:874/932/1074) — the endpoint crashed
+        # before it ever reached that line.
+        "position_group": (base_stats.get("position_group") or base_stats.get("position") or "UNK").upper(),
+        "position": (base_stats.get("position") or base_stats.get("position_group") or "UNK").upper(),
         "projected_points": pts,
         "projection_lower": base_stats.get("projection_lower"),
         "projection_upper": base_stats.get("projection_upper"),

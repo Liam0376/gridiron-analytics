@@ -216,3 +216,28 @@ def test_projections_rescore_stale_nonzero():
         assert players["2"]["projected_points"] == 7.5
     finally:
         _restore_cache(snap)
+
+
+def test_start_sit_survives_position_fields_present_but_none():
+    # why (user-caught live bug, 2026-09-10): dict.get(key, default) only
+    # applies default when key is MISSING, not when its value is explicitly
+    # None. A real player_stats row had both position_group and position
+    # present but set to None, which crashed _build_player_dict's .upper()
+    # call with a 500 before shadow_recommendations logging was ever
+    # reached — the actual reason start_sit/waiver/trade recs never fired.
+    snap = _snapshot_cache()
+    try:
+        _CACHE.update({
+            "league_settings": {"scoring_settings": {}, "roster_positions": [], "users": []},
+            "rosters": [{"owner_id": "1", "roster_id": 1, "players": ["1"]}],
+            "player_stats": [{"player_id": "1", "short_name": "No Position Data",
+                              "position": None, "position_group": None,
+                              "projected_points": 5.0}],
+            "injury_status": {},
+            "season": 2025,
+            "week": 1,
+        })
+        resp = client.get("/recommendations/start-sit", params={"owner_id": "1"})
+        assert resp.status_code == 200
+    finally:
+        _restore_cache(snap)

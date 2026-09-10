@@ -390,9 +390,14 @@ def get_start_sit_recommendations(
             "position": pos,
             "slot": s.get("slot", pos),
             "projected_points": pts,
-            "projection_lower": float(s.get("projection_lower", pts - 2.5)),
-            "projection_upper": float(s.get("projection_upper", pts + 2.5)),
-            "width": float(s.get("width", 5.0)),
+            # why `or` not .get(key, default): .get's default only fires when
+            # the key is MISSING, not when present-but-None (a real player
+            # lacking conformal bounds has the key with value None) — that
+            # crashed float(None) and 500'd start_sit before shadow logging
+            # ever ran (user-caught live bug, 2026-09-10).
+            "projection_lower": float(s.get("projection_lower") if s.get("projection_lower") is not None else pts - 2.5),
+            "projection_upper": float(s.get("projection_upper") if s.get("projection_upper") is not None else pts + 2.5),
+            "width": float(s.get("width") if s.get("width") is not None else 5.0),
             "recommendation": "TOSS-UP" if toss_up else "START",
             "confidence": "LOW" if toss_up else ("HIGH" if pts > 12 else "MEDIUM"),
             "team": s.get("team", ""),
@@ -419,9 +424,9 @@ def get_start_sit_recommendations(
             "position": pos,
             "slot": "BN",
             "projected_points": pts,
-            "projection_lower": float(b.get("projection_lower", pts - 2.5)),
-            "projection_upper": float(b.get("projection_upper", pts + 2.5)),
-            "width": float(b.get("width", 5.0)),
+            "projection_lower": float(b.get("projection_lower") if b.get("projection_lower") is not None else pts - 2.5),
+            "projection_upper": float(b.get("projection_upper") if b.get("projection_upper") is not None else pts + 2.5),
+            "width": float(b.get("width") if b.get("width") is not None else 5.0),
             "recommendation": "TOSS-UP" if toss_up else "SIT",
             "confidence": "LOW" if toss_up else "MEDIUM",
             "team": b.get("team", ""),
