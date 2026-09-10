@@ -804,18 +804,6 @@ def run_refresh_with_data(
         except Exception as shadow_exc:
             logger.warning(f"Shadow outcome resolution failed: {shadow_exc}")
 
-        # Props shadow resolution (additive — mirrors the fantasy resolver
-        # above; resolves kind='prop:<market>' against actual STATS).
-        try:
-            from ffanalytics.shadow import evaluate_unresolved_prop_recommendations
-            prop_resolved = evaluate_unresolved_prop_recommendations(
-                conn, data.get("player_stats", [])
-            )
-            if prop_resolved > 0:
-                logger.info(f"Resolved {prop_resolved} pending prop shadow outcomes.")
-        except Exception as shadow_exc:
-            logger.warning(f"Prop shadow outcome resolution failed: {shadow_exc}")
-
         # Game prediction shadow resolution (additive, same shape — resolves
         # kind='game:<season>:<week>' against real final scores from the
         # schedule feed, not player_stats).
