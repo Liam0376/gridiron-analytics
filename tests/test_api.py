@@ -261,3 +261,24 @@ def test_build_player_dict_falls_back_to_display_name_when_short_name_none():
     }
     player = _build_player_dict("00-0038543", base_stats, {})
     assert player["player_name"] == "Jaxon Smith-Njigba"
+
+
+def test_player_lookup_prefers_model_projections_over_sparse_box_scores():
+    # why (user-caught live bug, 2026-09-10): player_stats is raw box-score
+    # data — early in a real NFL week it only covers players whose game has
+    # already been played (confirmed live: 220 rows total, one real roster
+    # of 14 resolved ZERO players against it). model_projections covers
+    # every player the model can project regardless of whether their game
+    # has happened yet (805 rows live, same roster resolved 13/14).
+    # /recommendations/trade 404'd for every roster in the league because
+    # of this; start-sit/waiver hit the same gap but silently degraded to
+    # an empty list instead of a hard error.
+    from ffanalytics.api import _create_player_lookup
+    player_stats = [{"player_id": "00-0031588", "short_name": "Box Score Only"}]
+    model_projections = [
+        {"player_id": "00-0039738", "player_display_name": "Projected Only", "projected_points": 12.0},
+    ]
+    lookup = _create_player_lookup(player_stats, model_projections)
+    assert "00-0039738" in lookup, "model_projections entry must resolve"
+    assert "00-0031588" in lookup, "player_stats-only entry must still resolve as fallback"
+    assert lookup["00-0039738"]["player_display_name"] == "Projected Only"

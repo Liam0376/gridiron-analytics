@@ -330,8 +330,25 @@ def update_cache(
         target["week"] = week
 
 
-def _create_player_lookup(player_stats: list[dict]) -> dict[str, dict]:
-    return {str(p.get("player_id")): p for p in player_stats}
+def _create_player_lookup(player_stats: list[dict], model_projections: list[dict] | None = None) -> dict[str, dict]:
+    # why model_projections first, not player_stats alone (user-caught live
+    # bug, 2026-09-10): player_stats is raw nflverse BOX-SCORE data — early
+    # in a real NFL week (e.g. Thursday, before Sunday's games), it only
+    # covers players from games already played (confirmed live: 220 total
+    # rows, one full roster resolved 0/14 players). model_projections is
+    # the model's PREDICTION for every player it can project for the target
+    # week, independent of whether that game has happened yet (805 rows,
+    # same roster resolved 13/14). /recommendations/trade 404'd for every
+    # real roster in the league because of this — start-sit/waiver hit the
+    # same gap but degrade to an empty list instead of a hard error, so it
+    # was less visible there. player_stats stays a fallback for any player
+    # id the model didn't project (e.g. a very late-added rookie row).
+    lookup: dict[str, dict] = {str(p.get("player_id")): p for p in (model_projections or [])}
+    for p in player_stats:
+        pid = str(p.get("player_id"))
+        if pid not in lookup:
+            lookup[pid] = p
+    return lookup
 
 
 def _sleeper_xwalk_for(cache: dict, league_id: str | None) -> dict:
@@ -432,6 +449,7 @@ def _process_roster_data(
     league_settings: dict,
     owner_id: str | None = None,
     sleeper_xwalk: dict | None = None,
+    model_projections: list[dict] | None = None,
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """
     Process raw Sleeper rosters and nflverse stats into roster_players,
@@ -443,7 +461,7 @@ def _process_roster_data(
     if not player_stats:
         return [], [], []
 
-    stats_lookup = _create_player_lookup(player_stats)
+    stats_lookup = _create_player_lookup(player_stats, model_projections)
     scoring_settings = league_settings.get("scoring_settings", {})
     roster_positions = league_settings.get("roster_positions", [])
 
@@ -884,6 +902,7 @@ def get_start_sit(owner_id: str = Query(..., max_length=64, pattern=r"^\d+$"), l
         roster_players, bench_players, _ = _process_roster_data(
             rosters, player_stats, injury_status, league_settings, owner_id=owner_id,
             sleeper_xwalk=_sleeper_xwalk_for(cache, league_id),
+            model_projections=cache.get("model_projections"),
         )
 
         recommendations = get_start_sit_recommendations(
@@ -940,6 +959,7 @@ def get_waiver(owner_id: str = Query(..., max_length=64, pattern=r"^\d+$"), leag
         roster_players, _, free_agents = _process_roster_data(
             rosters, player_stats, injury_status, league_settings, owner_id=owner_id,
             sleeper_xwalk=_sleeper_xwalk_for(cache, league_id),
+            model_projections=cache.get("model_projections"),
         )
 
         econ = _league_econ_from_settings(league_settings)
@@ -985,7 +1005,7 @@ def get_trade_evaluation(
     roster_positions = league_settings.get("roster_positions", [])
 
     try:
-        stats_lookup = _create_player_lookup(player_stats)
+        stats_lookup = _create_player_lookup(player_stats, cache.get("model_projections"))
         xwalk = _sleeper_xwalk_for(cache, league_id)
         team_a_players = []
         team_b_players = []
