@@ -6,7 +6,9 @@
 // (index = depth rank). Regen: re-parse team blocks the same way and
 // replace the JSON; the .js contract (ordered arrays) is unchanged.
 // Team full-name→abbr mirrored from
-// src/ffanalytics/adapters/fantasypros_projections.py:TEAM_NAME_TO_ABBR.
+// src/ffanalytics/adapters/fantasypros_projections.py:TEAM_NAME_TO_ABBR,
+// then through config.TEAM_CANONICAL (Rams LAR→LA, the schedule/hub
+// convention) — without that the whole Rams roster misses every lookup.
 // Name norm mirrors projections.js normName AND _norm_name in
 // adapters/fantasypros_projections.py (suffix-strip) so lookups match.
 // Missing/unparseable chart or unknown (team,pos) → rank -1, and callers

@@ -55,6 +55,12 @@ _EMPTY_PROJ = {
     "receiving_yards": 0.0, "receptions": 0.0, "is_empty_projection": True,
     "week": WEEK,
 }
+_NEG_QB_PROJ = {
+    "player_id": "5555", "player_display_name": "Third String",
+    "position": "QB", "position_group": "QB", "team": "KC",
+    "passing_yards": -2.9, "passing_tds": 0.0, "rushing_yards": 0.0,
+    "rushing_tds": 0.0, "is_empty_projection": False, "week": WEEK,
+}
 
 
 def _fresh_db():
@@ -123,6 +129,28 @@ def test_props_board_two_teams_and_empty_projection_excluded():
         assert "2544" in ids  # KC
         assert "7500" in ids  # BUF
         assert "9999" not in ids  # NYJ rookie, is_empty_projection=True, wrong team anyway
+    finally:
+        _restore(snap)
+        conn.close()
+
+
+def test_props_board_skips_negative_fair_lines():
+    # why (user-caught live bug, 2026-09-10): history-less third QBs can
+    # project negative yardage (Garoppolo -2.9) without tripping
+    # is_empty_projection. No book posts a negative line — skip the market,
+    # keep the player's other (non-negative) markets.
+    conn, tmp = _fresh_db()
+    snap = _snap()
+    try:
+        _warm()
+        _CACHE["model_projections"] = _CACHE["model_projections"] + [_NEG_QB_PROJ]
+        with patch("ffanalytics.db._get_conn", return_value=conn):
+            resp = client.get("/props/board", params={"teams": "KC", "season": SEASON, "week": WEEK})
+        assert resp.status_code == 200, resp.text
+        rows = [r for r in resp.json()["players"] if r["player_id"] == "5555"]
+        assert rows, "player should still appear via non-negative markets"
+        assert all(r["fair_line"] >= 0 for r in rows)
+        assert "passing_yards" not in {r["market"] for r in rows}
     finally:
         _restore(snap)
         conn.close()

@@ -81,7 +81,7 @@ def build_sleeper_team_map(sleeper_players: dict) -> dict:
             x for x in (sp.get("first_name"), sp.get("last_name")) if x
         )
         if team and pos and name:
-            out.setdefault(_norm_name_pos(name, pos), str(team).upper())
+            out.setdefault(_norm_name_pos(name, pos), config.canonical_team(team))
     return out
 
 
@@ -146,9 +146,9 @@ def build_rookie_rows(sleeper_players: dict, have_keys: set, opp_map: dict, week
                 "player_display_name": name,
                 "position": pos,
                 "position_group": pos,
-                "team": str(team).upper(),
-                "recent_team": str(team).upper(),
-                "opponent_team": (opp_map or {}).get(str(team).upper(), ""),
+                "team": config.canonical_team(team),
+                "recent_team": config.canonical_team(team),
+                "opponent_team": (opp_map or {}).get(config.canonical_team(team), ""),
                 "week": week,
                 "projected_points": 0.0,
                 "is_empty_projection": True,

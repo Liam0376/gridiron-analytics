@@ -137,6 +137,23 @@ def get_stats_season() -> int:
     return min(computed, MAX_STATS_SEASON)
 
 
+# Team-code canonicalization (user-caught live bug, 2026-09-10): Sleeper's
+# /players/nfl uses LAR for the Rams while nflverse schedules, game
+# predictions, and the hub all use LA. Unpatched, refresh's Sleeper team
+# patch rewrote matched model rows to LAR, and the props board's team
+# filter ({SF,LA}) silently dropped the entire Rams roster — SF@LA showed
+# 17 Niners + only Garoppolo (unmatched by the patch, kept LA). Same split
+# broke the rookie opponent remap (opp_map is schedule-keyed, i.e. LA).
+# Canonical form is the schedule convention (LA); add aliases here, never
+# ad-hoc .replace() calls at call sites.
+TEAM_CANONICAL = {"LAR": "LA"}
+
+
+def canonical_team(code: str | None) -> str:
+    c = str(code or "").strip().upper()
+    return TEAM_CANONICAL.get(c, c)
+
+
 # Replacement-level starters used by VBD/VOR auction math. 12-team full-PPR with
 # 2 FLEX slots: QB 1*12=12, RB 2*12 + flex share = 28, WR 2*12 + flex share = 32,
 # TE 1*12=12, K/DEF streamed at $1 in practice but VBD still allocates 12 each

@@ -58,3 +58,27 @@
 
 - Hard-filtering any API response; `stat_projector` math; rescoring;
   `start.sh` rework; K/DEF handling.
+
+## Follow-up bugs found while verifying (2026-09-10 evening)
+
+- [x] **A. Rams invisible on props board (SHIPPED).** Root cause: Sleeper
+  uses LAR, everything else (nflverse schedule, game predictions, hub)
+  uses LA. `patch_proj_teams` rewrote matched model rows to LAR, so
+  `teams=SF,LA` dropped all Rams except Garoppolo (patch-miss, kept LA).
+  Same split broke rookie opponent remaps. Fix: `config.TEAM_CANONICAL`
+  + `canonical_team()`, applied in `build_sleeper_team_map` and
+  `build_rookie_rows`; hub snapshot regenerated with LA. Verified:
+  SF,LA board 74→134 rows (LA 66 + SF 68), LAR gone from `/projections`.
+  Side note: FP depth chart lists LAR QB order Stafford/Simpson/
+  Garoppolo — Garoppolo is tier-1 (demoted) by the agreed top-2 rule.
+- [x] **B. Negative fair lines (SHIPPED).** History-less third QBs
+  projected negative yardage (Garoppolo -2.9) without tripping
+  `is_empty_projection`. `_fair_board_rows` now skips `fair < 0`
+  (no book posts negative lines). Verified: 0 negative lines on SF,LA.
+- [ ] **C. Backup QBs project as starters (PROPOSED, not confirmed).**
+  Drew Lock 14.78 weekly / Mac Jones 161.9 pass-yd fair: the projector
+  has no playing-time prior — any backup with prior starts projects as
+  a full starter. Proper fix is snap-share scaling in the projector
+  (depth-chart-driven), which is a model-math change needing
+  shadow/backtest gates per architecture.md. Needs its own spec —
+  awaiting user go-ahead.

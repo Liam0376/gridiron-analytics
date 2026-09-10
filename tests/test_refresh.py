@@ -83,6 +83,16 @@ def test_run_refresh_nflverse_failure_logs_and_continues():
     conn.close()
 
 
+def test_build_sleeper_team_map_canonicalizes_rams():
+    # why (user-caught live bug, 2026-09-10): Sleeper's LAR vs the
+    # schedule/hub LA convention — the map must emit canonical codes or
+    # every downstream team filter quietly drops Rams rows.
+    m = refresh.build_sleeper_team_map({
+        "1": {"full_name": "Test Ram", "position": "WR", "team": "LAR"},
+    })
+    assert m == {("test ram", "WR"): "LA"}
+
+
 def test_build_sleeper_team_map_skips_incomplete():
     m = refresh.build_sleeper_team_map({
         "1": {"full_name": "Test Veteran", "position": "WR", "team": "BUF"},
@@ -182,6 +192,20 @@ def test_build_rookie_rows_filters_and_flags():
     assert r["projected_points"] == 0.0
     assert r["is_empty_projection"] is True and r["is_rookie_unknown"] is True
     assert r["opponent_team"] == "BUF" and r["week"] == 1
+
+
+def test_build_rookie_rows_canonicalizes_rams_and_remaps_opponent():
+    # why (user-caught live bug, 2026-09-10): Sleeper LAR rookie rows kept
+    # LAR while opp_map is schedule-keyed (LA) — opponent remap missed and
+    # team filters dropped them. Canonical code fixes both at once.
+    rows = refresh.build_rookie_rows(
+        {"200": {"full_name": "Ram Rookie", "position": "WR", "team": "LAR",
+                 "years_exp": 0, "active": True}},
+        set(), {"LA": "SF"}, week=1,
+    )
+    assert len(rows) == 1
+    assert rows[0]["team"] == "LA" and rows[0]["recent_team"] == "LA"
+    assert rows[0]["opponent_team"] == "SF"
 
 
 def _mock_sleeper_session(players_map):

@@ -44,8 +44,7 @@ def test_get_feature_status_known_and_unknown(monkeypatch):
         config_module.get_feature_status("not_a_real_feature")
 
 
-def test_league_economics_default_reproduces_reference():
-    # why (economy sign-off): no-arg league_economics() yielded RB24/WR24
+def test_league_economics_default_reproduces_reference():    # why (economy sign-off): no-arg league_economics() yielded RB24/WR24
     # against POS_REPL_COUNTS (RB28/WR32) and every legacy fallback while its
     # docstring claimed exact reproduction. Unknown shape = reference shape.
     from ffanalytics import config as config_module
@@ -56,3 +55,17 @@ def test_league_economics_default_reproduces_reference():
     assert econ["starter_pool"] == config_module.STARTER_BUDGET_POOL == 2352
     assert econ["starter_slots_total"] == 120
     assert econ["flex_slots"] == 2
+
+
+def test_canonical_team_rams_alias():
+    # why (user-caught live bug, 2026-09-10): Sleeper uses LAR, nflverse
+    # schedules/hub use LA — unpatched, the Sleeper team patch rewrote model
+    # rows to LAR and the props board's {SF,LA} filter dropped the Rams.
+    from ffanalytics import config as config_module
+
+    assert config_module.canonical_team("LAR") == "LA"
+    assert config_module.canonical_team("lar") == "LA"
+    assert config_module.canonical_team("LA") == "LA"
+    assert config_module.canonical_team("NE") == "NE"
+    assert config_module.canonical_team(None) == ""
+    assert config_module.canonical_team("") == ""

@@ -1229,6 +1229,14 @@ def _fair_board_rows(
                 continue
             if fair != fair or abs(fair) == float("inf"):
                 continue
+            # why skip negatives (user-caught live bug, 2026-09-10): players
+            # with ~no history (e.g. third QBs) can project negative yardage
+            # (Garoppolo -2.9 pass-yd fair) without tripping
+            # is_empty_projection. No book posts a negative line — showing it
+            # is noise, same rule as the fair-0.0 skip above, not censorship:
+            # the player keeps their other markets.
+            if fair < 0:
+                continue
             sigma = props_math.sigma_for_stat(history_rows, prior_rows, source)
             actual = None
             if actual_row is not None and not actual_row.get("is_empty_projection"):
