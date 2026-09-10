@@ -1,0 +1,24 @@
+{
+  "target": 0.8,
+  "alpha": 0.2,
+  "method": "LIVE 2026 OOS: real production project_player_stats+compute_conformal_bounds (POS_RESIDUALS, frozen since 2025 calibration) run on real 2026 games as they are played, never seen during 2024-train/2025-holdout calibration. Re-run scripts/validate_2026_coverage.py as more weeks complete.",
+  "weeks_played": [
+    1
+  ],
+  "n": 16,
+  "sample_size_warning": "n=16 is a SMALL SAMPLE (one week of a 12-team roster slice) - not statistically conclusive, do not treat as confirming or refuting the 2025 calibration until n >> 100",
+  "overall_coverage": 0.8125,
+  "by_pos_coverage": {
+    "TE": 1.0,
+    "WR": 0.8333,
+    "QB": 0.3333,
+    "RB": 1.0
+  },
+  "by_pos_n": {
+    "TE": 2,
+    "WR": 6,
+    "QB": 3,
+    "RB": 5
+  },
+  "generated_at": "2026-09-10T14:00:14.383158+00:00"
+}

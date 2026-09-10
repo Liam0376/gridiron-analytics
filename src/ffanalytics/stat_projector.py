@@ -81,7 +81,22 @@ included, no longer K-zeroed as in early scratch backtest_final.py):
     3-14, per-row): overall 82.1% (QB 79.0%, K 58.6%, WR 86.0%,
     TE 83.6%, RB 84.0%). Raw QB undercovers (fat tails); displayed QB
     improves via 1.45x but K undercovers via 0.55x narrow factor.
-    Widths frozen for display stability — measure only."""
+    Widths frozen for display stability — measure only.
+
+  Statistician-audit finding (2026-09-10): the number above, however
+  honestly it was derived (residuals fit on 2024, evaluated once on
+  2025), is still a calibration-and-test pair drawn from seasons that
+  were both already over by the time it was measured. It says nothing
+  about whether POS_RESIDUALS still holds on data that didn't exist yet
+  when frozen. scripts/validate_2026_coverage.py closes that gap: same
+  production project_player_stats/compute_conformal_bounds, run on real
+  2026 games as they're actually played — genuinely never seen during
+  the 2024/2025 calibration. First result (data/models/
+  coverage_2026_live.json, week 1 only, n=16 — SMALL, not conclusive):
+  overall 81.25% (close to the 2025 number), but QB 33% (n=3) — same
+  undercoverage direction the 2025 holdout already flagged, just noisier
+  at this sample size. Re-run as more 2026 weeks complete; n=16 is a
+  start, not a verdict."""
 
 import math
 from collections import defaultdict
