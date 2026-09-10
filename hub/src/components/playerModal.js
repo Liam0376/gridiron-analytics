@@ -29,8 +29,16 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
   const upper = Number(p.upper ?? p.projection_upper ?? (weekly + 5.0));
   const width = Number(p.width ?? (upper - lower) / 2);
 
-  const gridironAuction = Number(p.gridironAuction ?? p.auction ?? Math.max(1, Math.round(weekly * 2.2)));
-  const marketAuction = Number(p.marketAuction ?? p.market_auction ?? Math.max(1, Math.round(gridironAuction * 0.9)));
+  // why $1 floor, not weekly * 2.2 (user-caught live bug, 2026-09-10): the
+  // old fallback guessed auction $ straight from weekly fantasy points with
+  // a flat constant — ignoring position and replacement level entirely. A
+  // QB15 (below the QB12 replacement line in a 1-QB league) got $55/$50
+  // instead of the real backend-computed $19/$8 (VOR-based, in
+  // comparison/_model.py, already correct — just not forwarded here). $1
+  // matches the backend's own floor for a below-replacement player instead
+  // of fabricating a number.
+  const gridironAuction = Number(p.gridironAuction ?? p.auction ?? 1);
+  const marketAuction = Number(p.marketAuction ?? p.market_auction ?? gridironAuction);
   const deltaAuction = Number(p.deltaAuction ?? (gridironAuction - marketAuction));
   const edge = (p.edge || 'NEUTRAL').toUpperCase();
   const edgeIcon = edge === 'BUY' ? '▲ ' : edge === 'SELL' ? '▼ ' : '';

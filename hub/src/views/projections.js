@@ -151,6 +151,15 @@ export async function renderProjections(root) {
       p.edge_score = c.edge_score;
       p.stat_deltas = c.stat_deltas;
       p.market_season_stats = c.market_season_stats || null;
+      // why forward these (user-caught live bug, 2026-09-10): the backend
+      // already computes real VOR-based auction $ (comparison/_model.py)
+      // for every player — without this, playerModal's own fallback
+      // guessed dollar value from weekly points alone, giving a
+      // below-replacement QB15 $55 instead of the real $19.
+      p.auction = c.auction;
+      p.gridironAuction = c.auction;
+      p.marketAuction = c.marketAuction;
+      p.vor = c.vor;
     } else {
       p.market_points = null; p.delta_points = null; p.edge = 'NEUTRAL'; p.stat_deltas = [];
     }
