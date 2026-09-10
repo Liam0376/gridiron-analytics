@@ -1215,6 +1215,7 @@ def _evaluate_prop_edge(
     history_rows: list[dict],
     stored: dict,
     calibration: dict,
+    prior_rows: list[dict] | None = None,
 ) -> dict:
     """Edge for one stored book line. Unknown-by-construction inputs
     (missing player, empty history, week 1, out-of-scope position, or
@@ -1293,7 +1294,7 @@ def _evaluate_prop_edge(
         if (fair != fair or abs(fair) == float("inf")
                 or line is None or line != line or abs(line) == float("inf")):
             return _unknown("non-finite fair line or book line")
-        sigma = props_math.sigma_for_stat(history_rows, None, stat_key)
+        sigma = props_math.sigma_for_stat(history_rows, prior_rows, stat_key)
         # why side-adjust here, not in props_math: prop_over_prob answers
         # P(over) only; the ticket side decides which tail the user holds.
         p_over = props_math.prop_over_prob(
@@ -1346,6 +1347,34 @@ def _props_history_lookup(player_stats: list[dict]) -> dict[str, list[dict]]:
     return grouped
 
 
+def _split_history_prior(rows: list[dict], season, week: int) -> tuple[list, list]:
+    """Split player rows into same-season history (weeks < target) and prior
+    seasons. Preseason caches hold the prior season under the league season,
+    so history is empty and prior carries the full baseline — exactly the
+    Task-4 backtest's pooling (without this, week-1 sigmas collapse to the
+    floor and P(over) reads ~0.96 instead of ~0.70). Mid-season caches hold
+    one season, so prior is empty and behavior is byte-identical to before.
+    Rows without a season field fall back to the week filter (backward
+    compatible with old blobs and fixtures)."""
+    try:
+        season_int = int(season) if season is not None else None
+    except (TypeError, ValueError):
+        season_int = None
+    hist, prior = [], []
+    for r in rows or []:
+        if (r.get("season_type") or "REG") != "REG":
+            continue
+        try:
+            rs = int(r.get("season")) if r.get("season") is not None else None
+        except (TypeError, ValueError):
+            rs = None
+        if rs is not None and season_int is not None and rs < season_int:
+            prior.append(r)
+        elif (r.get("week") or 0) < week:
+            hist.append(r)
+    return hist, prior
+
+
 @app.post("/props/lines")
 @app.post("/v1/props/lines")
 def post_prop_line(
@@ -1390,15 +1419,10 @@ def post_prop_line(
     if projs and cache.get("player_stats"):
         by_id = {str(p.get("player_id") or ""): p for p in projs}
         hist = _props_history_lookup(cache.get("player_stats")).get(stored["player_id"], [])
-        # why same REG/week filter as GET (data-engineer sign-off): POST preview
-        # and GET must compute identical sigmas or the dedupe JSON diverges and
-        # one stored line logs twice.
-        hist = [h for h in hist
-                if (h.get("season_type") or "REG") == "REG"
-                and (h.get("week") or 0) < body.week]
+        hist, prior = _split_history_prior(hist, season, body.week)
         edge = _evaluate_prop_edge(
             by_id.get(stored["player_id"]), hist, stored,
-            _props_calibration(),
+            _props_calibration(), prior_rows=prior,
         )
         # why log at submit (explicit user action): GET-time logging alone
         # makes crawlers/page-views the experiment's authors. POST logs the
@@ -1456,7 +1480,6 @@ def get_prop_edges(
             ).fetchall()
         lines = [dict(r) for r in rows]
         by_id = {str(p.get("player_id") or ""): p for p in (cache.get("model_projections") or [])}
-        hist_lookup = _props_history_lookup(cache.get("player_stats"))
         edges = []
         for ln in lines:
             stored = {
@@ -1467,10 +1490,10 @@ def get_prop_edges(
                 "price": float(ln["price"]),
                 "book": ln["book"],
             }
-            hist = [h for h in hist_lookup.get(stored["player_id"], [])
-                    if (h.get("season_type") or "REG") == "REG"
-                    and (h.get("week") or 0) < week]
-            edge = _evaluate_prop_edge(by_id.get(stored["player_id"]), hist, stored, calibration)
+            hist = _props_history_lookup(cache.get("player_stats")).get(stored["player_id"], [])
+            hist, prior = _split_history_prior(hist, season, week)
+            edge = _evaluate_prop_edge(by_id.get(stored["player_id"]), hist, stored, calibration,
+                                       prior_rows=prior)
             try:
                 trusted = shadow.is_trusted(conn, f"prop:{stored['market']}")
             except Exception:

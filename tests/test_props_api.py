@@ -354,6 +354,46 @@ def test_nan_fair_line_quarantines_row_not_board():
         conn.close()
 
 
+def test_week1_sigma_pools_prior_season():
+    # why (live bug 2026-09-09): preseason caches hold the prior season under
+    # the league season, so week<1 filtering emptied history and sigma
+    # collapsed to the floor (JSN read p=0.96 instead of ~0.70). Same-season
+    # rows are history; older seasons are prior — mirroring the backtest.
+    import statistics
+
+    conn, tmp = _fresh_db()
+    snap = _snap()
+    try:
+        hist = [
+            {"player_id": "2544", "position": "QB", "team": "KC", "week": w,
+             "season": 2025, "season_type": "REG", "passing_yards": y}
+            for w, y in [(1, 200.0), (2, 300.0), (3, 200.0), (4, 300.0)]
+        ]
+        proj = dict(_MAHOMES_PROJ, passing_yards=250.0)
+        _CACHE.update({
+            "league_settings": {"scoring_settings": {}, "roster_positions": []},
+            "rosters": [],
+            "player_stats": hist,
+            "model_projections": [proj],
+            "injury_status": {},
+            "season": 2026,
+            "week": 1,
+            "last_updated": "2026-09-09T00:00:00",
+        })
+        body = {**_line(), "season": 2026, "week": 1, "line": 250.0}
+        with patch("ffanalytics.db._get_conn", return_value=conn):
+            resp = client.post("/props/lines", json=body)
+        assert resp.status_code == 200, resp.text
+        edge = resp.json()["edge"]
+        assert edge is not None
+        # Prior-pooled std (≈57.7), NOT the 30.0 floor; line == fair ⇒ p = 0.5.
+        assert edge["sigma"] == round(statistics.stdev([200.0, 300.0, 200.0, 300.0]), 3)
+        assert edge["p_model"] == 0.5
+    finally:
+        _restore(snap)
+        conn.close()
+
+
 def test_shadow_logging_is_idempotent_across_polls():
     # why: council vote (8 agents) — bare INSERT per GET inflated n and the
     # trust gate. POST + GET + GET must converge on exactly one shadow row.

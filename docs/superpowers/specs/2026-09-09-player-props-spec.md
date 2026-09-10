@@ -122,6 +122,10 @@ before props ships — Task 1 does this (RESOLVED at the root 2026-09-09, f35dc9
   season-unstable at n≈538/market: the pre-registered 2025 gates stand
   (rules don't move on contradictory small samples either direction), and
   live 2026 shadow adjudicates. Hub copy states the non-replication.
+  SERVING PARITY (2026-09-09): the API splits history (same-season weeks)
+  from prior (older seasons, incl. preseason caches holding the prior year),
+  mirroring the backtest's pooling. Without this, week-1 sigmas collapsed to
+  the floor (JSN read p=0.96 instead of 0.70) — caught live, fixed, pinned.
   Edge labels ship only for market groups with monotonic reliability; others stay
   "tracking only".
 - CLV: skipped v1 (no closing feed without paid API) — noted, not faked.
