@@ -181,14 +181,14 @@ The hub should surface these as `⚠` badges, not fix them itself:
 
 ## 10. Plan verification — how you know this is ready to build
 
-- [ ] New file exists at `hub/README.md` describing `npm install && npm run dev → http://127.0.0.1:8001` and isolation contract.
-- [ ] `hub/` contains no `import ffanalytics` (grep fails).
-- [ ] `hub/` has its own `package.json` / `hub/server.py` — root `pyproject.toml` unchanged (`git diff -- src/ pyproject.toml` empty).
-- [ ] Hub opens DB with `mode=ro` (grep `mode=ro` / `uri=True`).
-- [ ] All 7 tabs render with mock JSON first (no live API needed), then with real `fantasy.db` snapshot.
-- [ ] Search `pos:WR wind>15` filters correctly; tierlists recompute on filter change.
-- [ ] Staleness badge shows `refresh_log` age; weather shows `⚠ placeholder` until model fixes coords.
-- [ ] `grep -r "0.0.0.0" hub/` returns nothing; `vite.config.js` asserts `host: '127.0.0.1'`.
+- [x] New file exists at `hub/README.md` describing `npm install && npm run dev → http://127.0.0.1:8001` and isolation contract.
+- [x] `hub/` contains no `import ffanalytics` (grep fails).
+- [x] `hub/` has its own `package.json` / `hub/server.py` — root `pyproject.toml` unchanged (`git diff -- src/ pyproject.toml` empty).
+- [x] Hub opens DB with `mode=ro` (grep `mode=ro` / `uri=True`).
+- [x] All 7 tabs render with mock JSON first (no live API needed), then with real `fantasy.db` snapshot.
+- [x] Search `pos:WR wind>15` filters correctly; tierlists recompute on filter change.
+- [x] Staleness badge shows `refresh_log` age; weather shows `⚠ placeholder` until model fixes coords.
+- [x] `grep -r "0.0.0.0" hub/` returns nothing; `vite.config.js` asserts `host: '127.0.0.1'`.
 
 ---
 
