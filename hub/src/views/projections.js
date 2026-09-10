@@ -150,6 +150,7 @@ export async function renderProjections(root) {
       p.edge = c.edge;
       p.edge_score = c.edge_score;
       p.stat_deltas = c.stat_deltas;
+      p.market_season_stats = c.market_season_stats || null;
     } else {
       p.market_points = null; p.delta_points = null; p.edge = 'NEUTRAL'; p.stat_deltas = [];
     }

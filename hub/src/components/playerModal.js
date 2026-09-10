@@ -36,11 +36,23 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
   const edgeIcon = edge === 'BUY' ? '▲ ' : edge === 'SELL' ? '▼ ' : '';
 
   // 17-game stat projections
-  const passYds = Math.round(p.season_pass_yd ?? (isPasser ? weekly * 16.5 * 17 : 0));
-  const rushYds = Math.round(p.season_rush_yd ?? (p.position === 'RB' ? weekly * 5.2 * 17 : isPasser ? weekly * 1.4 * 17 : 0));
-  const recYds = Math.round(p.season_rec_yd ?? ((p.position === 'WR' || p.position === 'TE') ? weekly * 5.6 * 17 : p.position === 'RB' ? weekly * 2.1 * 17 : 0));
-  const recs = Math.round(p.season_rec ?? ((p.position === 'WR' || p.position === 'TE') ? weekly * 0.46 * 17 : p.position === 'RB' ? weekly * 0.28 * 17 : 0));
-  const tds = Number((p.season_tds ?? (weekly * 0.52 * 17 / 10)).toFixed(1));
+  // why no ratio-guess fallback (user-caught live bug, 2026-09-10): this
+  // used to estimate season yards from weekly FANTASY POINTS times a
+  // made-up "yards per point" constant times 17 games (e.g.
+  // weekly * 16.5 * 17 for QBs) — nonsense math, not a yardage model. A
+  // ~25pt/week QB projected to 7043 season passing yards, ~1500 over the
+  // NFL record. Same honesty rule as is_empty_projection elsewhere: no
+  // real season-stat data means show 0, never a fabricated number.
+  const mss = p.market_season_stats || {};
+  const passYds = Math.round(p.season_pass_yd ?? mss.passing_yards ?? 0);
+  const rushYds = Math.round(p.season_rush_yd ?? mss.rushing_yards ?? 0);
+  const recYds = Math.round(p.season_rec_yd ?? mss.receiving_yards ?? 0);
+  const recs = Math.round(p.season_rec ?? mss.receptions ?? 0);
+  // why sum three fields, not a "total_tds" key: the backend only ever
+  // emits passing_tds/rushing_tds/receiving_tds separately (see
+  // _SEASON_STAT_KEYS in comparison/_model.py) — a "total_tds" key never
+  // exists, so reading it directly silently showed 0 TDs on every card.
+  const tds = Number((p.season_tds ?? ((mss.passing_tds || 0) + (mss.rushing_tds || 0) + (mss.receiving_tds || 0))).toFixed(1));
 
   // Recommendation logic
   let adviceTitle = 'START';

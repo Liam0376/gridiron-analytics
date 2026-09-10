@@ -98,7 +98,12 @@ export function enrichPlayer(p, compRow, opts = {}) {
   const rushYd = Math.round(comp.market_season_stats?.rushing_yards ?? 0);
   const recYd = Math.round(comp.market_season_stats?.receiving_yards ?? 0);
   const recs = Math.round(comp.market_season_stats?.receptions ?? 0);
-  const tds = Number((comp.market_season_stats?.total_tds ?? 0).toFixed(1));
+  // why sum three fields, not a "total_tds" key: the backend only ever
+  // emits passing_tds/rushing_tds/receiving_tds separately (see
+  // _SEASON_STAT_KEYS in comparison/_model.py) — a "total_tds" key never
+  // exists, so reading it directly silently showed 0 TDs on every card.
+  const mss0 = comp.market_season_stats || {};
+  const tds = Number(((mss0.passing_tds || 0) + (mss0.rushing_tds || 0) + (mss0.receiving_tds || 0)).toFixed(1));
 
   return {
     ...p,
