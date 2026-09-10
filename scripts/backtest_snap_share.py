@@ -15,10 +15,20 @@ Fully offline after first fetch: data/nfl_cache/stats_{2024,2025}.json +
 schedule_2025.json (present). Snaps/injuries 2025 are fetched once via
 nflreadpy and cached under data/nfl_cache/ (gitignored) if absent.
 
+Repro: run with PYTHONHASHSEED=0 for bit-identical numbers (a set-order
+sensitivity jitters pairwise ±0.004 across seeds; verdict-invariant —
+ZERO beats BASE on all three under every observed seed). Pinned verdict:
+BASE 4.6380/0.5949/0.6925 vs ZERO 4.3000/0.6300/0.7115, paired-t 15.35,
+corr Fisher z-diff -3.56 (improvement, significant).
+
 Arms: BASE (share 1.0 everywhere) vs scales {0.03, 0.05, 0.10} x rules
-{depth-only, depth + recent-max}. Non-QB rows are identical across arms
-(scale applies to QB only, v1 scope). Injury override (rank-0 out ->
-next-up 1.0) uses weekly report_status; same unavailable set as
+{depth-only, depth + recent-max, depth + sustained-takeover}, plus ZERO
+(confirmed-Out player-week -> 0.0, everything else BASE). Non-QB rows are
+identical across scale arms (scale applies to QB only, v1 scope); ZERO
+applies to all positions. Sample is all-universe (production projects
+DNPs too; a box-score-only sample can never contain an Out player, which
+made the first ZERO run vacuous). Injury override uses weekly
+report_status; same unavailable set as
 src/ffanalytics/api.py:_UNAVAILABLE_STATUSES (mirrored, isolation: scripts
 may read model code but the set will be canonicalized in config.py at
 implementation time).
@@ -215,10 +225,49 @@ def main():
     print(f"[backtest_snap] override team-weeks: {len(override_weeks)} "
           f"(leaders resolved {len(leader_pid)}/{len(qb1_name)})")
 
-    eval_rows = [r for r in stats25
-                 if r.get("week") in WEEKS and r.get("position") in POSITIONS]
-    print(f"[backtest_snap] eval rows: {len(eval_rows)} "
-          f"(QB: {sum(1 for r in eval_rows if r.get('position') == 'QB')})")
+    # All-universe sample (NOT box-score rows): production projects every
+    # universe pid weekly, including DNPs (actual 0.0). A box-score-only
+    # sample can never contain an Out player (they don't play), which made
+    # the first ZERO run vacuous (fired 0/5425). Universe mirrors
+    # production: same-season weeks<w pids, else the 2024 pool. Bye weeks
+    # excluded via the schedule (no game -> nothing to project).
+    team_of, pos_of = {}, {}
+    for pid, rows in hist.items():
+        teams = [x.get("team") for x in rows if x.get("team")]
+        if teams:
+            # why sorted tie-break: set order is hash-randomized per
+            # process — without this the sample (bye exclusion) jitters
+            # run to run and metrics wobble in the 3rd-4th decimal.
+            team_of[pid] = max(sorted(set(teams)), key=teams.count)
+        pos_of[pid] = rows[0].get("position")
+    for r in stats24:
+        pid = str(r.get("player_id"))
+        if r.get("position") in POSITIONS:
+            pos_of.setdefault(pid, r.get("position"))
+            if pid not in team_of and r.get("team"):
+                team_of[pid] = r.get("team")
+    played_tw = set()
+    for g in sched:
+        if g.get("game_type") != "REG" or not g.get("week"):
+            continue
+        played_tw.add((g.get("home_team"), g.get("week")))
+        played_tw.add((g.get("away_team"), g.get("week")))
+    by_pw = {}
+    for r in stats25:
+        if r.get("position") in POSITIONS:
+            by_pw[(str(r.get("player_id")), r.get("week"))] = r
+    prior_pids = {str(r.get("player_id")) for r in stats24
+                  if r.get("position") in POSITIONS}
+    eval_items = []
+    for w in WEEKS:
+        cur = {pid for pid, rows in hist.items()
+               if any(x.get("week", 0) < w for x in rows)}
+        universe = cur if cur else prior_pids
+        for pid in universe:
+            if (team_of.get(pid), w) not in played_tw:
+                continue
+            eval_items.append((pid, w))
+    print(f"[backtest_snap] eval player-weeks: {len(eval_items)}")
 
     ctx_miss = 0
     arms = {"BASE": (1.0, "depth")}
@@ -226,32 +275,44 @@ def main():
         arms[f"V0_{sc}"] = (sc, "depth")
         arms[f"V1_{sc}"] = (sc, "recentmax")
         arms[f"V2_{sc}"] = (sc, "sustained")
-    preds = {k: [] for k in arms}
+    preds = {k: [] for k in list(arms) + ["ZERO"]}
     actual = []
     qb_mask = []
-    for r in eval_rows:
-        pid = str(r.get("player_id"))
-        week = r.get("week")
+    eval_meta = []
+    for pid, week in eval_items:
+        pos = pos_of.get(pid)
+        team = team_of.get(pid)
         h = [x for x in hist.get(pid, []) if x.get("week", 0) < week]
-        ctx = game_ctx.get((r.get("team"), week)) or {}
-        base_kwargs = dict(player_history=h, position=r.get("position"),
+        r_eff = by_pw.get((pid, week)) or (h[-1] if h else None) or {}
+        ctx = game_ctx.get((team, week)) or {}
+        base_kwargs = dict(player_history=h, position=pos,
                            prior_season_stats=prior.get(pid, []),
                            implied_total=ctx.get("implied_total", 0) or 0,
                            wind_mph=ctx.get("wind", 0) or 0,
                            temp_f=ctx.get("temp"))
         if not ctx:
             ctx_miss += 1
+        real = by_pw.get((pid, week))
         try:
-            actual.append(float(calculate_fantasy_points(r, DEFAULT_SCORING)))
+            actual.append(float(calculate_fantasy_points(real, DEFAULT_SCORING)) if real else 0.0)
         except Exception:
             actual.append(0.0)
-        qb_mask.append(r.get("position") == "QB")
+        qb_mask.append(pos == "QB")
+        eval_meta.append({"season": 2025, "week": week, "position": pos})
         proj0 = project_player_stats(**base_kwargs)
+        try:
+            base_pts = float(calculate_fantasy_points(proj0, DEFAULT_SCORING))
+        except Exception:
+            base_pts = 0.0
+        # ZERO arm (out-zero-weekly spec): confirmed-Out player-week -> 0.0,
+        # everything else identical to BASE. Same UNAVAILABLE set the
+        # production rule would use (inj_out, built above).
+        preds["ZERO"].append(0.0 if (pid, week) in inj_out else base_pts)
         for name, (scale, rule) in arms.items():
-            if name == "BASE" or r.get("position") != "QB":
+            if name == "BASE" or pos != "QB":
                 p = proj0
             else:
-                s = share(pid, r, week, scale, rule)
+                s = share(pid, r_eff, week, scale, rule)
                 p = {k: (v * s if isinstance(v, (int, float)) and not isinstance(v, bool) else v)
                      for k, v in proj0.items() if k != "is_empty_projection"}
                 p["is_empty_projection"] = proj0.get("is_empty_projection", False)
@@ -259,15 +320,15 @@ def main():
                 preds[name].append(float(calculate_fantasy_points(p, DEFAULT_SCORING)))
             except Exception:
                 preds[name].append(0.0)
-    print(f"[backtest_snap] ctx miss rate: {ctx_miss}/{len(eval_rows)}")
+    print(f"[backtest_snap] ctx miss rate: {ctx_miss}/{len(eval_items)}")
 
     results = {"freeze": FREEZE, "arms": {}}
     base_pred = preds["BASE"]
-    for name in arms:
-        m = _metrics(actual, preds[name], eval_rows)
+    for name in list(arms) + ["ZERO"]:
+        m = _metrics(actual, preds[name], eval_meta)
         qb_idx = [i for i, q in enumerate(qb_mask) if q]
         mq = _metrics([actual[i] for i in qb_idx], [preds[name][i] for i in qb_idx],
-                      [eval_rows[i] for i in qb_idx])
+                      [eval_meta[i] for i in qb_idx])
         results["arms"][name] = {"overall": m, "qb": mq}
         print(f"[backtest_snap] {name:8s} MAE {m['mae']:.4f} corr {m['corr']:.4f} "
               f"pw {m['pairwise']:.4f} bias {m['bias']:+.3f} n={m['n']} | "
@@ -309,9 +370,25 @@ def main():
     tq = float(np.mean(dq) / (np.std(dq, ddof=1) / math.sqrt(len(dq))))
     print(f"[backtest_snap] QB-only paired-t: t={tq:.2f} "
           f"(mean diff {np.mean(dq):+.4f}, n={len(dq)})")
+    # ZERO arm gate (out-zero-weekly spec): Out weeks are a small slice;
+    # overall paired-t is underpowered the same way, so report both, and
+    # count how many player-weeks the rule actually fires on.
+    zarr = np.array(preds["ZERO"], dtype=float)
+    dz = np.abs(b - yt) - np.abs(zarr - yt)
+    tz = float(np.mean(dz) / (np.std(dz, ddof=1) / math.sqrt(len(dz))))
+    n_fired = int(sum(1 for i in range(len(yt)) if zarr[i] == 0.0 and b[i] != 0.0))
+    print(f"[backtest_snap] ZERO paired-t: t={tz:.2f} "
+          f"(mean diff {np.mean(dz):+.4f}, n={len(dz)}, fired on {n_fired} rows)")
+    zb0, rb0 = fisher_z(b, yt)
+    zz, rz = fisher_z(zarr, yt)
+    zzdiff = (zb0 - zz) / se
+    print(f"[backtest_snap] corr BASE {rb0:.4f} vs ZERO {rz:.4f}: "
+          f"Fisher z-diff={zzdiff:.2f}")
     results["paired"] = {"overall_t": t, "overall_mean_diff": float(np.mean(d)),
                          "qb_t": tq, "qb_mean_diff": float(np.mean(dq)),
-                         "corr_z_diff": z}
+                         "corr_z_diff": z,
+                         "zero_t": tz, "zero_mean_diff": float(np.mean(dz)),
+                         "zero_corr_z_diff": zzdiff, "zero_fired": n_fired}
     with open(OUT_JSON, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=1)
 

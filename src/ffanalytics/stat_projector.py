@@ -347,11 +347,12 @@ def project_player_stats(
     implied_total: float = 0,
     wind_mph: float = 0,
     temp_f: float = None,
+    is_out: bool = False,
 ) -> Dict[str, float]:
     """Project a player's stats for an upcoming game.
 
     Pipeline: weighted-recent avg → TD regression → usage trend →
-    Vegas implied total → weather adjustment.
+    Vegas implied total → weather adjustment → out-zeroing.
 
     Args:
         player_history: game logs this season, ordered by week
@@ -360,6 +361,12 @@ def project_player_stats(
         implied_total: Vegas implied team total (0 = skip)
         wind_mph: game wind speed
         temp_f: game temperature in Fahrenheit (None = dome/unknown)
+        is_out: confirmed Out (Out/IR/PUP/...) — zero all counting stats.
+            An Out player scores ~0 by definition; without this, 17 games
+            of prior starter history drown one injury week (live 2026-09:
+            Darnold projected 163 yds while Out). Season/ROS callers must
+            NOT pass this (a 1-week Out must not nuke season value) —
+            enforced by call-site, not here.
     """
     stat_keys = _get_projection_stats(position)
     projected = {}
@@ -403,6 +410,15 @@ def project_player_stats(
 
     projected = _vegas_adjustment(projected, implied_total)
     projected = _weather_adjustment(projected, position, wind_mph, temp_f)
+
+    # Out-zeroing (backtested, not guessed — see header): confirmed Outs
+    # score ~0; projecting their prior-starter average is pure staleness.
+    # Flags untouched (Out is known, not unknown); season callers never
+    # pass is_out (see build_weekly_projections neutral path).
+    if is_out:
+        for k, v in projected.items():
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                projected[k] = 0.0
 
     # Empty-projection guard (docs/flag only — no value change):
     # empty history + no prior REG rows falls through to 0.0 above
@@ -520,11 +536,16 @@ def build_weekly_projections(
     target_week: int,
     scoring_settings: Dict,
     prior_season_stats: Optional[List[Dict]] = None,
+    out_pids: Optional[set] = None,
 ) -> List[Dict]:
     """Build projections for all players for a target week.
 
     Uses only data from weeks prior to target_week (true out-of-sample).
     Incorporates Vegas lines and weather from schedule data.
+    out_pids (optional set of model player_ids): confirmed Outs get
+    zeroed WEEKLY stats. Never applied to the neutral season path below
+    (a 1-week Out must not nuke season/ROS value) — enforced by only
+    passing is_out at the weekly call site.
     """
     reg = [s for s in season_stats if s.get("season_type") == "REG"]
     # Cross-season guard (audit C2): when data season != schedule season (preseason),
@@ -613,6 +634,7 @@ def build_weekly_projections(
             implied_total=ctx.get("implied_total", 0),
             wind_mph=ctx.get("wind", 0) or 0,
             temp_f=ctx.get("temp"),
+            is_out=bool(out_pids and pid in out_pids),
         )
 
         projected_stats["player_id"] = pid

@@ -234,3 +234,42 @@ def test_preseason_week1_uses_full_prior_season():
     # Full-prior baseline: constant 200/yd history, no Vegas/weather in the
     # minimal fixture → fair equals the prior average, not a leak artifact.
     assert projs[0]["passing_yards"] == pytest.approx(200.0)
+
+
+def test_project_player_stats_is_out_zeroes_but_keeps_flag():
+    # why (backtested zero-Out-weekly, 2026-09-10): an Out player's
+    # prior-starter average is pure staleness (Darnold 163 yds while Out).
+    history = [
+        {"passing_yards": 250, "passing_tds": 2, "passing_interceptions": 1, "rushing_yards": 20, "rushing_tds": 0},
+        {"passing_yards": 300, "passing_tds": 3, "passing_interceptions": 0, "rushing_yards": 15, "rushing_tds": 0},
+        {"passing_yards": 200, "passing_tds": 1, "passing_interceptions": 2, "rushing_yards": 30, "rushing_tds": 1},
+    ]
+    proj = project_player_stats(history, "QB", is_out=True)
+    assert proj["passing_yards"] == 0.0
+    assert proj["passing_tds"] == 0.0
+    assert proj["rushing_yards"] == 0.0
+    # Out is known, not unknown — flag stays False so callers keep showing
+    # the row (with its injury badge), just zeroed.
+    assert proj["is_empty_projection"] is False
+    base = project_player_stats(history, "QB")
+    assert base["passing_yards"] > 0  # default off, today's behavior
+
+
+def test_build_weekly_projections_out_pids_zero_weekly_keep_neutral():
+    season_stats = [
+        {"player_id": "p1", "player_display_name": "Test QB", "position": "QB", "team": "KC", "week": 1, "season_type": "REG", "passing_yards": 250, "passing_tds": 2},
+        {"player_id": "p1", "player_display_name": "Test QB", "position": "QB", "team": "KC", "week": 2, "season_type": "REG", "passing_yards": 300, "passing_tds": 3},
+        {"player_id": "p1", "player_display_name": "Test QB", "position": "QB", "team": "KC", "week": 3, "season_type": "REG", "passing_yards": 200, "passing_tds": 1},
+    ]
+    schedule = [
+        {"game_type": "REG", "week": 4, "home_team": "KC", "away_team": "LV", "total_line": 48.0, "spread_line": -7.0, "roof": "outdoors", "temp": 65, "wind": 5}
+    ]
+    scoring = {"pass_yd": 0.04, "pass_td": 4, "pass_int": -2}
+    projs = build_weekly_projections(season_stats, schedule, target_week=4, scoring_settings=scoring, out_pids={"p1"})
+    assert len(projs) == 1
+    assert projs[0]["projected_points"] == 0.0
+    assert projs[0]["passing_yards"] == 0.0
+    # season path untouched: a 1-week Out must not nuke ROS/auction value
+    assert projs[0]["_neutral_points"] > 0
+    projs2 = build_weekly_projections(season_stats, schedule, target_week=4, scoring_settings=scoring)
+    assert projs2[0]["projected_points"] > 0  # absent map = today's behavior

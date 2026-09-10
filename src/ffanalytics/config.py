@@ -137,6 +137,18 @@ def get_stats_season() -> int:
     return min(computed, MAX_STATS_SEASON)
 
 
+# Confirmed-out statuses (backtested zero-Out-weekly rule, 2026-09-10):
+# these mean the player will not play, so weekly projections zero out.
+# Questionable/Doubtful stay available (flagged, not hidden) — same rule
+# as api.py:_UNAVAILABLE_STATUSES, which keeps its own copy to avoid
+# touching the request path (hub mirrors that path in its comments).
+OUT_STATUSES = {"out", "ir", "injured reserve", "pup", "nfi", "suspended", "na"}
+
+
+def is_out_status(status: str | None) -> bool:
+    return str(status or "").strip().lower() in OUT_STATUSES
+
+
 # Team-code canonicalization (user-caught live bug, 2026-09-10): Sleeper's
 # /players/nfl uses LAR for the Rams while nflverse schedules, game
 # predictions, and the hub all use LA. Unpatched, refresh's Sleeper team

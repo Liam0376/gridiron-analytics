@@ -65,6 +65,27 @@ def _norm_name_pos(name, pos):
     return (n, str(pos or "").upper())
 
 
+def build_out_gsis_set(sleeper_players: dict, injury_status: dict | None) -> set[str]:
+    """GSIS ids of confirmed-Out players (weekly projections zero these).
+
+    Direct gsis_id mapping only — Sleeper entries with gsis_id=None
+    (known data gap, cf. build_sleeper_xwalk) degrade to absent, i.e.
+    today's behavior, never a crash. Statuses via config.OUT_STATUSES.
+    """
+    out: set[str] = set()
+    try:
+        for sid, status in (injury_status or {}).items():
+            if not config.is_out_status(status):
+                continue
+            sp = (sleeper_players or {}).get(str(sid)) or {}
+            gsis = sp.get("gsis_id")
+            if gsis:
+                out.add(str(gsis))
+    except Exception:
+        logger.warning("refresh: out-gsis build failed, projecting all as available")
+    return out
+
+
 def build_sleeper_team_map(sleeper_players: dict) -> dict:
     """(normalized name, POS) -> current team abbr from Sleeper /players/nfl.
 
@@ -413,6 +434,14 @@ def run_refresh_with_data(
                 target_week=target_wk,
                 scoring_settings=data.get("league_settings", {}).get("scoring_settings", {}),
                 prior_season_stats=prior_season_stats,
+                # why out-set here (backtested zero-Out-weekly, 2026-09-10):
+                # an Out player's prior-starter average is pure staleness
+                # (Darnold 163 yds while Out). Weekly path only — the
+                # neutral season computation inside never sees it, so
+                # ROS/auction values survive a 1-week absence. Soft-fail
+                # to no-zeroing; injury_status may be {} on Sleeper failure.
+                out_pids=build_out_gsis_set(
+                    sleeper_players_map, data.get("injury_status")),
             )
             scoring = data.get("league_settings", {}).get("scoring_settings", {})
             proj_map = {}

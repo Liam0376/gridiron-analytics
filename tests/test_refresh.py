@@ -194,8 +194,7 @@ def test_build_rookie_rows_filters_and_flags():
     assert r["opponent_team"] == "BUF" and r["week"] == 1
 
 
-def test_build_rookie_rows_canonicalizes_rams_and_remaps_opponent():
-    # why (user-caught live bug, 2026-09-10): Sleeper LAR rookie rows kept
+def test_build_rookie_rows_canonicalizes_rams_and_remaps_opponent():    # why (user-caught live bug, 2026-09-10): Sleeper LAR rookie rows kept
     # LAR while opp_map is schedule-keyed (LA) — opponent remap missed and
     # team filters dropped them. Canonical code fixes both at once.
     rows = refresh.build_rookie_rows(
@@ -206,6 +205,22 @@ def test_build_rookie_rows_canonicalizes_rams_and_remaps_opponent():
     assert len(rows) == 1
     assert rows[0]["team"] == "LA" and rows[0]["recent_team"] == "LA"
     assert rows[0]["opponent_team"] == "SF"
+
+
+def test_build_out_gsis_set_statuses_and_gaps():
+    # why (backtested zero-Out-weekly, 2026-09-10): only confirmed outs
+    # zero; Questionable stays (backend convention), None gsis_id gaps
+    # (cf. build_sleeper_xwalk) degrade to absent, unknown sids skipped.
+    sp = {
+        "10": {"gsis_id": "00-001", "full_name": "Out Vet", "position": "QB"},
+        "11": {"gsis_id": None, "full_name": "Gap Man", "position": "RB"},
+        "12": {"gsis_id": "00-003", "full_name": "Question Mark", "position": "WR"},
+    }
+    inj = {"10": "Out", "11": "IR", "12": "Questionable", "13": "Out", "14": None}
+    assert refresh.build_out_gsis_set(sp, inj) == {"00-001"}
+    assert refresh.build_out_gsis_set({}, {"10": "Out"}) == set()
+    assert refresh.build_out_gsis_set(sp, {}) == set()
+    assert refresh.build_out_gsis_set(sp, None) == set()
 
 
 def _mock_sleeper_session(players_map):

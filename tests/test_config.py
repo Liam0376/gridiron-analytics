@@ -69,3 +69,18 @@ def test_canonical_team_rams_alias():
     assert config_module.canonical_team("NE") == "NE"
     assert config_module.canonical_team(None) == ""
     assert config_module.canonical_team("") == ""
+
+
+def test_is_out_status_matches_backend_convention():
+    # why (backtested zero-Out-weekly, 2026-09-10): canonical home of the
+    # 7-status set; api.py keeps its own copy (request path untouched),
+    # hub mirrors that path. Questionable/Doubtful stay available.
+    from ffanalytics import config as config_module
+
+    assert config_module.is_out_status("Out")
+    assert config_module.is_out_status("IR")
+    assert config_module.is_out_status("oUt")
+    assert not config_module.is_out_status("Questionable")
+    assert not config_module.is_out_status("Doubtful")
+    assert not config_module.is_out_status(None)
+    assert not config_module.is_out_status("")
