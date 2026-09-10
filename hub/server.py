@@ -783,12 +783,12 @@ def build_league_analytics(conn, league_id: str | None = None):
     # shadow real data here just like it did in /projections.
     _cw = compute_nfl_week()
     try:
-        row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 AND week <= ? ORDER BY season DESC, week DESC LIMIT 1", (_cw,))
+        row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 AND week <= ? ORDER BY season DESC, rowid DESC LIMIT 1", (_cw,))
     except Exception:
         row = None
     if not row or not load_json_blob(row):
         try:
-            for cand in conn.execute("SELECT data, season, week FROM player_stats ORDER BY season DESC, week DESC LIMIT 10").fetchall():
+            for cand in conn.execute("SELECT data, season, week FROM player_stats ORDER BY season DESC, rowid DESC LIMIT 10").fetchall():
                 if cand["week"] is not None and int(cand["week"]) > _cw:
                     continue
                 data = load_json_blob(cand)
@@ -798,7 +798,7 @@ def build_league_analytics(conn, league_id: str | None = None):
         except Exception:
             pass
     if not row:
-        row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE week <= ? ORDER BY season DESC, week DESC LIMIT 1", (_cw,))
+        row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE week <= ? ORDER BY season DESC, rowid DESC LIMIT 1", (_cw,))
     players = load_json_blob(row) or []
 
     row = try_fetch_one(conn, "SELECT data FROM injury_status ORDER BY rowid DESC LIMIT 1")
@@ -1480,12 +1480,12 @@ class Handler(BaseHTTPRequestHandler):
         row = None
         _cw = compute_nfl_week()
         try:
-            row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 AND week <= ? ORDER BY season DESC, week DESC LIMIT 1", (_cw,))
+            row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 AND week <= ? ORDER BY season DESC, rowid DESC LIMIT 1", (_cw,))
         except: row = None
         if not row or not load_json_blob(row):
             # Python fallback: scan recent rows for first non-empty list
             try:
-                for cand in conn.execute("SELECT data, season, week FROM player_stats ORDER BY season DESC, week DESC LIMIT 10").fetchall():
+                for cand in conn.execute("SELECT data, season, week FROM player_stats ORDER BY season DESC, rowid DESC LIMIT 10").fetchall():
                     if cand["week"] is not None and int(cand["week"]) > _cw:
                         continue
                     data = load_json_blob(cand)
@@ -1494,7 +1494,7 @@ class Handler(BaseHTTPRequestHandler):
                         break
             except: pass
         if not row:
-            row = try_fetch_one(conn, "SELECT data FROM player_stats ORDER BY season DESC, week DESC LIMIT 1")
+            row = try_fetch_one(conn, "SELECT data FROM player_stats ORDER BY season DESC, rowid DESC LIMIT 1")
         players = load_json_blob(row) or []
         if not isinstance(players, list):
             players = []
@@ -1829,7 +1829,7 @@ class Handler(BaseHTTPRequestHandler):
         # Map player_id -> player_name using player_stats in DB
         pmap = {}
         try:
-            r = try_fetch_one(conn, "SELECT data FROM player_stats ORDER BY season DESC, week DESC LIMIT 1")
+            r = try_fetch_one(conn, "SELECT data FROM player_stats ORDER BY season DESC, rowid DESC LIMIT 1")
             p_data = load_json_blob(r) or []
             for p in p_data if isinstance(p_data, list) else []:
                 pid = str(p.get("player_id") or p.get("id") or "")
@@ -2077,18 +2077,18 @@ class Handler(BaseHTTPRequestHandler):
                 rostered.add(str(pid))
         row = None
         try:
-            row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 ORDER BY season DESC, week DESC LIMIT 1")
+            row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 ORDER BY season DESC, rowid DESC LIMIT 1")
         except: row = None
         if not row or not load_json_blob(row):
             try:
-                for cand in conn.execute("SELECT data FROM player_stats ORDER BY season DESC, week DESC LIMIT 10").fetchall():
+                for cand in conn.execute("SELECT data FROM player_stats ORDER BY season DESC, rowid DESC LIMIT 10").fetchall():
                     data = load_json_blob(cand)
                     if isinstance(data, list) and len(data) > 10:
                         row = cand
                         break
             except: pass
         if not row:
-            row = try_fetch_one(conn, "SELECT data FROM player_stats ORDER BY season DESC, week DESC LIMIT 1")
+            row = try_fetch_one(conn, "SELECT data FROM player_stats ORDER BY season DESC, rowid DESC LIMIT 1")
         players = load_json_blob(row) or []
         recs = []
         for p in players:
