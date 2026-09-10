@@ -10,6 +10,16 @@
 > superseded by this. Validated (not gated) against 816 real 2023-2025
 > games: 68.26% win-call accuracy, Brier 0.2102, 7.21pt score MAE. See
 > plan's Task 1 for the full pivot note.
+>
+> **Status (2026-09-10, later): ALL TASKS SHIPPED.** Tasks 1-5 done (Task
+> 4's global settled/upcoming toggle deliberately not built — per-row
+> FINAL/UPCOMING chips covered the need; see plan for the honest
+> unchecked box). Plus an unplanned addition: `GET /props/board` +
+> click-a-game-row player-card UI, because the original edge board only
+> ever showed *manually entered* book lines — a game nobody had typed a
+> line for showed nothing (caught by the user in live review, not
+> anticipated in this spec). Full plan has the per-task deviation notes;
+> this line is the summary, not the detail.
 
 ## Context
 

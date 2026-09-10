@@ -66,23 +66,22 @@ stays untouched/unused (already correctly REJECTED for player work).
 **Files:** `src/ffanalytics/api.py`, `src/ffanalytics/shadow.py`,
 `src/ffanalytics/refresh.py`, `tests/test_game_predictions_api.py`
 
-- [ ] **Step 1:** `GET /games/predictions?season=&week=`: for each scheduled
+- [x] **Step 1:** `GET /games/predictions?season=&week=`: for each scheduled
   game, `game_predictions.game_prediction()` on the schedule row (market
   lines → devig prob + predicted score). Labeled `source: market_consensus`
-  in every response — never framed as this app's own prediction.
-- [ ] **Step 2:** Shadow log each served prediction once per (season, week,
-  game) — new kind `"game:<season>:<week>"`, reuse `shadow.log_recommendation`
-  or a thin wrapper, not a parallel table.
-- [ ] **Step 3:** Resolution: on refresh, for any unresolved game-kind shadow
-  row where `get_schedule()` now reports a final score, `record_outcome`
-  with actual score + whether the win-call was right (mirrors
-  `evaluate_unresolved_prop_recommendations` in shadow.py — reuse the shape,
-  don't fork it).
-- [ ] **Step 4:** Tests: prediction shape, shadow log-once idempotency
-  (same bug class as the props dedupe fix — POST/GET must not double-log),
-  resolution correctness on a fixture completed game.
-- [ ] **Step 5:** `SLEEPER_LEAGUE_ID=test .venv/bin/pytest -q` green. Commit:
-  `feat: game predictions endpoint + shadow resolution`.
+  in every response — never framed as this app's own prediction. Reads
+  `cache["schedule"]` (whole-season, fetched during refresh — no per-request
+  network call).
+- [x] **Step 2:** `shadow.log_game_prediction_once` — dedupe by
+  kind/season/week/game_id, same idempotency shape as `log_prop_edge_once`.
+- [x] **Step 3:** `shadow.evaluate_unresolved_game_predictions` resolves
+  against real `home_score`/`away_score` from the schedule feed once final.
+- [x] **Step 4:** 5 tests in `tests/test_game_predictions_api.py`: 503
+  without cache, response shape, log-once across repeated polls, resolution
+  on a final game, pending on an unplayed one.
+- [x] **Step 5:** `SLEEPER_LEAGUE_ID=test .venv/bin/pytest -q` green (211
+  passed at this checkpoint). Committed: `feat: game predictions endpoint +
+  shadow resolution (Task 2+3)`.
 
 ---
 
@@ -90,40 +89,52 @@ stays untouched/unused (already correctly REJECTED for player work).
 
 **Files:** `src/ffanalytics/refresh.py`
 
-- [ ] **Step 1:** Call the Task 2 resolution step from `run_refresh_with_data`
-  (same place `evaluate_unresolved_prop_recommendations` is called), per-source
-  isolated (a resolution failure must not abort the rest of refresh).
-- [ ] **Step 2:** Confirm no double-write: two refreshes in the same week
-  before the game is final must not create duplicate shadow rows (same
-  idempotency discipline as props `prop_lines` upsert).
-- [ ] **Step 3:** `pytest -q` green. Commit: `feat: resolve game predictions
-  on refresh`.
+- [x] **Step 1:** Wired into `run_refresh_with_data`, right after the props
+  resolver, per-source isolated (try/except, warns not raises).
+- [x] **Step 2:** Idempotency covered by the same `log_game_prediction_once`
+  dedupe key (kind/season/week/game_id) Task 2 tested — a second refresh
+  before a game is final can't double-insert since the row already exists
+  and resolution only ever UPDATEs.
+- [x] **Step 3:** `pytest -q` green. Bundled into the Task 2+3 commit
+  (`feat: game predictions endpoint + shadow resolution (Task 2+3)`) —
+  refresh wiring is one function call, not worth a separate commit.
 
 ---
 
 ### Task 4: Hub — week board UI
 
-**Files:** `hub/src/views/props.js` (or split into `hub/src/views/week.js` +
-keep `props.js` for the props-only data layer), `hub/src/api.js`
+**Files:** `hub/src/views/props.js`, `hub/src/api.js`
 
-- [ ] **Step 1:** Week selector at the top (reuse whatever week-picker
-  pattern `matchups.js`/`projections.js` already use — don't invent a new
-  one).
-- [ ] **Step 2:** Game predictions section: dense table (matchup / win% /
-  predicted score / status chip), forebet-style — no card grid, bordered
-  rows, header row like the existing props table's `<thead>`.
-- [ ] **Step 3:** Once a game is final (row has actual score from the
-  resolved shadow data): replace the predicted-score cell's placeholder
-  styling with an actual-score cell, chip reflects right/wrong.
-- [ ] **Step 4:** Upcoming/settled toggle (forebet's "Upcoming"/"Recent"),
-  filters both the game section and the props section by the same state.
-- [ ] **Step 5:** `bash hub/verify-isolation.sh` still green (no `import
-  ffanalytics` snuck into hub/, no write, no `0.0.0.0`).
-- [ ] **Step 6:** Manually drive it in Chrome (per `run` skill discipline —
-  screenshot, don't just typecheck), confirm both sections render, RG banner
-  intact, no "LOCK" language anywhere.
-- [ ] **Step 7:** Commit: `feat: week board (game predictions + restyled
-  props), forebet-style layout`.
+> Deviation: kept in `props.js` (not split) — the new sections share the
+> `week`/fetch flow tightly enough that splitting added indirection, not
+> clarity. Step 4's global toggle wasn't built as specified — see note
+> below Step 4. An unplanned addition landed instead: clicking a game row
+> opens a per-game player-props section (`GET /props/board`, new — see
+> spec addendum), because `/props/edges` only ever showed *manually
+> entered* book lines and a game with none showed nothing (user-caught in
+> live review). That turned out to be the more useful "browse this game"
+> feature than the toggle would have been.
+
+- [x] **Step 1:** Week selector — 18-chip row, same `data-week`/hash
+  pattern as `matchups.js`'s week picker (copied, not reinvented).
+- [x] **Step 2:** Game predictions section: dense table (matchup w/
+  team logos, win% chips, predicted score, status chip) — forebet-style,
+  no card grid, matches the existing table styling.
+- [x] **Step 3:** Final games show actual score (bold) in place of the
+  predicted-score cell; `FINAL`/`UPCOMING` status chip.
+- [ ] **Step 4:** Upcoming/settled toggle — NOT built. Each row's own
+  FINAL/UPCOMING chip covers the "is this decided" signal per-game; a
+  global filter toggle would be a small additional UI change if still
+  wanted, but wasn't necessary for what shipped. Left unchecked rather
+  than claimed done.
+- [x] **Step 5:** `bash hub/verify-isolation.sh` green after every change
+  in this task (checked 3 times across the session, not just once).
+- [x] **Step 6:** Driven live in Chrome — confirmed week nav, game board
+  render, and (once added) the game-props click-through, via a mix of
+  screenshots and `document.body.innerText` checks (the screenshot tool
+  was flaky mid-session; text-content checks substituted where it hung).
+- [x] **Step 7:** Committed: `feat: week board UI + per-game props
+  browsing (Task 4+5, forebet-style)` (bundled with Task 5, see below).
 
 ---
 
@@ -134,16 +145,27 @@ way.)*
 
 **Files:** `hub/src/views/props.js`
 
-- [ ] **Step 1:** Replace the current edge-board card/table hybrid with a
-  forebet-style dense table: player+market as one cell (like forebet's
-  home/away team stack), fair/book/edge as plain columns, status chip
-  reused as-is (VALUE/TRACKING/NO EDGE — unchanged, already RG-safe).
-- [ ] **Step 2:** Group by week (already filterable by week/season via
-  `fetchPropEdges({week, season})` — just surface the selector in the UI,
-  the API already supports it).
-- [ ] **Step 3:** `bash hub/verify-isolation.sh` green, manual Chrome check.
-- [ ] **Step 4:** Commit: `refactor: restyle props table (forebet-style
-  dense layout)`.
+> Deviation: the original stored-book-line "Edge board" table was left
+> as-is (it was already a reasonably dense bordered table, not a card
+> grid — the plan's premise was slightly off). What actually needed the
+> restyle work was the NEW per-game props section (Task 4's addition),
+> which got the player-card treatment per direct user request ("use the
+> player cards") — reuses `playerAvatar`/`posBadge`/`teamLogo` and the
+> app's existing `.player-card-v2` CSS, same visual language as
+> Projections/Team Hub/Auction, instead of another table.
+
+- [x] **Step 1 (revised):** Game-props section built as a player-card grid
+  (`propsPlayerCard()` in `props.js`), not a table — per-market fair
+  line + sigma as compact chips under each card, edge chip overlaid when
+  a book line exists for that stat.
+- [x] **Step 2:** Week grouping via the Task 4 week selector (shared
+  state — one `?week=` hash param drives games, props edges, and the
+  props board together).
+- [x] **Step 3:** `bash hub/verify-isolation.sh` green; manually clicked
+  through NE @ SEA in Chrome (Hunter Henry, Mack Hollins, Eric Saubert,
+  Cooper Kupp, etc. — real fair lines, confirmed by screenshot).
+- [x] **Step 4:** Committed together with Task 4:
+  `feat: week board UI + per-game props browsing (Task 4+5, forebet-style)`.
 
 ---
 

@@ -58,10 +58,20 @@ Production build: `npm run build` → `hub/dist/`
 - **My Roster** — starters vs bench with overlap confidence (bench ceiling ≥ starter point ⇒ TOSS-UP, LOW confidence; otherwise HIGH if projected > 12 else MEDIUM)
 - **Waiver** — ranked by `improvement_over_roster`, not raw points; includes trending from `news_data`
 - **Trade** — two `owner_id` inputs → `GET /recommendations/trade` or hub-proxy fallback
-- **Props** — model fair lines vs manual book lines (`GET /props/edges` on `:8000`);
-  entry form POSTs to the model directly (hub never writes). Chips read
-  `VALUE / TRACKING / NO EDGE` — never "LOCK". Entertainment-only RG notice on
-  every view; only `passing_yards` earned edge labels in 2025 calibration.
+- **Props** — forebet-style week board (spec `2026-09-10-week-board-spec.md`).
+  Week picker (1–18) drives three sections together:
+  - **Game predictions** (`GET /games/predictions`) — win%/predicted score
+    from real market lines (spread/total/moneyline off the schedule feed,
+    devigged), labeled `market_consensus` — never this app's own model.
+  - **Edge board** — model fair lines vs *manually entered* book lines
+    (`GET /props/edges`); entry form POSTs to the model directly (hub never
+    writes). Chips read `VALUE / TRACKING / NO EDGE` — never "LOCK".
+  - **Game props** (click a game row) — player-card grid (`GET
+    /props/board`) showing every market's fair line for that game's
+    players, no book line required; a colored edge chip overlays when one
+    exists.
+  Entertainment-only RG notice on every view; only `passing_yards` earned
+  edge labels in 2025 calibration.
 
 ## Search
 
