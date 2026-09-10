@@ -39,6 +39,17 @@ included, no longer K-zeroed as in early scratch backtest_final.py):
   - Full Vegas scaling (all stats equally): hurts MAE (4.16→4.24 in K-zeroed
     scratch; +0.003 worse on true scoring). Scaling yards proportionally overshoots.
   - Rest days: negligible effect
+  - QB snap-share scaling (2026-09-10, 2025 holdout weeks 4-18, n=5425):
+    REJECTED — evidence: data/ml/backtest_snap_share_results.json
+    (scripts/backtest_snap_share.py). Mechanism is causally right
+    (2025 mop-up mean 0.043; takeover 0.82) and directionally positive
+    (MAE -0.028, QB MAE -0.28, bias fixed, pairwise flat), but paired-t
+    overall t=1.66 (p~0.10) and QB-only t=1.66 (p~0.10) — not
+    significant — with overall corr -0.003 (Fisher z=0.33, noise).
+    Same bar that rejected the XGB attempts. Display-level demotion
+    (hub relevance ordering) stands as the mitigation. Sequel: re-run
+    the variant comparison on real 2026 weeks (true depth CSV + live
+    outcomes) once n suffices — see validate_2026_coverage.py pattern.
   - XGBoost point-level with PBP opportunity (2026-08-28, 3-season, 15,956 rows
     weeks 4-18, 38 cols, TimeSeriesSplit(3), 10,531→5,425): REJECTED — evidence:
     data/models/xgb_meta.json val 4.514 vs true stat 4.474 (local val) and
