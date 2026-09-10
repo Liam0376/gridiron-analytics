@@ -16,6 +16,8 @@ be labeled honestly as market consensus, never presented as our own
 prediction. See scripts/validate_game_predictions.py for the historical
 accuracy/calibration report (informational, not a ship/reject gate)."""
 
+import math
+
 from ffanalytics.props import american_to_prob
 
 
@@ -29,7 +31,11 @@ def devig_two_way(price_a: float, price_b: float) -> tuple[float, float]:
     p_a = american_to_prob(price_a)
     p_b = american_to_prob(price_b)
     total = p_a + p_b
-    if total <= 0:
+    # why math.isnan, not `total <= 0`: NaN <= 0 is False in Python — a NaN
+    # total would fall through to the real division below and leak NaN into
+    # the response (code-review finding). american_to_prob rejects NaN
+    # prices today, but this stays correct if that ever changes upstream.
+    if total <= 0 or math.isnan(total):
         return 0.5, 0.5
     return p_a / total, p_b / total
 
@@ -58,6 +64,12 @@ def game_prediction(game: dict) -> dict | None:
     home_ml = game.get("home_moneyline")
     away_ml = game.get("away_moneyline")
     if not home or not away or spread is None or total is None or home_ml is None or away_ml is None:
+        return None
+    # why isfinite (code-review finding): nflreadpy/Polars can hand back NaN
+    # for a line that's technically "present" (not None) — a NaN spread/total
+    # would propagate through predicted_score() into the JSON response and
+    # raise on serialize. Quarantine the row instead (never guess a score).
+    if not all(math.isfinite(v) for v in (spread, total, home_ml, away_ml)):
         return None
 
     p_home, p_away = devig_two_way(home_ml, away_ml)

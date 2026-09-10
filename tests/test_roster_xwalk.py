@@ -85,6 +85,23 @@ def test_v7_table_exists_after_init():
     conn.close()
 
 
+def test_v8_indexes_exist_after_init():
+    # why (database-audit finding): count_logged/count_resolved (shadow.py)
+    # and rating_updates.py's season-scoped team_ratings read were full
+    # table scans with no covering index.
+    tmp = tempfile.TemporaryDirectory()
+    conn = db.get_connection(Path(tmp.name) / "test.db")
+    db.init_schema(conn)
+    idx_names = {r["name"] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index'")}
+    assert "idx_shadow_kind" in idx_names
+    assert "idx_shadow_resolved" in idx_names
+    assert "idx_team_ratings_season" in idx_names
+    ver = conn.execute("PRAGMA user_version").fetchone()[0]
+    assert ver >= 8
+    conn.close()
+
+
 def test_xwalk_loader_coerces_int_ids_to_str():
     # why (code-reviewer sign-off): SQLite TEXT columns accept INTEGER
     # values; an int-typed legacy row would silently miss the join (both

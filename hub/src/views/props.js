@@ -132,7 +132,7 @@ async function openGamePropsModal(triggerEl, teamsKey, week) {
   const body = gamePropsModalRoot.querySelector('#gamePropsBody');
   if (!body) return; // closed while fetching
   body.innerHTML = players.length ? `
-    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px">
+    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(min(250px,100%),1fr)); gap:10px">
       ${players.map(propsPlayerCard).join('')}
     </div>
     <div style="margin-top:10px; font-size:11px; color:var(--text-faint)">
@@ -192,7 +192,8 @@ export async function renderProps(root) {
                   const homeFav = g.home_win_prob >= g.away_win_prob;
                   const teamsKey = `${g.away_team},${g.home_team}`;
                   return `
-                  <tr class="props-game-row" data-teams="${escapeAttr(teamsKey)}" tabindex="0" role="button"
+                  <tr class="props-game-row" data-teams="${escapeAttr(teamsKey)}" tabindex="0"
+                      aria-label="View player props for ${escapeAttr(g.away_team || '')} at ${escapeAttr(g.home_team || '')}"
                       style="cursor:pointer" title="Click to browse this game's player props">
                     <td>
                       <div style="display:flex; align-items:center; gap:6px">${teamLogo(g.away_team, 20)}<span style="font-weight:${homeFav ? 400 : 700}">${escapeHtml(g.away_team || '')}</span></div>

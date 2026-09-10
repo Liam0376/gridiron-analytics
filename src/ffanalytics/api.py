@@ -380,6 +380,12 @@ def _build_player_dict(
     fallback all emit the same field set (incl. projection_lower/upper/width).
     """
     pts = float(base_stats.get("projected_points") or base_stats.get("fantasy_points", 0) or 0)
+    # why guard here (code-review finding): nflverse/Polars can hand back NaN
+    # for a missing stat instead of None — float(nan) survives the `or 0`
+    # chain (NaN is truthy) and later json.dumps on a bare NaN raises,
+    # 500ing the whole endpoint instead of quarantining one player.
+    if pts != pts or abs(pts) == float("inf"):
+        pts = 0.0
     player: dict = {
         "player_id": player_id_str,
         "player_name": base_stats.get("short_name", f"Player {player_id_str}"),

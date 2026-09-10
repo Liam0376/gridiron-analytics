@@ -193,3 +193,22 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             )"""
         )
         conn.execute("PRAGMA user_version=7")
+
+    if cur_version < 8:
+        # Database-audit v8 — count_logged/count_resolved (shadow.py) and
+        # rating_updates.py's season-scoped team_ratings read were full
+        # table scans with no covering index. Additive only, safe to re-run.
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_shadow_kind "
+            "ON shadow_recommendations(kind)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_shadow_resolved "
+            "ON shadow_recommendations(kind, actual_outcome) "
+            "WHERE actual_outcome IS NOT NULL"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_team_ratings_season "
+            "ON team_ratings(season)"
+        )
+        conn.execute("PRAGMA user_version=8")

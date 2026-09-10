@@ -650,7 +650,8 @@ code.inline { background: var(--surface-raised); border: 1px solid var(--border)
    Keyboard & Focus polish
    ═══════════════════════════════════════════════════════ */
 .clickable-row:focus-visible, .clickable-card:focus-visible, .matchup-card:focus-visible,
-[data-player-id]:focus-visible, [data-matchup-id]:focus-visible, .search-item:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+[data-player-id]:focus-visible, [data-matchup-id]:focus-visible, .search-item:focus-visible,
+.props-game-row:focus-visible, .modal-close-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 .search-item.active, .search-item[aria-selected="true"] { background: var(--surface-raised); outline: 1px solid var(--border-strong); }
 .week-picker-scroll { scrollbar-width: thin; }
 .week-picker-scroll::-webkit-scrollbar { height: 5px; }

@@ -36,6 +36,23 @@ def test_game_prediction_missing_lines_returns_none():
     assert game_prediction({"home_team": "KC", "away_team": "BAL"}) is None
 
 
+def test_game_prediction_nan_line_quarantines_row_not_500():
+    # why (code-review finding): nflreadpy/Polars can hand back NaN for a
+    # "present" (not None) line — must quarantine the row, never let NaN
+    # reach json.dumps and crash the whole /games/predictions response.
+    import math
+
+    row = {
+        "game_id": "2024_01_BAL_KC", "season": 2024, "week": 1,
+        "home_team": "KC", "away_team": "BAL",
+        "home_moneyline": -148, "away_moneyline": 124,
+        "spread_line": float("nan"), "total_line": 46.0,
+    }
+    assert game_prediction(row) is None
+    row["spread_line"] = float("inf")
+    assert game_prediction(row) is None
+
+
 def test_game_prediction_full_row():
     row = {
         "game_id": "2024_01_BAL_KC", "season": 2024, "week": 1,
