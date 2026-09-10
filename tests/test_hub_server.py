@@ -216,6 +216,42 @@ def test_hub_scoring_parity_smoke():
     assert pts_default == pytest.approx(22.0)
 
 
+def test_hub_qhat_matches_conformal_py():
+    # why cross-import here, unlike the scoring-parity test above (which
+    # hand-duplicates its fixture "per isolation"): a hardcoded expected
+    # number doesn't catch drift if conformal.py's real formula ever
+    # changes — only re-running the real implementation does. verify-
+    # isolation.sh's grep only scans hub/, not tests/, so this doesn't
+    # violate the runtime isolation contract (hub/server.py itself still
+    # never imports ffanalytics — only this test file, at test time, does).
+    # graphify-audit finding (2026-09-10): hub/server.py:169 vendors qhat()
+    # (isolation forces this — hub can't import ffanalytics at runtime) but
+    # nothing pinned the two copies together, so a future change to the
+    # real formula could silently diverge from hub's copy with no test to
+    # catch it.
+    from ffanalytics.conformal import qhat as real_qhat
+
+    cases = [
+        [0.7, 1.8, 3.0, 4.4, 5.8, 7.2, 8.8, 10.2, 11.9],  # hub's own WR fallback set
+        [1.0, 2.0, 3.0],
+        [5.0],
+        [-4.0, 4.0, -4.0, 4.0, -4.0, -4.0, 4.0, 4.0, -4.0, 4.0],
+        list(range(1, 101)),
+    ]
+    for residuals in cases:
+        assert hubserver.qhat(residuals) == pytest.approx(real_qhat(residuals)), residuals
+    # hub's defensive extras (empty input, NaN/Inf filtering) are its own
+    # behavior — not something conformal.py's qhat does (it raises on empty
+    # input instead) — so they're asserted directly, not diffed against it.
+    assert hubserver.qhat([]) == pytest.approx(real_qhat(
+        [0.7, 1.8, 3.0, 4.4, 5.8, 7.2, 8.8, 10.2, 11.9]
+    ))
+    assert hubserver.qhat([float("nan"), float("inf"), 2.0, 4.0, 6.0]) == pytest.approx(
+        real_qhat([2.0, 4.0, 6.0])
+    )
+    assert hubserver.qhat([float("nan")]) == 5.0
+
+
 def test_hub_rosters_full_ims_304(hub_server_url):
     import urllib.error
     url = f"{hub_server_url}/hub-api/rosters-full"
