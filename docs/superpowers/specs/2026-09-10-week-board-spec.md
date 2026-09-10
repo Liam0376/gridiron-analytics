@@ -1,7 +1,15 @@
 # Spec: NFL Week Board — game predictions + props + results (forebet-style layout)
 
-> Status (2026-09-10): DRAFT — not implemented. Written after live review of
+> Status (2026-09-10): Task 1 PIVOTED + done. Written after live review of
 > forebet.com's American Football section (Chrome MCP) at user's request.
+> `adapters/schedule.py` (nflreadpy, already in use) carries real
+> `spread_line`/`total_line`/`home_moneyline`/`away_moneyline` for every
+> game, upcoming included — free market consensus we already had access to.
+> Game predictions are now a devig/relay of that (`game_predictions.py`),
+> not a home-rolled Elo model — no fit-and-gate needed, "Goals #1/#2" below
+> superseded by this. Validated (not gated) against 816 real 2023-2025
+> games: 68.26% win-call accuracy, Brier 0.2102, 7.21pt score MAE. See
+> plan's Task 1 for the full pivot note.
 
 ## Context
 

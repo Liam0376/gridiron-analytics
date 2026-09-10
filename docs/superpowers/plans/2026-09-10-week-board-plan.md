@@ -20,48 +20,56 @@ stays untouched/unused (already correctly REJECTED for player work).
 
 ---
 
-### Task 1: Backtest the game-outcome model (gate — must pass before Task 4)
+### Task 1: Game predictions from real market lines (PIVOTED from Elo backtest)
 
-**Files:** `scripts/backtest_games.py`, `data/games/backtest_games_results.json`,
-`src/ffanalytics/game_predictions.py` (pure functions only, no I/O)
+> **Pivot (2026-09-10):** while starting Task 1, found `adapters/schedule.py`
+> (nflreadpy `load_schedules`, already in use) carries real `spread_line`/
+> `total_line`/`home_moneyline`/`away_moneyline` for every game, upcoming
+> included — a free market feed we already call and weren't reading. This
+> is NOT the player-props feed rejected as paid (different product). No
+> need to fit-and-gate our own Elo model when real market consensus is
+> free — same honesty rule applies differently: label it "market
+> consensus," never present it as our own prediction. Spec updated
+> (`2026-09-10-week-board-spec.md`) to match. Elo `overall` track stays
+> unused for this feature (still real, still updating, just not needed
+> here).
 
-- [ ] **Step 1:** `game_predictions.py`: `win_probability(home_rating, away_rating,
-  home_field_elo=X)` wrapping `rating._expected_score`, and
-  `predicted_margin(home_rating, away_rating, coef)` — a plain linear map, `coef`
-  and `home_field_elo` as parameters, not hardcoded, so the backtest fits them.
-- [ ] **Step 2:** Write `backtest_games.py` mirroring `backtest_props.py`'s
-  discipline: multi-season OOS (train `team_ratings` overall-track through
-  week N-1 using real results via `rating_updates.py`'s existing update logic,
-  predict week N, compare to `get_schedule()`'s actual `home_score`/
-  `away_score`). Grid-search `home_field_elo` and margin `coef` on a
-  train split; evaluate untouched on a held-out split (same train/val season
-  split style as `backtest_ml.py`).
-- [ ] **Step 3:** Report: win-call accuracy vs naive home-favorite baseline
-  (~57%), Brier score vs naive-baseline Brier, margin MAE vs "predict mean
-  historical margin" baseline. Write `data/games/backtest_games_results.json`
-  with the fitted constants + all four numbers, win and lose cases both.
-- [ ] **Step 4:** Gate check: accuracy beats baseline AND Brier beats
-  baseline → VALUE eligible, keep fitted constants, proceed to Task 2. Either
-  gate fails → REJECTED, write the honest result into the spec's Gate
-  section, **skip Task 2-4's game-board work**, keep only Task 5 (props
-  restyle, no new game predictions) and Task 6 (docs).
-- [ ] **Step 5:** STOP — report Task 1 result (pass or REJECTED) before
-  continuing. This is the plan's real decision point, not a formality.
+**Files:** `src/ffanalytics/game_predictions.py` (pure functions, no I/O),
+`scripts/validate_game_predictions.py`, `tests/test_game_predictions.py`
+
+- [x] **Step 1:** `game_predictions.py`: `devig_two_way(price_a, price_b)`
+  (two-sided no-vig moneyline → fair probabilities, reuses
+  `props.american_to_prob`), `predicted_score(spread_line, total_line)`
+  (confirmed convention against real rows: positive `spread_line` = home
+  favored by that many points), `game_prediction(game_dict)` assembling
+  both + `final`/actual-score passthrough from the schedule row, `None` if
+  lines are missing (never guesses).
+- [x] **Step 2:** `validate_game_predictions.py` — informational historical
+  report (not a gate, no free params to overfit): 2023-2025 REG games,
+  win-call accuracy, Brier score, per-team score MAE vs naive baselines.
+- [x] **Step 3:** Result: 816 games, **68.26% win-call accuracy** (naive
+  home-favorite baseline ~57%), **Brier 0.2102** (naive p=0.5: 0.25), **7.21
+  pt avg score MAE**. Confirms the conversion math is sane — market lines
+  are, unsurprisingly, well-calibrated.
+- [x] **Step 4:** `tests/test_game_predictions.py` — devig math (symmetric
+  -110/-110, real favorite/underdog row, degenerate-price no-crash),
+  predicted-score arithmetic, `game_prediction` missing-lines/full-row/
+  not-final cases. 7/7 pass.
+- [x] **Step 5:** No REJECTED path needed (not a fit-model gate) — proceed
+  to Task 2 unconditionally. Task 4 (hub UI) no longer conditionally
+  skipped; ships alongside Task 5.
 
 ---
 
 ### Task 2: API — game predictions endpoint + shadow resolution
 
-*(Skip entirely if Task 1 gate failed.)*
-
 **Files:** `src/ffanalytics/api.py`, `src/ffanalytics/shadow.py`,
 `src/ffanalytics/refresh.py`, `tests/test_game_predictions_api.py`
 
 - [ ] **Step 1:** `GET /games/predictions?season=&week=`: for each scheduled
-  game, current `overall` ratings → `win_probability`/`predicted_margin` →
-  predicted score (round margin onto a plausible total, same honesty rule as
-  props' fair line — no invented precision). Status `VALUE` (Task 1 gate
-  passed) — this endpoint doesn't ship at all if the gate failed.
+  game, `game_predictions.game_prediction()` on the schedule row (market
+  lines → devig prob + predicted score). Labeled `source: market_consensus`
+  in every response — never framed as this app's own prediction.
 - [ ] **Step 2:** Shadow log each served prediction once per (season, week,
   game) — new kind `"game:<season>:<week>"`, reuse `shadow.log_recommendation`
   or a thin wrapper, not a parallel table.
@@ -80,8 +88,6 @@ stays untouched/unused (already correctly REJECTED for player work).
 
 ### Task 3: Wire into refresh cadence
 
-*(Skip if Task 1 gate failed.)*
-
 **Files:** `src/ffanalytics/refresh.py`
 
 - [ ] **Step 1:** Call the Task 2 resolution step from `run_refresh_with_data`
@@ -96,9 +102,6 @@ stays untouched/unused (already correctly REJECTED for player work).
 ---
 
 ### Task 4: Hub — week board UI
-
-*(Only if Task 1 gate passed. If it failed, this task is just "restyle
-props," see Task 5 — no game section.)*
 
 **Files:** `hub/src/views/props.js` (or split into `hub/src/views/week.js` +
 keep `props.js` for the props-only data layer), `hub/src/api.js`
