@@ -9,9 +9,16 @@ function num(x, fallback = 0) {
 
 export function enrichPlayer(p, compRow, opts = {}) {
   const defaultSlot = opts.defaultSlot || 'BENCH';
-  const comp = compRow || {};
-
   const pid = String(p.player_id || '');
+  // why lookup here (user-caught live bug, 2026-09-10): every call site
+  // passes compRow=null and only forwards opts.compPlayers (a flat array),
+  // so comp.market_season_stats was always undefined and the ratio-guess
+  // fallback below (weekly fantasy points * yards-per-point * 17 games)
+  // fired for every player — e.g. a ~25pt/week QB projected to 7043 season
+  // passing yards, nearly 1500 over the NFL record. Real market season
+  // stats already exist in compPlayers; they just weren't being matched
+  // to this player.
+  const comp = compRow || (opts.compPlayers || []).find(c => String(c.player_id) === pid) || {};
   const pos = (p.position || p.position_group || 'UNK').toUpperCase();
 
   const weekly = num(p.projected_points ?? comp.projected_points ?? comp.weekly, 0);
@@ -81,11 +88,17 @@ export function enrichPlayer(p, compRow, opts = {}) {
     rec = width > 7.0 ? 'TOSS-UP' : weekly >= 10.0 ? 'CONFIDENT' : 'RISK';
   }
 
-  const passYd = Math.round(comp.market_season_stats?.passing_yards ?? (p.pass_yd ? p.pass_yd * 17 : (pos === 'QB' ? weekly * 16.5 * 17 : 0)));
-  const rushYd = Math.round(comp.market_season_stats?.rushing_yards ?? (p.rush_yd ? p.rush_yd * 17 : (pos === 'RB' ? weekly * 5.2 * 17 : pos === 'QB' ? weekly * 1.4 * 17 : 0)));
-  const recYd = Math.round(comp.market_season_stats?.receiving_yards ?? (p.rec_yd ? p.rec_yd * 17 : ((pos === 'WR' || pos === 'TE') ? weekly * 5.6 * 17 : pos === 'RB' ? weekly * 2.1 * 17 : 0)));
-  const recs = Math.round(comp.market_season_stats?.receptions ?? (p.receptions ? p.receptions * 17 : ((pos === 'WR' || pos === 'TE') ? weekly * 0.46 * 17 : pos === 'RB' ? weekly * 0.28 * 17 : 0)));
-  const tds = Number((comp.market_season_stats?.total_tds ?? (weekly * 0.52 * 17 / 10)).toFixed(1));
+  // why no ratio-guess fallback: a prior fallback estimated season yards
+  // from weekly fantasy points times a made-up "yards per point" constant
+  // (e.g. weekly * 16.5 * 17) — nonsense math that produced a 7043-yard QB
+  // season projection (user-caught live bug, 2026-09-10). Same honesty
+  // rule as is_empty_projection elsewhere: no real market_season_stats ->
+  // show 0/unknown, never a fabricated number.
+  const passYd = Math.round(comp.market_season_stats?.passing_yards ?? 0);
+  const rushYd = Math.round(comp.market_season_stats?.rushing_yards ?? 0);
+  const recYd = Math.round(comp.market_season_stats?.receiving_yards ?? 0);
+  const recs = Math.round(comp.market_season_stats?.receptions ?? 0);
+  const tds = Number((comp.market_season_stats?.total_tds ?? 0).toFixed(1));
 
   return {
     ...p,
