@@ -11,6 +11,7 @@ import { saveDraftState } from './state.js';
 import { trapFocus } from '../../lib/focusTrap.js';
 import { escapeHtml, escapeAttr } from '../../lib/escape.js';
 import { openPlayerModal } from '../../components/playerModal.js';
+import { relevanceTier, backupDemote, buildAheadMap } from '../../lib/relevance.js';
 
 const ALLOWED_SORT = new Set([
   'player_name','position','weekly','ros','marketRos','deltaRos',
@@ -24,8 +25,20 @@ export function parseSort(params) {
   return { sortKey, sortDir };
 }
 
-export function sortPlayers(list, sortKey, sortDir) {
+export function sortPlayers(list, sortKey, sortDir, opts = {}) {
+  // why relevance-first on default (user decision 2026-09-10): the money
+  // board's default view is projection-ordered, so healthy backups with
+  // inflated $ topped it cross-position. Tier (+QB-backup) demotion leads
+  // only when the user hasn't picked an explicit column — explicit sorts
+  // stay pure.
+  const aheadMap = opts.relevanceFirst ? buildAheadMap(list, opts.accessors) : null;
   return [...list].sort((a, b) => {
+    if (aheadMap) {
+      const tier = relevanceTier(a, opts.accessors, aheadMap) - relevanceTier(b, opts.accessors, aheadMap);
+      if (tier !== 0) return tier;
+      const qb = backupDemote(a, opts.accessors, aheadMap) - backupDemote(b, opts.accessors, aheadMap);
+      if (qb !== 0) return qb;
+    }
     const av = a[sortKey];
     const bv = b[sortKey];
     if (av == null && bv == null) return 0;

@@ -6,6 +6,7 @@ import { teamLogo } from '../components/teamLogo.js';
 import { getTeamColor } from '../components/teamColors.js';
 import { escapeHtml } from '../lib/escape.js';
 import { openPlayerModal } from '../components/playerModal.js';
+import { backupDemote, buildAheadMap } from '../lib/relevance.js';
 
 const POSITIONS = ['QB','RB','WR','TE','FLEX'];
 
@@ -56,6 +57,14 @@ export async function renderTierlists(root) {
   else players = players.filter(p => (p.position||p.position_group||'').toUpperCase() === pos);
 
   const tiers = buildTiers(players, { gap, cap });
+  // why member-order only (user decision 2026-09-10): tier cuts are math
+  // (gap/cap on point estimates) and stay untouched — but within a tier, a
+  // healthy backup lists after genuine options. Display order only.
+  const aheadMap = buildAheadMap(players);
+  const ptsOf = (p) => Number(p.projected_points ?? p.point_estimate ?? 0) || 0;
+  for (const tier of tiers) {
+    tier.sort((a, b) => (backupDemote(a, {}, aheadMap) - backupDemote(b, {}, aheadMap)) || (ptsOf(b) - ptsOf(a)));
+  }
 
   root.innerHTML = `
     <div class="hero reveal in">
@@ -83,9 +92,12 @@ export async function renderTierlists(root) {
 
     ${!players.length ? `<div class="card reveal in" style="margin-top:16px"><div class="empty">No players for <strong>${pos}</strong> yet. Refresh in-season or check <code class="inline">Projections</code>: tiering needs <code class="inline">projected_points</code>.</div></div>` :
       `<div style="margin-top:16px; display:flex; flex-direction:column; gap:12px">
-        ${tiers.map((tier, idx)=>`
+        ${tiers.map((tier, idx)=>{
+          const pts = tier.map(p=>Number(p.projected_points ?? p.point_estimate ?? 0) || 0);
+          const hi = Math.max(...pts), lo = Math.min(...pts);
+          return `
           <div class="tier reveal in">
-            <div class="tier-head"><strong style="color:${tierColor(idx)}">Tier ${idx+1}</strong><span class="micro faint">${tier.length} players · ${tier[0].projected_points?.toFixed(1)} → ${tier[tier.length-1].projected_points?.toFixed(1)} pts</span></div>
+            <div class="tier-head"><strong style="color:${tierColor(idx)}">Tier ${idx+1}</strong><span class="micro faint">${tier.length} players · ${hi.toFixed(1)} → ${lo.toFixed(1)} pts</span></div>
             <div class="tier-body">
               ${tier.map(p=>`
                 <div class="player-card" data-pid="${escapeHtml(p.player_id || '')}" style="--team-accent:${getTeamColor((p.team||'').toUpperCase())}; border-top:1px solid var(--team-accent); background:linear-gradient(90deg, color-mix(in srgb, var(--team-accent) 7%, var(--surface-raised)) 0%, var(--surface-raised) 50%); cursor:pointer">
@@ -95,8 +107,8 @@ export async function renderTierlists(root) {
               `).join('')}
             </div>
           </div>
-        `).join('')}
-      </div>`
+        `}).join('')}
+       </div>`
     }
   `;
 

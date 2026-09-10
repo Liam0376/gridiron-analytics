@@ -59,6 +59,23 @@
 - Hard-filtering any API response; `stat_projector` math; rescoring;
   `start.sh` rework; K/DEF handling.
 
+## Follow-up: project-wide ordering + next-man-up (user-confirmed, SHIPPED)
+
+- Ordering is generic (all 32 teams, every surface) — verified live on
+  SF@LA and SEA@NE, not scoped to one game.
+- Within-tier QB-backup demotion: healthy QB2+ sinks below relevant
+  starters (Mac Jones 3rd → 23rd on SF@LA) while elevated Lock ranks
+  with starters. RB/WR/TE committees untouched (their depth genuinely
+  plays). Applied to: projections default sort, all props modals,
+  auction default money board (explicit ?sort= stays pure), tier member
+  display order (tier cuts untouched).
+- Next-man-up elevation: QB1 confirmed Out (backend's own unavailable
+  set, mirrored) elevates the healthy backup room — Lock starts,
+  Darnold's Out badge stays. Questionable/Doubtful never trigger it.
+- Deliberately skipped: waiver (API advice-ranked, reordering would
+  diverge from the engine), team/matchups/roster/trade (slot- or
+  selection-ordered, relevance N/A).
+
 ## Follow-up bugs found while verifying (2026-09-10 evening)
 
 - [x] **A. Rams invisible on props board (SHIPPED).** Root cause: Sleeper

@@ -8,7 +8,7 @@ import { playerCard } from '../components/playerCard.js';
 import { getTeamColor } from '../components/teamColors.js';
 import { openPlayerModal } from '../components/playerModal.js';
 import { escapeHtml } from '../lib/escape.js';
-import { relevanceTier } from '../lib/relevance.js';
+import { relevanceTier, backupDemote, buildAheadMap } from '../lib/relevance.js';
 
 let allPlayers = [];
 let compById = new Map();
@@ -416,12 +416,16 @@ export async function renderProjections(root) {
 
   function renderTable() {
     let rows = filteredWithEdge(allPlayers);
-    // sort — default view demotes off-depth-chart players first (demote,
-    // don't remove); any explicit user sort stays pure.
+    // sort — default view demotes off-depth-chart players first, then
+    // healthy QB backups (demote, don't remove); any explicit user sort
+    // stays pure.
+    const aheadMap = userSorted ? null : buildAheadMap(allPlayers);
     rows = [...rows].sort((a,b)=>{
       if (!userSorted) {
-        const tier = relevanceTier(a) - relevanceTier(b);
+        const tier = relevanceTier(a, {}, aheadMap) - relevanceTier(b, {}, aheadMap);
         if (tier !== 0) return tier;
+        const qb = backupDemote(a, {}, aheadMap) - backupDemote(b, {}, aheadMap);
+        if (qb !== 0) return qb;
       }
       const av = getSortVal(a, sortKey);
       const bv = getSortVal(b, sortKey);

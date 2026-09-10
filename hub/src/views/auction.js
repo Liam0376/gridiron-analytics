@@ -106,7 +106,10 @@ export async function renderAuction(root) {
   if (hasComparison && compareAuctionEnabled && auctionEdge !== 'ALL') {
     filteredPlayers = filteredPlayers.filter(p => (p.edge || 'NEUTRAL') === auctionEdge);
   }
-  filteredPlayers = sortPlayers(filteredPlayers, auctionSortKey, auctionSortDir);
+  filteredPlayers = sortPlayers(filteredPlayers, auctionSortKey, auctionSortDir, {
+    // default money board only: explicit ?sort= stays pure (see table.js)
+    relevanceFirst: !params.get('sort'),
+  });
 
   const focusedPlayer = focusPid ? allRanked.find(p => String(p.player_id) === String(focusPid)) : null;
   const myNeeds = math.myNeeds;
