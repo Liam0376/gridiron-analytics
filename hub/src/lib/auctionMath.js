@@ -109,6 +109,11 @@ export function computeAuctionMath(players, compRaw, compById, compByNamePos, st
       marketRos,
       deltaRos,
       seasonStatDeltas,
+      // why (user-caught live bug, 2026-09-10): without this, opening a
+      // player card from the Auction board showed correct $ (this file's
+      // VOR math is real) but honest-empty yards/TDs — same fix as
+      // projections.js (93b7b91/d910ac1).
+      market_season_stats: c?.market_season_stats || null,
       widthRos: Number(p.width ?? c?.width ?? 5) * Math.sqrt(remaining),
       fp_ecr: c?.fp_ecr ?? null,
       fp_ecr_pos: c?.fp_ecr_pos ?? null,

@@ -217,6 +217,16 @@ async function loadSearchPlayersCache() {
                 fp_ecr: p.fp_ecr,
                 owner_name: ownerInfo.owner_name || '',
                 team_name: ownerInfo.team_name || '',
+                // why (user-caught live bug, 2026-09-10): without these,
+                // opening a card from global search fell to playerModal.js's
+                // $1/0 honest-empty floor instead of real season-stat/
+                // auction data that already exists here — same fix as
+                // projections.js (93b7b91/d910ac1).
+                market_season_stats: p.market_season_stats || null,
+                auction: p.auction,
+                gridironAuction: p.auction,
+                marketAuction: p.marketAuction,
+                vor: p.vor,
               });
             }
           });

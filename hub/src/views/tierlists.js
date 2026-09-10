@@ -1,4 +1,4 @@
-import { fetchProjections } from '../api.js';
+import { fetchProjections, fetchComparison } from '../api.js';
 import { buildTiers } from '../tierlist.js';
 import { posBadge } from '../components/badges.js';
 import { playerAvatar } from '../components/playerAvatar.js';
@@ -16,8 +16,25 @@ export async function renderTierlists(root) {
   const cap = Number(params.get('cap') || 6);
   const view = (params.get('view') || 'week').toLowerCase(); // week | season
 
-  const data = await fetchProjections({});
+  const [data, compData] = await Promise.all([
+    fetchProjections({}), fetchComparison({ limit: 2000 }).catch(() => ({ players: [] })),
+  ]);
   let players = data.players || [];
+  // why merge (user-caught live bug, 2026-09-10): without this, opening a
+  // player card here fell to playerModal.js's $1/0 honest-empty floor
+  // instead of the real season-stat/auction data that already exists —
+  // same fix as projections.js (93b7b91/d910ac1).
+  const compById = new Map((compData.players || []).map(c => [String(c.player_id), c]));
+  for (const p of players) {
+    const c = compById.get(String(p.player_id));
+    if (c) {
+      p.market_season_stats = c.market_season_stats || null;
+      p.auction = c.auction;
+      p.gridironAuction = c.auction;
+      p.marketAuction = c.marketAuction;
+      p.vor = c.vor;
+    }
+  }
 
   // Season view: ROS = weekly × remaining weeks (week 10 → 9 games left incl. week 10 to 18)
   // Uses live 2026 schedule week from meta (preseason 0 → assume week 10 for demo)

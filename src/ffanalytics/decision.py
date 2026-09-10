@@ -633,29 +633,35 @@ def evaluate_trade(
 
     diff_points = a_ros - b_ros
     # Dollar conversion
-    if dollar_per_vor and dollar_per_vor != 0:
+    has_dollars = bool(dollar_per_vor and dollar_per_vor != 0)
+    if has_dollars:
         diff_dollars = diff_points * dollar_per_vor
         a_dollars = a_ros * dollar_per_vor
         b_dollars = b_ros * dollar_per_vor
     else:
-        # No market to derive dollars: fall back to points with $ threshold scaled
-        # Use points diff as proxy for dollars (so $5 threshold still meaningful for small sets)
-        # For fallback small-set, we already have weighted points; treat $ = points * 0.5 approx?
-        # To keep fair threshold working, use raw points diff for dollar logic when no dollar_per_vor.
+        # why label as points, not $ (user-caught live bug class, 2026-09-10):
+        # with no market data to derive a real $/VOR rate, this used to reuse
+        # raw VOR points as "dollars" — the recommendation string and the
+        # team_a/b_ros_dollars fields both claimed real dollar amounts that
+        # were actually unconverted points. Same fabrication-by-mislabeling
+        # class as the season-yards/auction-$ bugs fixed elsewhere this
+        # session, just here it's honest values with a dishonest unit label.
         diff_dollars = diff_points
         a_dollars = a_ros
         b_dollars = b_ros
 
-    # Fair threshold +/- $5
+    unit = "$" if has_dollars else ""
+    suffix = "" if has_dollars else " pts (no market data — raw VOR, not dollars)"
+    # Fair threshold +/- 5 (dollars when available, else 5 raw VOR points)
     if abs(diff_dollars) < 5:
         winner = "Fair"
-        recommendation = f"Trade is roughly fair (weighted VOR diff ${abs(diff_dollars):.1f} < $5)"
+        recommendation = f"Trade is roughly fair (weighted VOR diff {unit}{abs(diff_dollars):.1f}{suffix} < 5)"
     elif diff_dollars > 0:
         winner = "Team A"
-        recommendation = f"Team A wins by ${abs(diff_dollars):.1f} ({abs(diff_points):.1f} weighted VOR ROS)"
+        recommendation = f"Team A wins by {unit}{abs(diff_dollars):.1f}{suffix} ({abs(diff_points):.1f} weighted VOR ROS)"
     else:
         winner = "Team B"
-        recommendation = f"Team B wins by ${abs(diff_dollars):.1f} ({abs(diff_points):.1f} weighted VOR ROS)"
+        recommendation = f"Team B wins by {unit}{abs(diff_dollars):.1f}{suffix} ({abs(diff_points):.1f} weighted VOR ROS)"
 
     return {
         "winner": winner,
@@ -666,6 +672,7 @@ def evaluate_trade(
         "team_b_ros_vbd": round(b_ros, 2),
         "team_a_ros_dollars": round(a_dollars, 2),
         "team_b_ros_dollars": round(b_dollars, 2),
+        "ros_dollars_are_real_dollars": has_dollars,
         "dollar_per_vor": round(dollar_per_vor, 4) if dollar_per_vor else 0.0,
         "recommendation": recommendation,
     }

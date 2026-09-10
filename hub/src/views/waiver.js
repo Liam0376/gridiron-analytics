@@ -1,4 +1,4 @@
-import { fetchWaiver, fetchNews } from '../api.js';
+import { fetchWaiver, fetchNews, fetchComparison } from '../api.js';
 import { posBadge } from '../components/badges.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
@@ -7,8 +7,25 @@ import { escapeHtml, safeUrl } from '../lib/escape.js';
 import { openPlayerModal } from '../components/playerModal.js';
 
 export async function renderWaiver(root) {
-  const [waiver, news] = await Promise.all([fetchWaiver(), fetchNews()]);
+  const [waiver, news, compData] = await Promise.all([
+    fetchWaiver(), fetchNews(), fetchComparison({ limit: 2000 }).catch(() => ({ players: [] })),
+  ]);
   const recs = waiver.recommendations || [];
+  // why merge (user-caught live bug, 2026-09-10): without this, opening a
+  // player card here fell to playerModal.js's $1/0 honest-empty floor
+  // instead of the real season-stat/auction data that already exists —
+  // same fix as projections.js (93b7b91/d910ac1).
+  const compById = new Map((compData.players || []).map(c => [String(c.player_id), c]));
+  for (const r of recs) {
+    const c = compById.get(String(r.player_id));
+    if (c) {
+      r.market_season_stats = c.market_season_stats || null;
+      r.auction = c.auction;
+      r.gridironAuction = c.auction;
+      r.marketAuction = c.marketAuction;
+      r.vor = c.vor;
+    }
+  }
   const trending = news.trending_adds || [];
   const fpNews = news.fantasypros_news || [];
 
