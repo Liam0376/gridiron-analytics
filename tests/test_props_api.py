@@ -508,3 +508,62 @@ def test_legacy_bad_price_quarantines_row_not_board():
     finally:
         _restore(snap)
         conn.close()
+
+
+def test_props_board_returns_fair_lines_without_stored_book_line():
+    # why: /props/edges only shows rows for a *stored* book line — a game
+    # nobody typed a line for showed nothing on the board. /props/board
+    # browses every player on the given teams via model fair lines, no
+    # book line required (Mahomes/KC has zero stored prop_lines rows here).
+    conn, tmp = _fresh_db()
+    snap = _snap()
+    try:
+        _warm()
+        with patch("ffanalytics.db._get_conn", return_value=conn):
+            resp = client.get("/props/board", params={"teams": "KC", "season": SEASON, "week": WEEK})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["teams"] == ["KC"]
+        markets = {r["market"] for r in body["players"] if r["player_id"] == "2544"}
+        assert "passing_yards" in markets
+        assert "anytime_td" in markets
+        row = next(r for r in body["players"] if r["player_id"] == "2544" and r["market"] == "passing_yards")
+        assert row["fair_line"] == 270.0
+        assert row["sigma"] is not None
+        assert row["player_name"] == "Patrick Mahomes"
+        # WR is BUF, not KC — excluded from a KC-only board
+        assert all(r["player_id"] != "7500" for r in body["players"])
+    finally:
+        _restore(snap)
+        conn.close()
+
+
+def test_props_board_two_teams_and_empty_projection_excluded():
+    conn, tmp = _fresh_db()
+    snap = _snap()
+    try:
+        _warm()
+        with patch("ffanalytics.db._get_conn", return_value=conn):
+            resp = client.get("/props/board", params={"teams": "KC,BUF", "season": SEASON, "week": WEEK})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        ids = {r["player_id"] for r in body["players"]}
+        assert "2544" in ids  # KC
+        assert "7500" in ids  # BUF
+        assert "9999" not in ids  # NYJ rookie, is_empty_projection=True, wrong team anyway
+    finally:
+        _restore(snap)
+        conn.close()
+
+
+def test_props_board_503_without_cache():
+    conn, tmp = _fresh_db()
+    snap = _snap()
+    try:
+        _CACHE.update({"model_projections": None, "player_stats": None})
+        with patch("ffanalytics.db._get_conn", return_value=conn):
+            resp = client.get("/props/board", params={"teams": "KC"})
+        assert resp.status_code == 503
+    finally:
+        _restore(snap)
+        conn.close()

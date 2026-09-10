@@ -277,6 +277,44 @@ export async function fetchPropEdges(args = {}) {
   });
 }
 
+// Game predictions (spec 2026-09-10): market-consensus win%/predicted score
+// per scheduled game. Same model-direct/no-write pattern as props edges.
+export async function fetchGamePredictions(args = {}) {
+  return withCache('fetchGamePredictions', args, async () => {
+    const { week, season } = args;
+    const qs = new URLSearchParams();
+    if (week != null && week !== '') qs.set('week', String(week));
+    if (season != null && season !== '') qs.set('season', String(season));
+    const suffix = qs.toString() ? `?${qs}` : '';
+    try {
+      const data = await getJSON(modelUrl(`/games/predictions${suffix}`));
+      return { games: data.games || [], meta: { timestamp: data.timestamp, week: data.week, season: data.season } };
+    } catch (_) {
+      return { games: [], meta: { cold: true } };
+    }
+  });
+}
+
+// Per-game player props board (spec follow-up, 2026-09-10): every player on
+// the given teams' model fair lines, no stored book line required — browses
+// a game's props by clicking it, instead of only showing manually-entered
+// lines. Same model-direct/no-write pattern as the other props reads.
+export async function fetchPropsBoard(args = {}) {
+  return withCache('fetchPropsBoard', args, async () => {
+    const { teams, week, season } = args;
+    if (!teams) return { players: [], meta: {} };
+    const qs = new URLSearchParams({ teams });
+    if (week != null && week !== '') qs.set('week', String(week));
+    if (season != null && season !== '') qs.set('season', String(season));
+    try {
+      const data = await getJSON(modelUrl(`/props/board?${qs}`));
+      return { players: data.players || [], meta: { timestamp: data.timestamp, week: data.week, season: data.season } };
+    } catch (_) {
+      return { players: [], meta: { cold: true } };
+    }
+  });
+}
+
 export async function postPropLine(body) {
   // why direct model POST, not hub proxy: hub/server.py is mode=ro and
   // never writes (isolation contract). Precedent: triggerRefresh POSTs

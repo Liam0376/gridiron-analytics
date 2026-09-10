@@ -1356,6 +1356,58 @@ def _evaluate_prop_edge(
     }
 
 
+def _fair_board_rows(proj_row: dict, history_rows: list[dict], prior_rows: list[dict] | None) -> list[dict]:
+    """Fair-line rows for EVERY market at a player's position — no book line
+    required. This is what makes a game clickable into "browse this game's
+    props": /props/edges only ever returns rows for a *stored* book line
+    (manual-entry, $0-rule), so a game with no manually-entered lines showed
+    nothing. This reads straight off model_projections + history, same fair/
+    sigma primitives _evaluate_prop_edge uses, just without the book-line
+    comparison half (no p_model/edge/EV — there's no price to compare
+    against). Empty-history players are skipped (fair 0.0 would be noise,
+    same reasoning `_evaluate_prop_edge`'s is_empty branch documents)."""
+    if proj_row is None or bool(proj_row.get("is_empty_projection", False)):
+        return []
+    pos = (proj_row.get("position") or proj_row.get("position_group") or "").upper()
+    market_defs = props_math.PROP_MARKETS.get(pos, [])
+    if not market_defs:
+        return []
+    name = proj_row.get("player_display_name") or proj_row.get("player_name") or ""
+    team = proj_row.get("team") or proj_row.get("recent_team") or ""
+    rows = []
+    for market, source, model in market_defs:
+        if model == "poisson":
+            lam = 0.0
+            for src in source.split("+"):
+                try:
+                    lam += float(proj_row.get(src, 0) or 0)
+                except (TypeError, ValueError):
+                    pass
+            if lam != lam or abs(lam) == float("inf"):
+                continue
+            rows.append({
+                "player_id": str(proj_row.get("player_id", "")),
+                "player_name": name, "position": pos, "team": team,
+                "market": market, "fair_line": round(lam, 3), "sigma": None,
+                "p_yes": round(props_math.poisson_anytime_td(lam), 4),
+            })
+        else:
+            try:
+                fair = float(proj_row.get(source, 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            if fair != fair or abs(fair) == float("inf"):
+                continue
+            sigma = props_math.sigma_for_stat(history_rows, prior_rows, source)
+            rows.append({
+                "player_id": str(proj_row.get("player_id", "")),
+                "player_name": name, "position": pos, "team": team,
+                "market": market, "fair_line": round(fair, 2),
+                "sigma": round(sigma, 3),
+            })
+    return rows
+
+
 def _props_history_lookup(player_stats: list[dict]) -> dict[str, list[dict]]:
     grouped: dict[str, list[dict]] = {}
     for s in player_stats or []:
@@ -1538,6 +1590,47 @@ def get_prop_edges(
     return {
         "edges": edges,
         "count": len(edges),
+        "season": season,
+        "week": week,
+        "timestamp": cache["last_updated"],
+    }
+
+
+@app.get("/props/board")
+@app.get("/v1/props/board")
+def get_props_board(
+    teams: str = Query(..., min_length=1, max_length=16, pattern=r"^[A-Z]{2,4}(,[A-Z]{2,4})?$"),
+    week: int | None = Query(default=None, ge=1, le=18),
+    season: int | None = Query(default=None, ge=2000, le=2100),
+    league_id: str | None = _league_query(),
+) -> dict:
+    # why: /props/edges only shows rows for a *stored* book line (manual
+    # entry, $0 rule) — a game nobody has typed lines for showed nothing.
+    # This browses every rosterable player in the given game's two teams via
+    # model fair lines directly, no book line required (see _fair_board_rows).
+    cache = _cache_for(league_id)
+    if not cache.get("model_projections") or not cache.get("player_stats"):
+        raise HTTPException(
+            status_code=503, detail="Data not available. Run /refresh first to load data."
+        )
+    season = season if season is not None else (cache.get("season") or get_stats_season())
+    week = week if week is not None else (cache.get("week") or compute_nfl_week() or 1)
+    team_set = {t.strip().upper() for t in teams.split(",") if t.strip()}
+
+    hist_lookup = _props_history_lookup(cache.get("player_stats"))
+    rows: list[dict] = []
+    for proj_row in cache.get("model_projections") or []:
+        team = proj_row.get("team") or proj_row.get("recent_team") or ""
+        if team not in team_set:
+            continue
+        pid = str(proj_row.get("player_id", ""))
+        hist, prior = _split_history_prior(hist_lookup.get(pid, []), season, week)
+        rows.extend(_fair_board_rows(proj_row, hist, prior))
+
+    return {
+        "players": rows,
+        "count": len(rows),
+        "teams": sorted(team_set),
         "season": season,
         "week": week,
         "timestamp": cache["last_updated"],
