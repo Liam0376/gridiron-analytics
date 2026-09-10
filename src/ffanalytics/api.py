@@ -388,7 +388,16 @@ def _build_player_dict(
         pts = 0.0
     player: dict = {
         "player_id": player_id_str,
-        "player_name": base_stats.get("short_name", f"Player {player_id_str}"),
+        # why `or` chain, not `.get(key, default)`: same anti-pattern as
+        # position_group/position below — a row with short_name present but
+        # None (confirmed live: waiver recs showed raw player_id like
+        # "00-0038543" instead of a name) skipped the fallback entirely. The
+        # real name was sitting right there in player_display_name/
+        # player_name (nflverse gives short_name=None for some players but
+        # always fills the fuller name fields) — mirrors hub/server.py's
+        # own fallback chain for the same data.
+        "player_name": (base_stats.get("short_name") or base_stats.get("player_display_name")
+                         or base_stats.get("player_name") or f"Player {player_id_str}"),
         # why `or ... or "UNK"`, not `.get(key, "UNK")` (user-caught live
         # bug): dict.get's default only fires when the KEY is missing, not
         # when its value is explicitly None — a row with both

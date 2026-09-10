@@ -447,3 +447,49 @@ def test_hub_draft_endpoint_mocked(hub_server_url, monkeypatch):
         body = json.loads(r.read().decode("utf-8"))
     assert body["league_name"] == "Mock League"
     assert body["draft_type"] == "auction"
+
+
+def test_hub_waiver_falls_back_to_display_name_when_short_name_none(tmp_path):
+    # why (user-caught live bug, 2026-09-10): handle_waiver is hand-duplicated
+    # here (isolation: hub never imports ffanalytics/api.py), so the same
+    # short_name-is-None fallback fix in api.py's _build_player_dict never
+    # reached this code path. Confirmed live: waiver showed raw player_id
+    # ("00-0038543") instead of "Jaxon Smith-Njigba".
+    import sqlite3
+    from http.server import HTTPServer
+    db_path = tmp_path / "waiver.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE player_stats (season INT, week INT, data TEXT)")
+    conn.execute(
+        "INSERT INTO player_stats VALUES (2026, 1, ?)",
+        (json.dumps([{
+            "player_id": "00-0038543", "short_name": None,
+            "player_display_name": "Jaxon Smith-Njigba",
+            "position": "WR", "fantasy_points": 18.2,
+        }]),),
+    )
+    conn.execute("CREATE TABLE rosters (season INT, week INT, data TEXT)")
+    conn.execute("INSERT INTO rosters VALUES (2026, 1, '[]')")
+    conn.commit()
+    conn.close()
+    orig_db = hubserver.Handler.db_path
+    hubserver.Handler.db_path = db_path
+    port = get_free_port()
+    httpd = HTTPServer(('127.0.0.1', port), hubserver.Handler)
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    try:
+        url = f"http://127.0.0.1:{port}/hub-api/waiver"
+        with urllib.request.urlopen(url, timeout=10) as r:
+            assert r.status == 200
+            body = json.loads(r.read().decode("utf-8"))
+            match = [p for p in body["recommendations"] if str(p.get("player_id")) == "00-0038543"]
+            assert match, "fixture player missing from waiver recs"
+            assert match[0]["player_name"] == "Jaxon Smith-Njigba"
+    finally:
+        httpd.shutdown()
+        try:
+            httpd.server_close()
+        except Exception:
+            pass
+        hubserver.Handler.db_path = orig_db

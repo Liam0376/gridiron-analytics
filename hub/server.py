@@ -2126,7 +2126,15 @@ class Handler(BaseHTTPRequestHandler):
             pts = float(p.get("fantasy_points") or 0)
             if pts < 5:  # threshold to avoid noise
                 continue
-            recs.append({"player_id": pid, "player_name": p.get("short_name") or pid, "position": (p.get("position") or "UNK").upper(), "projected_points": round(pts,2), "improvement_over_roster": round(pts*0.8,2), "waiver_priority": 0, "replaces_player_name": None})
+            # why fuller fallback chain, not just short_name or pid
+            # (user-caught live bug, 2026-09-10): nflverse gives
+            # short_name=None for some real players while player_display_name
+            # is always filled — this hub-side handler is hand-duplicated
+            # (isolation: hub never imports ffanalytics/api.py), so the same
+            # fallback fix there never reached here. Confirmed live: waiver
+            # showed raw player_id ("00-0038543") instead of a real name.
+            player_name = p.get("short_name") or p.get("player_display_name") or p.get("player_name") or pid
+            recs.append({"player_id": pid, "player_name": player_name, "position": (p.get("position") or "UNK").upper(), "projected_points": round(pts,2), "improvement_over_roster": round(pts*0.8,2), "waiver_priority": 0, "replaces_player_name": None})
         recs.sort(key=lambda x: x["improvement_over_roster"], reverse=True)
         for i, r in enumerate(recs[:50]): r["waiver_priority"] = i+1
         self.json({"recommendations": recs[:50], "meta": {"source": "db:free_agents"}})

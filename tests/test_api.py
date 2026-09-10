@@ -241,3 +241,23 @@ def test_start_sit_survives_position_fields_present_but_none():
         assert resp.status_code == 200
     finally:
         _restore_cache(snap)
+
+
+def test_build_player_dict_falls_back_to_display_name_when_short_name_none():
+    # why (user-caught live bug, 2026-09-10): same .get(key, default)
+    # anti-pattern as position_group/position — nflverse gives
+    # short_name=None for some real players while player_display_name is
+    # always filled. Confirmed live: waiver recs showed raw player_id
+    # ("00-0038543") instead of "Jaxon Smith-Njigba" because .get("short_name",
+    # default) only applies default when the KEY is missing, not when
+    # present-but-None.
+    from ffanalytics.api import _build_player_dict
+    base_stats = {
+        "short_name": None,
+        "player_display_name": "Jaxon Smith-Njigba",
+        "position": "WR",
+        "position_group": "WR",
+        "projected_points": 12.0,
+    }
+    player = _build_player_dict("00-0038543", base_stats, {})
+    assert player["player_name"] == "Jaxon Smith-Njigba"
