@@ -48,7 +48,7 @@ REST/JSON, no SDK needed), `pytest`.
   `config.LEAGUE_ID: str` (loaded from env var `SLEEPER_LEAGUE_ID`, no
   default — fail loudly if unset), `config.get_feature_status(name: str) -> str`.
 
-- [ ] **Step 1: Write `pyproject.toml` and `requirements.txt`**
+- [x] **Step 1: Write `pyproject.toml` and `requirements.txt`**
 
 ```toml
 [project]
@@ -77,7 +77,7 @@ pydantic>=2.9
 pytest>=8.3
 ```
 
-- [ ] **Step 2: Write `.gitignore`**
+- [x] **Step 2: Write `.gitignore`**
 
 ```
 __pycache__/
@@ -89,7 +89,7 @@ data/*.db-shm
 .pytest_cache/
 ```
 
-- [ ] **Step 3: Write the failing test for config**
+- [x] **Step 3: Write the failing test for config**
 
 ```python
 # tests/test_config.py
@@ -113,14 +113,14 @@ def test_get_feature_status_known_and_unknown(monkeypatch):
         config_module.get_feature_status("not_a_real_feature")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_config.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'ffanalytics'`
 
-- [ ] **Step 3: Write `src/ffanalytics/__init__.py`** (empty file)
+- [x] **Step 3: Write `src/ffanalytics/__init__.py`** (empty file)
 
-- [ ] **Step 4: Write `src/ffanalytics/config.py`**
+- [x] **Step 4: Write `src/ffanalytics/config.py`**
 
 ```python
 import os
@@ -161,12 +161,12 @@ def get_feature_status(name: str) -> str:
     return FEATURES[name]["status"]
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `pytest tests/test_config.py -v`
 Expected: PASS (2 passed)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pyproject.toml requirements.txt .gitignore src/ffanalytics/__init__.py src/ffanalytics/config.py tests/test_config.py
@@ -187,7 +187,7 @@ git commit -m "feat: project scaffold + config module with feature discipline"
 - Produces: `db.get_connection(path: Path | None = None) -> sqlite3.Connection`
   (WAL mode enabled, `row_factory = sqlite3.Row`), `db.init_schema(conn) -> None`
 
-- [ ] **Step 1: Write `src/ffanalytics/schema.sql`**
+- [x] **Step 1: Write `src/ffanalytics/schema.sql`**
 
 ```sql
 CREATE TABLE IF NOT EXISTS team_ratings (
@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS shadow_recommendations (
 );
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # tests/test_db.py
@@ -253,12 +253,12 @@ def test_get_connection_uses_wal_mode():
         conn.close()
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `pytest tests/test_db.py -v`
 Expected: FAIL — `ModuleNotFoundError` / `AttributeError: module 'ffanalytics.db' has no attribute 'get_connection'`
 
-- [ ] **Step 4: Write `src/ffanalytics/db.py`**
+- [x] **Step 4: Write `src/ffanalytics/db.py`**
 
 ```python
 import sqlite3
@@ -281,12 +281,12 @@ def init_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `pytest tests/test_db.py -v`
 Expected: PASS (2 passed)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ffanalytics/db.py src/ffanalytics/schema.sql tests/test_db.py
@@ -311,7 +311,7 @@ git commit -m "feat: SQLite schema + WAL connection helper"
   `sleeper.get_rosters(league_id: str, session=None) -> list[dict]`,
   `sleeper.get_injury_statuses(session=None) -> dict[str, str | None]` (player_id → status)
 
-- [ ] **Step 1: Write fixture files**
+- [x] **Step 1: Write fixture files**
 
 ```json
 // tests/fixtures/sleeper_league.json
@@ -329,7 +329,7 @@ git commit -m "feat: SQLite schema + WAL connection helper"
 ]
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # tests/adapters/test_sleeper.py
@@ -376,14 +376,14 @@ def test_get_injury_statuses_filters_to_nonnull():
     assert result == {"4046": "Questionable", "5849": None}
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `pytest tests/adapters/test_sleeper.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'ffanalytics.adapters'`
 
-- [ ] **Step 4: Write `src/ffanalytics/adapters/__init__.py`** (empty file)
+- [x] **Step 4: Write `src/ffanalytics/adapters/__init__.py`** (empty file)
 
-- [ ] **Step 5: Write `src/ffanalytics/adapters/sleeper.py`**
+- [x] **Step 5: Write `src/ffanalytics/adapters/sleeper.py`**
 
 ```python
 import requests
@@ -420,12 +420,12 @@ def get_injury_statuses(session=None) -> dict[str, str | None]:
     return {pid: p.get("injury_status") for pid, p in players.items()}
 ```
 
-- [ ] **Step 6: Run test to verify it passes**
+- [x] **Step 6: Run test to verify it passes**
 
 Run: `pytest tests/adapters/test_sleeper.py -v`
 Expected: PASS (3 passed)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ffanalytics/adapters/__init__.py src/ffanalytics/adapters/sleeper.py tests/adapters/test_sleeper.py tests/fixtures/sleeper_league.json tests/fixtures/sleeper_rosters.json
@@ -447,7 +447,7 @@ git commit -m "feat: Sleeper API adapter (league settings, rosters, injuries)"
   (plain dicts, no Polars object survives this boundary),
   `nflverse.get_injury_history(season: int, session_module=None) -> list[dict]`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/adapters/test_nflverse.py
@@ -482,12 +482,12 @@ def test_get_injury_history_converts_to_plain_dicts():
     assert result == [{"player_id": "4046", "report_status": "Questionable"}]
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/adapters/test_nflverse.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'ffanalytics.adapters.nflverse'`
 
-- [ ] **Step 3: Write `src/ffanalytics/adapters/nflverse.py`**
+- [x] **Step 3: Write `src/ffanalytics/adapters/nflverse.py`**
 
 ```python
 """Wraps nflreadpy. This is the ONLY file in the project allowed to import
@@ -512,12 +512,12 @@ def get_injury_history(season: int, nfl_module=None) -> list[dict]:
     return frame.to_dicts()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/adapters/test_nflverse.py -v`
 Expected: PASS (2 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ffanalytics/adapters/nflverse.py tests/adapters/test_nflverse.py
@@ -538,7 +538,7 @@ git commit -m "feat: nflreadpy adapter, isolates Polars behind plain-dict bounda
   the forecast hour closest to `game_time_iso`, or `None` if the API call
   fails — soft-fail per spec, never raises)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/adapters/test_weather.py
@@ -576,12 +576,12 @@ def test_get_forecast_returns_none_on_failure():
     assert result is None
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/adapters/test_weather.py -v`
 Expected: FAIL — `ModuleNotFoundError`
 
-- [ ] **Step 3: Write `src/ffanalytics/adapters/weather.py`**
+- [x] **Step 3: Write `src/ffanalytics/adapters/weather.py`**
 
 ```python
 """Open-Meteo adapter. Soft-fail by design (spec: weather is a soft-fail
@@ -630,12 +630,12 @@ Note: `session.get` in the test is a `Mock` that doesn't take `params=` into
 account for matching — the test only checks the return value, which is fine
 since the mock ignores kwargs and returns the fixed payload regardless.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/adapters/test_weather.py -v`
 Expected: PASS (2 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ffanalytics/adapters/weather.py tests/adapters/test_weather.py
@@ -659,7 +659,7 @@ git commit -m "feat: Open-Meteo weather adapter, soft-fails to None"
   game and grows over `weeks_since_last_game` via `decay_for_inactivity`),
   `rating.decay_for_inactivity(current: Rating, weeks_since_last_game: int) -> Rating`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_rating.py
@@ -694,12 +694,12 @@ def test_decay_never_exceeds_default_deviation():
     assert decayed.deviation <= DEFAULT_RATING.deviation
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_rating.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'ffanalytics.rating'`
 
-- [ ] **Step 3: Write `src/ffanalytics/rating.py`**
+- [x] **Step 3: Write `src/ffanalytics/rating.py`**
 
 ```python
 """Elo/Glicko-style rating with explicit uncertainty (deviation) and
@@ -741,12 +741,12 @@ def decay_for_inactivity(current: Rating, weeks_since_last_game: int) -> Rating:
     return Rating(current.value, min(_MAX_DEVIATION, grown))
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_rating.py -v`
 Expected: PASS (6 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ffanalytics/rating.py tests/test_rating.py
@@ -767,7 +767,7 @@ git commit -m "feat: Glicko-2-style rating engine w/ inactivity decay"
   coverage, e.g. `alpha=0.2` → 80% coverage, matching the design spec's
   example), `conformal.interval(point_estimate: float, residuals: list[float], alpha: float = 0.2) -> tuple[float, float]`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_conformal.py
@@ -793,12 +793,12 @@ def test_interval_is_symmetric_around_point_estimate():
     assert hi == pytest.approx(14.2 + width)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_conformal.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'ffanalytics.conformal'`
 
-- [ ] **Step 3: Write `src/ffanalytics/conformal.py`**
+- [x] **Step 3: Write `src/ffanalytics/conformal.py`**
 
 ```python
 """Split conformal prediction for calibrated confidence intervals —
@@ -825,12 +825,12 @@ def interval(point_estimate: float, residuals: list[float], alpha: float = 0.2) 
     return (point_estimate - width, point_estimate + width)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_conformal.py -v`
 Expected: PASS (4 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ffanalytics/conformal.py tests/test_conformal.py
@@ -855,7 +855,7 @@ git commit -m "feat: split conformal prediction for calibrated projection interv
   starting placeholder value, documented as revisit-once-real-data-exists,
   mirroring `MIN_MUESTRA_SHADOW` from the reference repo)
 
-- [ ] **Step 1: Add `MIN_SHADOW_SAMPLES` to config**
+- [x] **Step 1: Add `MIN_SHADOW_SAMPLES` to config**
 
 In `src/ffanalytics/config.py`, add:
 
@@ -867,7 +867,7 @@ In `src/ffanalytics/config.py`, add:
 MIN_SHADOW_SAMPLES = 20
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # tests/test_shadow.py
@@ -911,12 +911,12 @@ def test_record_outcome_updates_row():
     conn.close()
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `pytest tests/test_shadow.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'ffanalytics.shadow'`
 
-- [ ] **Step 4: Write `src/ffanalytics/shadow.py`**
+- [x] **Step 4: Write `src/ffanalytics/shadow.py`**
 
 ```python
 """Shadow-mode logging — every recommendation the decision layer produces
@@ -962,12 +962,12 @@ def count_logged(conn: sqlite3.Connection, kind: str) -> int:
     return row["n"]
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `pytest tests/test_shadow.py -v`
 Expected: PASS (2 passed)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ffanalytics/config.py src/ffanalytics/shadow.py tests/test_shadow.py
@@ -989,7 +989,7 @@ git commit -m "feat: shadow-mode recommendation logger"
   it to real adapters via a `run_refresh` callable the route delegates to,
   so this task's test doesn't need network mocking)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_api.py
@@ -1009,12 +1009,12 @@ def test_refresh_endpoint_accepted():
     assert resp.json()["status"] == "accepted"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_api.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'ffanalytics.api'`
 
-- [ ] **Step 3: Write `src/ffanalytics/api.py`**
+- [x] **Step 3: Write `src/ffanalytics/api.py`**
 
 ```python
 """FastAPI app, run locally only (uvicorn on localhost — no public
@@ -1041,12 +1041,12 @@ def refresh() -> dict:
     return {"status": "accepted"}
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_api.py -v`
 Expected: PASS (2 passed)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ffanalytics/api.py tests/test_api.py
@@ -1072,7 +1072,7 @@ git commit -m "feat: FastAPI app skeleton with health + refresh stub"
   successful cache" rule, since a raised exception here would abort the
   whole refresh instead of doing the sources that DID succeed)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_refresh.py
@@ -1155,12 +1155,12 @@ def test_run_refresh_nflverse_failure_logs_and_continues():
     conn.close()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_refresh.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'ffanalytics.refresh'`
 
-- [ ] **Step 3: Write `src/ffanalytics/refresh.py`**
+- [x] **Step 3: Write `src/ffanalytics/refresh.py`**
 
 ```python
 """Refresh job: pulls from each adapter independently, logs per-source
@@ -1211,12 +1211,12 @@ def run_refresh(
     return result
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_refresh.py -v`
 Expected: PASS (2 passed)
 
-- [ ] **Step 5: Wire `POST /refresh` to `run_refresh`**
+- [x] **Step 5: Wire `POST /refresh` to `run_refresh`**
 
 In `src/ffanalytics/api.py`, replace the refresh stub:
 
@@ -1234,13 +1234,13 @@ def refresh() -> dict:
     return {"status": "accepted", "sources": result}
 ```
 
-- [ ] **Step 6: Run full test suite to confirm nothing broke**
+- [x] **Step 6: Run full test suite to confirm nothing broke**
 
 Run: `pytest -v`
 Expected: all tests pass (existing `/refresh` test in `tests/test_api.py`
 still checks only `status == "accepted"`, which still holds)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ffanalytics/refresh.py src/ffanalytics/api.py tests/test_refresh.py
@@ -1258,7 +1258,7 @@ git commit -m "feat: wire refresh job to adapters with per-source failure isolat
 
 **Interfaces:** none (operational glue, no importable code)
 
-- [ ] **Step 1: Write `scripts/refresh_job.sh`**
+- [x] **Step 1: Write `scripts/refresh_job.sh`**
 
 ```bash
 #!/bin/bash
@@ -1272,11 +1272,11 @@ curl -sf -X POST http://localhost:8000/refresh || {
 }
 ```
 
-- [ ] **Step 2: `chmod +x scripts/refresh_job.sh`**
+- [x] **Step 2: `chmod +x scripts/refresh_job.sh`**
 
 Run: `chmod +x scripts/refresh_job.sh`
 
-- [ ] **Step 3: Write `scripts/com.ffanalytics.refresh.plist`**
+- [x] **Step 3: Write `scripts/com.ffanalytics.refresh.plist`**
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -1305,7 +1305,7 @@ Run: `chmod +x scripts/refresh_job.sh`
 </plist>
 ```
 
-- [ ] **Step 4: Write `docs/RUNBOOK.md`**
+- [x] **Step 4: Write `docs/RUNBOOK.md`**
 
 ```markdown
 # Runbook
@@ -1333,7 +1333,7 @@ If the laptop was asleep/closed at 7am and the launchd job didn't fire:
 `launchctl unload ~/Library/LaunchAgents/com.ffanalytics.refresh.plist`
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/refresh_job.sh scripts/com.ffanalytics.refresh.plist docs/RUNBOOK.md
