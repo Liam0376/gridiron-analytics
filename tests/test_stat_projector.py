@@ -188,6 +188,33 @@ def test_same_season_week1_uses_no_future_history():
     assert projs == []
 
 
+def test_same_season_week1_falls_back_to_prior_season_stats_param():
+    # why (user-caught live bug, 2026-09-10): once MAX_STATS_SEASON tracks
+    # the live season (so /props/board's "actual" stat isn't last year's
+    # box score), stats_season == schedule season at week 1 — cross_season
+    # is False, filtered_prior is empty (no same-season history exists
+    # yet), and the OLD code produced zero projections league-wide. This is
+    # the real production shape: current == season_stats param (empty at
+    # week 1) AND a genuine prior_season_stats param is supplied — must
+    # still project, using the prior season as history, not silently empty.
+    current = []  # no same-season rows yet — this IS week 1
+    prior = [
+        {"player_id": "QB1", "position": "QB", "team": "KC", "week": w,
+         "season": 2025, "season_type": "REG",
+         "passing_yards": 220.0, "passing_tds": 1, "passing_interceptions": 1,
+         "rushing_yards": 10.0, "rushing_tds": 0, "fumbles_lost_total": 0}
+        for w in range(1, 18)
+    ]
+    schedule = [{"week": 1, "game_type": "REG", "season": 2026,
+                 "home_team": "KC", "away_team": "BUF"}]
+    projs = build_weekly_projections(
+        current, schedule, target_week=1, scoring_settings={},
+        prior_season_stats=prior,
+    )
+    assert len(projs) == 1
+    assert projs[0]["passing_yards"] == pytest.approx(220.0)
+
+
 def test_preseason_week1_uses_full_prior_season():
     # Production preseason shape: prior-season stats + new-season schedule
     # (disjoint seasons) → full prior REG as history (documented baseline).

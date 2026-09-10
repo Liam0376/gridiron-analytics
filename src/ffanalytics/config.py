@@ -112,10 +112,21 @@ def get_current_nfl_season() -> int:
 # why: in preseason (e.g. Sep 2026 before Week 1 kicks off) live nflreadpy has
 # no 2026 weekly rows yet, so unclamped stats_season=2026 makes refresh log
 # nflverse/ratings failures by design (2/5 red). Clamping to the last complete
-# season keeps refresh green; bump to 2026 once Week 1 stats publish.
+# season keeps refresh green until real rows exist.
 # tested and REJECTED: probing nflreadpy at import to auto-detect max season —
 # adds network I/O to config import (breaks offline unit tests + cold start).
-MAX_STATS_SEASON = 2025
+#
+# Bumped 2025->2026 (2026-09-10, user-caught live bug): Week 1 published —
+# verified live via nflreadpy.load_player_stats(seasons=[2026]) returning
+# real box scores (Rhamondre Stevenson 51 rush yds/44 rec yds/5 rec, Drake
+# Maye 178 pass/47 rush, Jaxon Smith-Njigba 122 rec/8 rec — real 2026_01_NE_SEA
+# game). Left clamped at 2025, /props/board's "actual" stat (added this
+# session) was silently serving real 2025 week-1 box scores for these same
+# players — a different, year-old game — mislabeled as this week's actual
+# result. This constant needs bumping again every September once the new
+# season's Week 1 actually publishes (no auto-detection, see rejection above
+# — this is a known recurring manual step, not a one-time fix).
+MAX_STATS_SEASON = 2026
 
 
 def get_stats_season() -> int:

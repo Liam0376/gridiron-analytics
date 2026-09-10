@@ -516,9 +516,26 @@ def build_weekly_projections(
         # why fail-closed (no `else reg` fallback): when seasons match, an
         # empty filter means "no history before target" (e.g. same-season
         # target_week=1) — falling back to full reg would silently use weeks
-        # >= target as history (future leak). Preseason is unaffected: prior
-        # seasons arrive via cross_season or prior_season_stats, never here.
-        prior_data = filtered_prior
+        # >= target as history (future leak).
+        #
+        # why prior_season_stats fallback here too (user-caught live bug,
+        # 2026-09-10): this used to be unreachable — stats_season stayed
+        # clamped a year behind the schedule season until real games
+        # published, so week 1 always hit the cross_season branch above for
+        # free. Once stats_season caught up to a live season (so /props/
+        # board's "actual" stat stops being last year's box score), week 1
+        # (or any week with zero same-season history yet — a fresh season's
+        # early weeks) lands here with `filtered_prior` empty and NO prior
+        # season data to fall back to, producing zero projections
+        # league-wide (silent, no crash — just nothing). Same shape as the
+        # cross_season branch: treat the real prior season as this week's
+        # history when there's no same-season history yet.
+        if not filtered_prior and prior_season_stats:
+            prior_data = [
+                s for s in prior_season_stats if s.get("season_type", "REG") == "REG"
+            ]
+        else:
+            prior_data = filtered_prior
 
     game_ctx = build_game_context(schedule)
 

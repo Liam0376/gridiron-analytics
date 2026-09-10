@@ -354,11 +354,30 @@ def run_refresh_with_data(
                 data["schedule"] = sched_adapter.get_schedule(season, week=None, nfl_module=nfl_module)
             except Exception as _sched_exc:
                 logger.warning(f"refresh: full-season schedule fetch failed: {_sched_exc}")
+            # why a real prior-season fetch, not reuse of `player_stats`
+            # (user-caught live bug, 2026-09-10): before MAX_STATS_SEASON was
+            # bumped to match the live season, `player_stats` (stats_season)
+            # WAS last year's data — build_weekly_projections's cross_season
+            # branch used it as the prior-season baseline for free. Once
+            # stats_season caught up to the real season (so /props/board's
+            # "actual" stat stopped being last year's box score), that free
+            # ride disappeared: cross_season went False, the week<target_week
+            # filter correctly finds zero same-season history at week 1, and
+            # projections silently went empty league-wide (fail-closed, no
+            # crash — just nothing). Fetch season-1 explicitly so early-season
+            # projections still have a real prior-season fallback all season,
+            # independent of whatever `player_stats` happens to represent.
+            try:
+                prior_season_stats = nflverse.get_weekly_player_stats(season - 1, nfl_module=nfl_module)
+            except Exception as _prior_exc:
+                logger.warning(f"refresh: prior-season stats fetch failed: {_prior_exc}")
+                prior_season_stats = []
             projs = build_weekly_projections(
                 player_stats,
                 sched,
                 target_week=target_wk,
-                scoring_settings=data.get("league_settings", {}).get("scoring_settings", {})
+                scoring_settings=data.get("league_settings", {}).get("scoring_settings", {}),
+                prior_season_stats=prior_season_stats,
             )
             scoring = data.get("league_settings", {}).get("scoring_settings", {})
             proj_map = {}
