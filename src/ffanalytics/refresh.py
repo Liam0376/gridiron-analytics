@@ -428,6 +428,12 @@ def run_refresh_with_data(
             except Exception as _prior_exc:
                 logger.warning(f"refresh: prior-season stats fetch failed: {_prior_exc}")
                 prior_season_stats = []
+            # why cached (not just passed through): /props/board projects
+            # fair lines per requested week on demand; early weeks need the
+            # prior-season blend and the board can't refetch per click.
+            # ~19k rows, same lifetime as player_stats (memory is local-only
+            # cheap; truthy-only overwrite in api.py keeps last good).
+            data["prior_season_stats"] = prior_season_stats
             projs = build_weekly_projections(
                 player_stats,
                 sched,

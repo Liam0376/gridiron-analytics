@@ -664,12 +664,18 @@ def _do_refresh_job(season: int, stats_season: int, ran_at_iso: str, week: int, 
         if data.get("player_stats"):
             new_cache["player_stats"] = data["player_stats"]
         if data.get("model_projections"):
-            # why cached: props edges read fair stat lines + is_empty flags
-            # from the real pipeline output (with Vegas/weather ctx) instead
-            # of rebuilding without ctx. Small (~500 rows), same lifetime as
-            # player_stats, same truthy-only overwrite (failed refresh keeps
-            # last good).
+            # why cached: roster resolution (_create_player_lookup) prefers
+            # model rows so a full roster resolves even for players with no
+            # current-season box score yet. Small (~500 rows), same lifetime
+            # as player_stats, same truthy-only overwrite (failed refresh
+            # keeps last good). (/props/board projects per-week itself and
+            # no longer reads this — see its note.)
             new_cache["model_projections"] = data["model_projections"]
+        if data.get("prior_season_stats"):
+            # why cached: /props/board projects per-week fair lines on
+            # demand (single-target cache can't serve all 18 weeks); see
+            # refresh.py note. Same lifetime + truthy-only overwrite.
+            new_cache["prior_season_stats"] = data["prior_season_stats"]
         if data.get("sleeper_xwalk"):
             # why cached: roster joins need it per request without DB reads.
             new_cache["sleeper_xwalk"] = data["sleeper_xwalk"]
@@ -1163,8 +1169,9 @@ def _fair_board_rows(
     GET /props/edges, _evaluate_prop_edge — removed 2026-09-10, no odds
     feed exists and no UI reached them once the edge board was dropped
     per user request) only ever returned rows for a *stored* book line, so
-    a game with no manually-entered lines showed nothing. This reads
-    straight off model_projections + history directly — same fair/sigma
+    a game with no manually-entered lines showed nothing. This reads a
+    per-(player, week) projection (computed on demand by the caller with
+    true OOS week filtering) plus history directly — same fair/sigma
     math the old edge system used, just without the book-line comparison
     half (no p_model/edge/EV — there's no price to compare against, by
     design now, not by omission). Empty-history players are skipped (fair
@@ -1306,8 +1313,14 @@ def get_props_board(
     # model fair lines directly, no book line required (see _fair_board_rows;
     # the manual book-line/edge system this replaced is gone — no free
     # player-prop odds feed exists, see PropLineIn's removal note in git log).
+    # why compute-per-week (user-caught live bug, 2026-09-10): the cache
+    # holds model_projections for ONE target week, so every game modal
+    # showed identical lines regardless of week (Purdy 240.65 week 1 and
+    # week 5). Fair lines are now projected on demand per (player, week)
+    # from history + prior pool with true OOS week filtering — same math
+    # as refresh, scoped to two teams (milliseconds per modal open).
     cache = _cache_for(league_id)
-    if not cache.get("model_projections") or not cache.get("player_stats"):
+    if not cache.get("player_stats"):
         raise HTTPException(
             status_code=503, detail="Data not available. Run /refresh first to load data."
         )
@@ -1334,16 +1347,64 @@ def get_props_board(
                 actual_by_pid[pid] = s
                 break
     rows: list[dict] = []
-    for proj_row in cache.get("model_projections") or []:
-        team = proj_row.get("team") or proj_row.get("recent_team") or ""
+    from ffanalytics.stat_projector import project_player_stats, build_game_context
+    try:
+        game_ctx = build_game_context(cache.get("schedule") or [])
+    except Exception:
+        logger.exception("api: /props/board game context failed, using defaults")
+        game_ctx = {}
+    prior_pool: dict[str, list] = {}
+    for s in cache.get("prior_season_stats") or []:
+        if (s.get("season_type") or "REG") != "REG":
+            continue
+        ppid = str(s.get("player_id") or s.get("id") or "")
+        if ppid:
+            prior_pool.setdefault(ppid, []).append(s)
+    # why universe-from-pools (not model_projections): the cache carries one
+    # target week's rows; per-week boards need per-week histories. Union of
+    # current-season + prior-season pids for the two teams; team codes
+    # canonicalized (Sleeper LAR vs schedule LA dropped the Rams once).
+    for pid in list(hist_lookup) + [k for k in prior_pool if k not in hist_lookup]:
+        player_rows = hist_lookup.get(pid, [])
+        squad_rows = [r for r in player_rows if (r.get("season_type") or "REG") == "REG"]
+        if not squad_rows and pid not in prior_pool:
+            continue
+        ref = max(squad_rows or prior_pool.get(pid, []),
+                  key=lambda r: (r.get("season") or 0, r.get("week") or 0),
+                  default=None) or {}
+        team = config.canonical_team(ref.get("team") or ref.get("recent_team") or "")
         if team not in team_set:
             continue
-        pid = str(proj_row.get("player_id", ""))
-        hist, prior = _split_history_prior(hist_lookup.get(pid, []), season, week)
+        pos = (ref.get("position") or ref.get("position_group") or "UNK").upper()
+        hist = sorted(
+            (r for r in squad_rows if (r.get("week") or 0) < week),
+            key=lambda r: r.get("week") or 0,
+        )
+        prior_rows = prior_pool.get(pid, [])
+        if not hist and not prior_rows:
+            continue
         sleeper_id = gsis_to_sleeper.get(pid)
         injury_status = injury_by_sleeper.get(sleeper_id) if sleeper_id else None
+        ctx = game_ctx.get((team, week)) or {}
+        proj_row = project_player_stats(
+            player_history=hist,
+            position=pos,
+            prior_season_stats=prior_rows or None,
+            implied_total=ctx.get("implied_total", 0) or 0,
+            wind_mph=ctx.get("wind", 0) or 0,
+            temp_f=ctx.get("temp"),
+            is_out=_is_unavailable(injury_status),
+        )
+        proj_row["player_id"] = pid
+        proj_row["player_display_name"] = (
+            ref.get("player_display_name") or ref.get("short_name") or ref.get("player_name") or pid
+        )
+        proj_row["position"] = pos
+        proj_row["team"] = team
+        proj_row["recent_team"] = team
+        hist_sig, prior_sig = _split_history_prior(hist_lookup.get(pid, []), season, week)
         rows.extend(_fair_board_rows(
-            proj_row, hist, prior, sleeper_id=sleeper_id,
+            proj_row, hist_sig, prior_sig, sleeper_id=sleeper_id,
             injury_status=injury_status, actual_row=actual_by_pid.get(pid),
         ))
 
