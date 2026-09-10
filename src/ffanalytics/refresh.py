@@ -319,6 +319,14 @@ def run_refresh_with_data(
             # Preseason (week=0): fall back to week 1 so projections don't target mid-season bye weeks.
             target_wk = max(1, current_wk)
             sched = sched_adapter.get_schedule(season, week=target_wk, nfl_module=nfl_module)
+            # why whole-season, not just target_wk: /games/predictions serves
+            # any requested week from cache (api.py's no-network-per-request
+            # rule) — one full-season fetch here covers every week, refetched
+            # each refresh so upcoming games' lines update as books move them.
+            try:
+                data["schedule"] = sched_adapter.get_schedule(season, week=None, nfl_module=nfl_module)
+            except Exception as _sched_exc:
+                logger.warning(f"refresh: full-season schedule fetch failed: {_sched_exc}")
             projs = build_weekly_projections(
                 player_stats,
                 sched,
@@ -773,6 +781,19 @@ def run_refresh_with_data(
                 logger.info(f"Resolved {prop_resolved} pending prop shadow outcomes.")
         except Exception as shadow_exc:
             logger.warning(f"Prop shadow outcome resolution failed: {shadow_exc}")
+
+        # Game prediction shadow resolution (additive, same shape — resolves
+        # kind='game:<season>:<week>' against real final scores from the
+        # schedule feed, not player_stats).
+        try:
+            from ffanalytics.shadow import evaluate_unresolved_game_predictions
+            game_resolved = evaluate_unresolved_game_predictions(
+                conn, data.get("schedule", [])
+            )
+            if game_resolved > 0:
+                logger.info(f"Resolved {game_resolved} pending game prediction outcomes.")
+        except Exception as shadow_exc:
+            logger.warning(f"Game prediction shadow outcome resolution failed: {shadow_exc}")
 
         if data["player_stats"]:
             try:

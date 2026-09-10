@@ -31,6 +31,7 @@ from ffanalytics.decision import (
 )
 from ffanalytics import shadow
 from ffanalytics import props as props_math
+from ffanalytics import game_predictions
 
 logger = logging.getLogger("ffanalytics.api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] rid=%(rid)s %(message)s")
@@ -212,6 +213,7 @@ _CACHE: dict = {
     "matchups": None,         # list of matchup dicts from Sleeper
     "trending": None,         # trending waiver adds
     "detailed_injuries": None, # practice participation status
+    "schedule": None,         # full-season NFL schedule rows w/ market lines
     "last_updated": None,     # timestamp of last cache update
     "season": None,           # NFL season year
     "week": None,             # approximate NFL week (1-18)
@@ -235,6 +237,7 @@ def _blank_cache() -> dict:
         "matchups": None,
         "trending": None,
         "detailed_injuries": None,
+        "schedule": None,
         "last_updated": None,
         "season": None,
         "week": None,
@@ -634,6 +637,8 @@ def _do_refresh_job(season: int, stats_season: int, ran_at_iso: str, week: int, 
             new_cache["trending"] = data["trending"]
         if data.get("detailed_injuries"):
             new_cache["detailed_injuries"] = data["detailed_injuries"]
+        if data.get("schedule"):
+            new_cache["schedule"] = data["schedule"]
         new_cache["last_updated"] = datetime.datetime.now().isoformat()
         if season is not None:
             new_cache["season"] = season
@@ -1533,6 +1538,49 @@ def get_prop_edges(
     return {
         "edges": edges,
         "count": len(edges),
+        "season": season,
+        "week": week,
+        "timestamp": cache["last_updated"],
+    }
+
+
+@app.get("/games/predictions")
+@app.get("/v1/games/predictions")
+def get_game_predictions(
+    week: int | None = Query(default=None, ge=1, le=18),
+    season: int | None = Query(default=None, ge=2000, le=2100),
+    league_id: str | None = _league_query(),
+) -> dict:
+    # why market_consensus, never "our prediction": these are real Vegas
+    # lines (spread/total/moneyline) off the schedule feed, devigged —
+    # game_predictions.py's docstring/spec explain the source. Mislabeling
+    # this as a model call would misrepresent where the number comes from.
+    cache = _cache_for(league_id)
+    schedule = cache.get("schedule")
+    if not schedule:
+        raise HTTPException(
+            status_code=503, detail="Data not available. Run /refresh first to load data."
+        )
+    season = season if season is not None else (cache.get("season") or get_stats_season())
+    week = week if week is not None else (cache.get("week") or compute_nfl_week() or 1)
+
+    games = [g for g in schedule if g.get("season") == season and g.get("week") == week]
+    predictions = [p for p in (game_predictions.game_prediction(g) for g in games) if p is not None]
+
+    with _league_conn(league_id) as conn:
+        if conn is not None:
+            for pred in predictions:
+                try:
+                    shadow.log_game_prediction_once(
+                        conn, season, week, pred["game_id"], pred,
+                        datetime.datetime.now().isoformat(),
+                    )
+                except Exception:
+                    logger.exception("api: game prediction shadow log failed")
+
+    return {
+        "games": predictions,
+        "count": len(predictions),
         "season": season,
         "week": week,
         "timestamp": cache["last_updated"],

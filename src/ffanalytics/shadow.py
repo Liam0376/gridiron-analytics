@@ -301,3 +301,89 @@ def evaluate_unresolved_prop_recommendations(
         )
         resolved += 1
     return resolved
+
+
+def log_game_prediction_once(
+    conn: sqlite3.Connection,
+    season: int,
+    week: int,
+    game_id: str,
+    recommendation: dict,
+    logged_at_iso: str,
+) -> bool:
+    """Idempotent game-prediction insert, kind='game:<season>:<week>'.
+
+    Same dedupe discipline as log_prop_edge_once (GETs poll; a bare INSERT
+    would duplicate every view). game_id (e.g. "2026_01_SF_LA") is the
+    player_id-column join key — games have no player_id, and the column is
+    nullable, but a real per-game key is what evaluate_unresolved_game_
+    predictions needs to find the right schedule row later.
+    """
+    kind = f"game:{season}:{week}"
+    blob = json.dumps(recommendation, sort_keys=True)
+    hit = conn.execute(
+        "SELECT id FROM shadow_recommendations WHERE kind = ? AND season = ? "
+        "AND week = ? AND player_id = ? AND recommendation = ? LIMIT 1",
+        (kind, season, week, game_id, blob),
+    ).fetchone()
+    if hit is not None:
+        return False
+    conn.execute(
+        """INSERT INTO shadow_recommendations
+           (kind, season, week, player_id, recommendation, logged_at, actual_outcome)
+           VALUES (?, ?, ?, ?, ?, ?, NULL)""",
+        (kind, season, week, game_id, blob, logged_at_iso),
+    )
+    conn.commit()
+    return True
+
+
+def evaluate_unresolved_game_predictions(
+    conn: sqlite3.Connection,
+    schedule_rows: list[dict],
+) -> int:
+    """Resolve kind='game:<season>:<week>' rows against real final scores.
+
+    schedule_rows come straight from adapters/schedule.get_schedule() (the
+    same feed the live endpoint reads) — game_id -> (home_score, away_score).
+    Outcome records {"actual_home_score", "actual_away_score",
+    "win_call_correct", "week"}. Unfinished games (no score yet) leave the
+    row pending — never force an outcome.
+    """
+    if not schedule_rows:
+        return 0
+
+    rows = conn.execute(
+        "SELECT id, week, player_id, recommendation FROM shadow_recommendations "
+        "WHERE actual_outcome IS NULL AND player_id IS NOT NULL AND kind LIKE 'game:%'"
+    ).fetchall()
+    if not rows:
+        return 0
+
+    by_game_id = {
+        r.get("game_id"): r
+        for r in schedule_rows
+        if r.get("game_id") and r.get("home_score") is not None and r.get("away_score") is not None
+    }
+
+    resolved = 0
+    for r in rows:
+        game = by_game_id.get(r["player_id"])
+        if game is None:
+            continue
+        try:
+            rec = json.loads(r["recommendation"])
+        except Exception:
+            continue
+        home_score = game["home_score"]
+        away_score = game["away_score"]
+        predicted_home_win = (rec.get("home_win_prob") or 0) >= 0.5
+        actual_home_win = home_score > away_score
+        record_outcome(conn, r["id"], {
+            "actual_home_score": home_score,
+            "actual_away_score": away_score,
+            "win_call_correct": predicted_home_win == actual_home_win,
+            "week": r["week"],
+        })
+        resolved += 1
+    return resolved
