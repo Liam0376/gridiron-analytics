@@ -105,6 +105,17 @@ stays untouched/unused (already correctly REJECTED for player work).
 
 **Files:** `hub/src/views/props.js`, `hub/src/api.js`
 
+> Later superseded (2026-09-10, same day): per direct user request, the
+> "Edge board" table and "Add a book line" form described below were
+> removed from the UI entirely, and the backend they called (`/props/
+> edges`, `/props/lines`, `_evaluate_prop_edge`) was deleted outright once
+> confirmed unreachable — no free player-prop odds feed exists to compare
+> a book line against. `/props/board`'s game-props popup (this task's
+> "unplanned addition," see below) is now the *only* props surface;
+> everything else this task describes about the edge board is history,
+> not current state. Game predictions (win%/predicted score) are
+> unaffected — separate system, still live.
+
 > Deviation: kept in `props.js` (not split) — the new sections share the
 > `week`/fetch flow tightly enough that splitting added indirection, not
 > clarity. Step 4's global toggle wasn't built as specified — see note
@@ -174,7 +185,8 @@ way.)*
 **Files:** `docs/superpowers/specs/2026-09-10-week-board-spec.md`,
 `hub/README.md`
 
-- [ ] **Step 1:** Update spec status line with final gate result (pass or
-  REJECTED) and what actually shipped.
-- [ ] **Step 2:** `hub/README.md`: add/update the week-board row (mirrors
-  the existing Props row).
+- [x] **Step 1:** Spec status line updated (multiple times, tracking each
+  round of follow-up work — market-line pivot, then the props-popup
+  redesign, injury/carries, and the real-data season-mislabel fix).
+- [x] **Step 2:** `hub/README.md` Props row rewritten for the three-section
+  board (game predictions, edge board [later deleted], game props).

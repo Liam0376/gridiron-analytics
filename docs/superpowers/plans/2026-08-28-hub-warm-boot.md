@@ -76,12 +76,12 @@ All flags leave `hub/FantasyHub.command` as prompt-mode (safe default for double
 
 ## Verification (when built)
 
-- [ ] Cold DB (delete `data/fantasy.db`) → `bash hub/start.sh` → prompt → Y → creates DB, populates, opens `fresh`
-- [ ] Fresh DB (just refreshed) → `bash hub/start.sh` → no prompt, opens in <3s
-- [ ] `bash hub/start.sh --auto` on stale DB → no prompt, auto-refreshes
-- [ ] `nflverse` down (mock `ConnectionError`) → still opens, Dashboard shows `⚠ stale — nflverse failed`, Projections fallback to Sleeper-only
-- [ ] `Ctrl+C` kills all 3 ports: `lsof -i :8000 -i :8001 -i :8002` → empty (trap EXIT covers warm-boot's extra wait loop)
-- [ ] `bash hub/verify-isolation.sh` still 9/9 pass (hub still never writes DB, still `mode=ro`, still `127.0.0.1`)
+- [x] Cold DB (delete `data/fantasy.db`) → `bash hub/start.sh` → prompt → Y → creates DB, populates, opens `fresh`
+- [x] Fresh DB (just refreshed) → `bash hub/start.sh` → no prompt, opens in <3s
+- [x] `bash hub/start.sh --auto` on stale DB → no prompt, auto-refreshes
+- [x] `nflverse` down (mock `ConnectionError`) → still opens, Dashboard shows `⚠ stale — nflverse failed`, Projections fallback to Sleeper-only
+- [x] `Ctrl+C` kills all 3 ports: `lsof -i :8000 -i :8001 -i :8002` → empty (trap EXIT covers warm-boot's extra wait loop)
+- [x] `bash hub/verify-isolation.sh` still 9/9 pass (hub still never writes DB, still `mode=ro`, still `127.0.0.1`)
 
 ## Graph Nodes to be Added (for `/graphify`)
 
