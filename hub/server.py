@@ -1872,7 +1872,7 @@ class Handler(BaseHTTPRequestHandler):
         self.json({"ratings": [dict(r) for r in rows]})
 
     def handle_rosters_raw(self, conn):
-        row = try_fetch_one(conn, "SELECT data FROM rosters ORDER BY season DESC, week DESC LIMIT 1")
+        row = try_fetch_one(conn, "SELECT data FROM rosters ORDER BY rowid DESC LIMIT 1")
         data = load_json_blob(row) or []
         self.json({"rosters": data})
 
