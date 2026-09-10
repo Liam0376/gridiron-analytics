@@ -7,6 +7,7 @@ import json
 import math
 import re
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import logging
 
@@ -352,6 +353,28 @@ def run_refresh_with_data(
             # each refresh so upcoming games' lines update as books move them.
             try:
                 data["schedule"] = sched_adapter.get_schedule(season, week=None, nfl_module=nfl_module)
+                # why also write data/nfl_cache/schedule_<season>.json (user-
+                # caught live bug, 2026-09-10): hub/server.py reads this exact
+                # path for weather/opponent-map/NFL-slate display (it can't
+                # call nflreadpy itself — isolation contract, no outbound
+                # calls) — but nothing ever refreshed it. scripts/seed_demo.py
+                # wrote it once, at initial DB bootstrap, and it was NEVER
+                # updated after that: hub's slate/weather stayed frozen at
+                # seed time (scores still null) while the model's own
+                # /games/predictions correctly showed live final scores from
+                # the same underlying schedule call. Same data, two
+                # consumers, only one was being kept current. Atomic tmp->
+                # rename so hub never reads a half-written file mid-refresh.
+                try:
+                    _repo_root = Path(__file__).resolve().parents[2]
+                    _cache_dir = _repo_root / "data" / "nfl_cache"
+                    _cache_dir.mkdir(parents=True, exist_ok=True)
+                    _sched_path = _cache_dir / f"schedule_{season}.json"
+                    _sched_tmp = _sched_path.with_suffix(".json.tmp")
+                    _sched_tmp.write_text(_safe_dumps(data["schedule"]))
+                    _sched_tmp.replace(_sched_path)
+                except Exception as _sched_write_exc:
+                    logger.warning(f"refresh: schedule cache write failed: {_sched_write_exc}")
             except Exception as _sched_exc:
                 logger.warning(f"refresh: full-season schedule fetch failed: {_sched_exc}")
             # why a real prior-season fetch, not reuse of `player_stats`

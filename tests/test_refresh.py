@@ -251,11 +251,36 @@ def test_preseason_refresh_patches_teams_and_adds_rookies():
         {"week": 1, "game_type": "REG", "season": 2026,
          "home_team": "MIA", "away_team": "NYJ"},
     ])
-    _, data = refresh.run_refresh_with_data(
-        conn, season=2026, sleeper_session=_mock_sleeper_session(players_map),
-        nfl_module=fake_nfl, ran_at_iso="2026-09-09T12:00:00",
-        stats_season=2025, league_id="123",
+    # why back up/restore, not just delete after (user-caught live bug,
+    # 2026-09-10): this test writes to the REAL repo path (refresh.py
+    # resolves it relative to its own file location, not injectable) — the
+    # same path hub/server.py reads live for weather/NFL-slate display.
+    # Leaving fake KC-vs-BUF test data there after the suite runs would
+    # break that display for real; leaving nothing would re-introduce the
+    # exact bug this test is guarding against (file never refreshed).
+    sched_cache_path = (
+        Path(__file__).resolve().parent.parent / "data" / "nfl_cache" / "schedule_2026.json"
     )
+    sched_backup = sched_cache_path.read_text() if sched_cache_path.exists() else None
+    try:
+        _, data = refresh.run_refresh_with_data(
+            conn, season=2026, sleeper_session=_mock_sleeper_session(players_map),
+            nfl_module=fake_nfl, ran_at_iso="2026-09-09T12:00:00",
+            stats_season=2025, league_id="123",
+        )
+        # hub/server.py reads this exact path for weather/NFL-slate display
+        # (isolation contract: hub can't fetch schedule data itself) — only
+        # scripts/seed_demo.py ever wrote it before this fix, once, at
+        # initial bootstrap, never refreshed again.
+        assert sched_cache_path.exists()
+        import json as _json
+        written = _json.loads(sched_cache_path.read_text())
+        assert any(g.get("home_team") == "KC" and g.get("away_team") == "BUF" for g in written)
+    finally:
+        if sched_backup is not None:
+            sched_cache_path.write_text(sched_backup)
+        elif sched_cache_path.exists():
+            sched_cache_path.unlink()
     projs = {p["player_id"]: p for p in data["model_projections"]}
     # Mover patched KC -> BUF with remapped opponent (BUF hosts MIA? no:
     # week-1 fixture has BUF away at KC, so BUF's opponent is KC).
