@@ -103,7 +103,13 @@ if curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; then
   echo "  ✓ model already running on :8000 — reusing"
   API_PID=""
 else
-  .venv/bin/uvicorn ffanalytics.api:app --host 127.0.0.1 --port 8000 --reload > /tmp/fantasy-hub-api.log 2>&1 &
+  # why --reload-dir, not bare --reload (user-caught live bug, 2026-09-10):
+  # bare --reload watches the whole repo — an edit to hub/server.py or
+  # tests/*.py (nothing to do with the model) silently restarted this
+  # process, wiping the in-memory refresh cache. /games/predictions (and
+  # everything else) 503'd until someone noticed and re-ran /refresh.
+  # Scoping the watch to the model's own source stops that.
+  .venv/bin/uvicorn ffanalytics.api:app --host 127.0.0.1 --port 8000 --reload --reload-dir src/ffanalytics > /tmp/fantasy-hub-api.log 2>&1 &
   API_PID=$!
   for i in {1..30}; do
     if curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; then break; fi
