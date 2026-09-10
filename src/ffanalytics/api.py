@@ -4,6 +4,7 @@ follows the reference repo's api.py: refresh populates a module-level
 cache, request handlers read from it, never touching disk per-request."""
 
 from fastapi import FastAPI, HTTPException, Query, Request, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
@@ -116,6 +117,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Fantasy Football Analytics Engine", lifespan=lifespan)
+
+# why regex not a fixed list: hub/start.sh picks ports per-invocation
+# (8001/8002 by default, but --league/--force runs can shift them), and
+# the hub is served only from 127.0.0.1/localhost — never 0.0.0.0. `null`
+# origin (file://) intentionally NOT allowed; see docs/RUNBOOK.md known
+# limitation.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$",
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
 
 
 @app.exception_handler(HTTPException)
