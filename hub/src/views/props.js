@@ -9,7 +9,7 @@ import { playerAvatar } from '../components/playerAvatar.js';
 import { getTeamColor } from '../components/teamColors.js';
 import { escapeHtml, escapeAttr } from '../lib/escape.js';
 import { trapFocus } from '../lib/focusTrap.js';
-import { sortByRelevance } from '../lib/relevance.js';
+import { sortGameCards } from '../lib/relevance.js';
 
 function winPctChip(pct, isFavorite) {
   const bg = isFavorite ? 'var(--emerald-dim)' : 'var(--surface-raised)';
@@ -70,7 +70,7 @@ function propsPlayerCard(p) {
     </div>`;
 }
 
-function groupBoardPlayers(boardPlayers) {
+function groupBoardPlayers(boardPlayers, final = false) {
   const byPlayer = new Map();
   for (const r of boardPlayers) {
     if (!byPlayer.has(r.player_id)) {
@@ -78,16 +78,23 @@ function groupBoardPlayers(boardPlayers) {
         playerId: r.player_id, sleeperId: r.sleeper_id, name: r.player_name,
         position: r.position, team: r.team, injuryStatus: r.injury_status,
         available: r.available, rows: [], totalFair: 0,
+        totalActual: 0, hasActual: false,
       });
     }
     const p = byPlayer.get(r.player_id);
     p.rows.push(r);
     p.totalFair += Number(r.fair_line) || 0;
+    if (r.actual != null) { p.totalActual += Number(r.actual) || 0; p.hasActual = true; }
+    if (r.actual_p_yes != null) { p.totalActual += r.actual_p_yes ? 1 : 0; p.hasActual = true; }
   }
   // why relevance first (user-confirmed 2026-09-10): bench/reserve names
   // were rendering above starters; depth tier demotes them, totalFair
-  // still orders within each tier. Nobody is removed.
-  return sortByRelevance([...byPlayer.values()]);
+  // still orders within each tier. Finals instead sort by actual (see
+  // sortGameCards). Nobody is removed either way.
+  const grouped = [...byPlayer.values()].map((p) => ({
+    ...p, totalActual: p.hasActual ? p.totalActual : null,
+  }));
+  return sortGameCards(grouped, {}, final);
 }
 
 // --- Game props popup -------------------------------------------------
@@ -100,7 +107,7 @@ function closeGamePropsModal() {
   if (gamePropsModalRoot) { gamePropsModalRoot.innerHTML = ''; }
 }
 
-async function openGamePropsModal(triggerEl, teamsKey, week) {
+async function openGamePropsModal(triggerEl, teamsKey, week, isFinal = false) {
   if (!gamePropsModalRoot) {
     gamePropsModalRoot = document.createElement('div');
     gamePropsModalRoot.id = 'gamePropsModalRoot';
@@ -134,7 +141,7 @@ async function openGamePropsModal(triggerEl, teamsKey, week) {
   } catch (_) {
     boardPayload = { players: [], meta: { cold: true } };
   }
-  const players = groupBoardPlayers((boardPayload && boardPayload.players) || []);
+  const players = groupBoardPlayers((boardPayload && boardPayload.players) || [], isFinal);
   const body = gamePropsModalRoot.querySelector('#gamePropsBody');
   if (!body) return; // closed while fetching
   body.innerHTML = players.length ? `
@@ -142,7 +149,9 @@ async function openGamePropsModal(triggerEl, teamsKey, week) {
       ${players.map(propsPlayerCard).join('')}
     </div>
     <div style="margin-top:10px; font-size:11px; color:var(--text-faint)">
-      Fair = model projection median for this stat. "Actual" appears once that week's real box score has posted.
+      ${isFinal
+        ? 'Final game — cards ordered by actual box-score production.'
+        : 'Fair = model projection median for this stat. "Actual" appears once that week\'s real box score has posted.'}
       Injury status is fetched live — a flagged player's projection may not reflect their real availability.
     </div>` : `<div style="padding:8px 0">No projected players found for this game/week.</div>`;
 }
@@ -198,7 +207,7 @@ export async function renderProps(root) {
                   const homeFav = g.home_win_prob >= g.away_win_prob;
                   const teamsKey = `${g.away_team},${g.home_team}`;
                   return `
-                  <tr class="props-game-row" data-teams="${escapeAttr(teamsKey)}" tabindex="0"
+                  <tr class="props-game-row" data-teams="${escapeAttr(teamsKey)}" data-final="${g.final ? '1' : ''}" tabindex="0"
                       aria-label="View player props for ${escapeAttr(g.away_team || '')} at ${escapeAttr(g.home_team || '')}"
                       style="cursor:pointer" title="Click to browse this game's player props">
                     <td>
@@ -243,7 +252,7 @@ function bindWeekPicker(root, currentWeek) {
 
 function bindGameRows(root, currentWeek) {
   root.querySelectorAll('.props-game-row').forEach(row => {
-    const open = () => openGamePropsModal(row, row.getAttribute('data-teams'), currentWeek);
+    const open = () => openGamePropsModal(row, row.getAttribute('data-teams'), currentWeek, row.getAttribute('data-final') === '1');
     row.addEventListener('click', open);
     row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
   });

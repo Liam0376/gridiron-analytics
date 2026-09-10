@@ -104,12 +104,38 @@ export function backupDemote(p, accessors = {}, aheadMap = null) {
 export function sortByRelevance(items, accessors = {}) {
   const a = { ...defaultAccessors, ...accessors };
   const aheadMap = buildAheadMap(items, a);
-  return [...items].sort((x, y) => {
+  return sortRelevant([...items], a, aheadMap);
+}
+
+function sortRelevant(items, a, aheadMap) {
+  return items.sort((x, y) => {
     const tier = relevanceTier(x, a, aheadMap) - relevanceTier(y, a, aheadMap);
     if (tier !== 0) return tier;
     const qb = backupDemote(x, a, aheadMap) - backupDemote(y, a, aheadMap);
     if (qb !== 0) return qb;
     return a.scoreOf(y) - a.scoreOf(x);
+  });
+}
+
+// why actual-first for finals (user-caught, 2026-09-10): a final game's
+// modal sorted by preseason fair buries who actually played — Darnold's
+// 233.8-yard projection outranked Lock's card despite 13 vs 187 actual.
+// Finals sort by what happened (actual volume desc, nulls last); upcoming
+// games keep the relevance order above. Units are mixed across markets —
+// this key only ever orders cards within one game, never displayed.
+export function sortGameCards(items, accessors = {}, final = false) {
+  const a = {
+    fairOf: (p) => Number(p.totalFair ?? 0) || 0,
+    actualOf: (p) => (p.totalActual == null ? null : Number(p.totalActual) || 0),
+    ...accessors,
+  };
+  if (!final) return sortByRelevance(items, accessors);
+  return [...items].sort((x, y) => {
+    const ax = a.actualOf(x), ay = a.actualOf(y);
+    if (ax == null && ay == null) return a.fairOf(y) - a.fairOf(x);
+    if (ax == null) return 1;
+    if (ay == null) return -1;
+    return ay - ax;
   });
 }
 

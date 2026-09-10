@@ -75,6 +75,12 @@
 - Deliberately skipped: waiver (API advice-ranked, reordering would
   diverge from the engine), team/matchups/roster/trade (slot- or
   selection-ordered, relevance N/A).
+- Finals sort by actual (SHIPPED, user-caught 2026-09-10 evening): a
+  final game's modal sorted by preseason fair buried who played —
+  Darnold's 233.8 projection outranked Lock's card after a 13-vs-187
+  game. `sortGameCards` orders finals by actual volume (nulls last),
+  upcoming games keep relevance order. Project-wide (all game modals).
+  Verified live: NE@SEA final opens Maye → Lock → JSN, Darnold 14/40.
 
 ## Follow-up bugs found while verifying (2026-09-10 evening)
 
