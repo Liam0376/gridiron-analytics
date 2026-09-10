@@ -9,6 +9,7 @@ import { playerAvatar } from '../components/playerAvatar.js';
 import { getTeamColor } from '../components/teamColors.js';
 import { escapeHtml, escapeAttr } from '../lib/escape.js';
 import { trapFocus } from '../lib/focusTrap.js';
+import { sortByRelevance } from '../lib/relevance.js';
 
 function winPctChip(pct, isFavorite) {
   const bg = isFavorite ? 'var(--emerald-dim)' : 'var(--surface-raised)';
@@ -76,12 +77,17 @@ function groupBoardPlayers(boardPlayers) {
       byPlayer.set(r.player_id, {
         playerId: r.player_id, sleeperId: r.sleeper_id, name: r.player_name,
         position: r.position, team: r.team, injuryStatus: r.injury_status,
-        available: r.available, rows: [],
+        available: r.available, rows: [], totalFair: 0,
       });
     }
-    byPlayer.get(r.player_id).rows.push(r);
+    const p = byPlayer.get(r.player_id);
+    p.rows.push(r);
+    p.totalFair += Number(r.fair_line) || 0;
   }
-  return [...byPlayer.values()];
+  // why relevance first (user-confirmed 2026-09-10): bench/reserve names
+  // were rendering above starters; depth tier demotes them, totalFair
+  // still orders within each tier. Nobody is removed.
+  return sortByRelevance([...byPlayer.values()]);
 }
 
 // --- Game props popup -------------------------------------------------

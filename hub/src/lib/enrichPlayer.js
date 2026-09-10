@@ -18,7 +18,10 @@ export function enrichPlayer(p, compRow, opts = {}) {
   // passing yards, nearly 1500 over the NFL record. Real market season
   // stats already exist in compPlayers; they just weren't being matched
   // to this player.
-  const comp = compRow || (opts.compPlayers || []).find(c => String(c.player_id) === pid) || {};
+  // Audit 22.0: also match by sleeper_id — roster data uses Sleeper IDs
+  // while comparison uses GSIS IDs; without this cross-ID lookup, the
+  // comp is always {} and stats show 0 on every team hub player card.
+  const comp = compRow || (opts.compPlayers || []).find(c => String(c.player_id) === pid || String(c.sleeper_id) === pid) || {};
   const pos = (p.position || p.position_group || 'UNK').toUpperCase();
 
   const weekly = num(p.projected_points ?? comp.projected_points ?? comp.weekly, 0);

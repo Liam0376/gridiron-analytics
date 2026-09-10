@@ -1,0 +1,1001 @@
+{
+ "ARI": {
+  "QB": [
+   "jacoby brissett",
+   "carson beck",
+   "gardner minshew"
+  ],
+  "RB": [
+   "jeremiyah love",
+   "tyler allgeier",
+   "james conner",
+   "trey benson",
+   "bam knight"
+  ],
+  "WR": [
+   "marvin harrison",
+   "michael wilson",
+   "kendrick bourne",
+   "reggie virgil",
+   "jalen brooks",
+   "devin duvernay",
+   "simi fehoko"
+  ],
+  "TE": [
+   "trey mcbride",
+   "elijah higgins",
+   "hunter long",
+   "tip reiman",
+   "teagan quitoriano"
+  ]
+ },
+ "ATL": {
+  "QB": [
+   "tua tagovailoa",
+   "michael penix",
+   "jack strand",
+   "cooper rush"
+  ],
+  "RB": [
+   "bijan robinson",
+   "brian robinson",
+   "tyler goodson",
+   "cash jones",
+   "trey sermon"
+  ],
+  "WR": [
+   "drake london",
+   "zachariah branch",
+   "jahan dotson",
+   "olamide zaccheaus",
+   "chris blair",
+   "juice wells",
+   "dylan drummond",
+   "beaux collins"
+  ],
+  "TE": [
+   "kyle pitts",
+   "austin hooper",
+   "charlie woerner"
+  ]
+ },
+ "BAL": {
+  "QB": [
+   "lamar jackson",
+   "tyler huntley",
+   "joe fagnano",
+   "skylar thompson"
+  ],
+  "RB": [
+   "derrick henry",
+   "justice hill",
+   "adam randall",
+   "rasheen ali"
+  ],
+  "WR": [
+   "zay flowers",
+   "jakobi lane",
+   "rashod bateman",
+   "elijah sarratt",
+   "devontez walker",
+   "deandre hopkins",
+   "lajohntay wester",
+   "chris moore"
+  ],
+  "TE": [
+   "mark andrews",
+   "matt hibner",
+   "durham smythe",
+   "josh cuevas",
+   "nick vannett",
+   "ty pezza"
+  ]
+ },
+ "BUF": {
+  "QB": [
+   "josh allen",
+   "kyle allen",
+   "shane buechele"
+  ],
+  "RB": [
+   "james cook",
+   "ray davis",
+   "ty johnson",
+   "frank gore"
+  ],
+  "WR": [
+   "dj moore",
+   "khalil shakir",
+   "keon coleman",
+   "skyler bell",
+   "joshua palmer",
+   "greg dortch",
+   "tyrell shavers",
+   "trent sherfield"
+  ],
+  "TE": [
+   "dalton kincaid",
+   "dawson knox",
+   "jackson hawes",
+   "keleki latu"
+  ]
+ },
+ "CAR": {
+  "QB": [
+   "bryce young",
+   "kenny pickett",
+   "haynes king"
+  ],
+  "RB": [
+   "jonathon brooks",
+   "chuba hubbard",
+   "trevor etienne",
+   "aj dillon"
+  ],
+  "WR": [
+   "tetairoa mcmillan",
+   "jalen coker",
+   "xavier legette",
+   "john metchie",
+   "chris brazzell",
+   "jimmy horn",
+   "brycen tremayne",
+   "david moore",
+   "casey washington"
+  ],
+  "TE": [
+   "darren waller",
+   "jatavion sanders",
+   "tommy tremble",
+   "mitchell evans"
+  ]
+ },
+ "CHI": {
+  "QB": [
+   "caleb williams",
+   "tyson bagent",
+   "case keenum"
+  ],
+  "RB": [
+   "dandre swift",
+   "kyle monangai",
+   "roschon johnson",
+   "zavier scott",
+   "brittain brown"
+  ],
+  "WR": [
+   "luther burden",
+   "rome odunze",
+   "zavion thomas",
+   "kalif raymond",
+   "jahdae walker",
+   "scotty miller"
+  ],
+  "TE": [
+   "colston loveland",
+   "cole kmet",
+   "sam roush",
+   "hayden large",
+   "stephen carlson"
+  ]
+ },
+ "CIN": {
+  "QB": [
+   "joe burrow",
+   "joe flacco",
+   "sean clifford",
+   "josh johnson"
+  ],
+  "RB": [
+   "chase brown",
+   "samaje perine",
+   "tahj brooks",
+   "kendall milton",
+   "kentrel bullock"
+  ],
+  "WR": [
+   "jamarr chase",
+   "tee higgins",
+   "andrei iosivas",
+   "colbie young",
+   "dohnte meyers",
+   "keshawn williams"
+  ],
+  "TE": [
+   "mike gesicki",
+   "erick all",
+   "tanner hudson",
+   "drew sample",
+   "jack endries"
+  ]
+ },
+ "CLE": {
+  "QB": [
+   "shedeur sanders",
+   "deshaun watson",
+   "taylen green",
+   "dillon gabriel"
+  ],
+  "RB": [
+   "quinshon judkins",
+   "dylan sampson",
+   "jaleel mclaughlin",
+   "raheim sanders",
+   "michael burton"
+  ],
+  "WR": [
+   "kc concepcion",
+   "denzel boston",
+   "jerry jeudy",
+   "isaiah bond",
+   "malachi corley",
+   "tylan wallace",
+   "jamari thrash",
+   "bub means"
+  ],
+  "TE": [
+   "harold fannin",
+   "joe royer",
+   "blake whiteheart",
+   "carsen ryan"
+  ]
+ },
+ "DAL": {
+  "QB": [
+   "dak prescott",
+   "joe milton",
+   "sam howell"
+  ],
+  "RB": [
+   "javonte williams",
+   "malik davis",
+   "emari demercado",
+   "hunter luepke",
+   "israel abanikanda"
+  ],
+  "WR": [
+   "ceedee lamb",
+   "george pickens",
+   "ryan flournoy",
+   "kavontae turpin",
+   "jonathan mingo",
+   "camden brown",
+   "anthony smith"
+  ],
+  "TE": [
+   "jake ferguson",
+   "luke schoonmaker",
+   "brevyn spannford",
+   "michael trigg",
+   "james mitchell",
+   "princeton fant"
+  ]
+ },
+ "DEN": {
+  "QB": [
+   "bo nix",
+   "jarrett stidham",
+   "sam ehlinger"
+  ],
+  "RB": [
+   "jk dobbins",
+   "rj harvey",
+   "jonah coleman",
+   "tyler badie",
+   "adam prentice",
+   "cody schrader"
+  ],
+  "WR": [
+   "jaylen waddle",
+   "courtland sutton",
+   "pat bryant",
+   "troy franklin",
+   "marvin mims",
+   "liljordan humphrey",
+   "michael bandy"
+  ],
+  "TE": [
+   "evan engram",
+   "adam trautman",
+   "nate adkins",
+   "dallen bentley",
+   "caleb lohner",
+   "lucas krull"
+  ]
+ },
+ "DET": {
+  "QB": [
+   "jared goff",
+   "joshua dobbs",
+   "luke altmyer"
+  ],
+  "RB": [
+   "jahmyr gibbs",
+   "isiah pacheco",
+   "jacob saylors",
+   "sione vaki"
+  ],
+  "WR": [
+   "amonra st brown",
+   "jameson williams",
+   "isaac teslaa",
+   "tay martin",
+   "tom kennedy",
+   "dominic lovett",
+   "kendrick law",
+   "jackson meeks"
+  ],
+  "TE": [
+   "sam laporta",
+   "brock wright",
+   "tyler conklin",
+   "thomas gordon"
+  ]
+ },
+ "GB": {
+  "QB": [
+   "jordan love",
+   "tyrod taylor",
+   "kedon slovis"
+  ],
+  "RB": [
+   "marshawn lloyd",
+   "josh jacobs",
+   "kaleb johnson",
+   "chris brooks",
+   "pierre strong"
+  ],
+  "WR": [
+   "christian watson",
+   "jayden reed",
+   "matthew golden",
+   "savion williams",
+   "skyy moore",
+   "bo melton",
+   "j michael sturdivant"
+  ],
+  "TE": [
+   "tucker kraft",
+   "jonnu smith",
+   "luke musgrave",
+   "josh whyle",
+   "drake dabney",
+   "mark redman"
+  ]
+ },
+ "HOU": {
+  "QB": [
+   "cj stroud",
+   "davis mills",
+   "graham mertz"
+  ],
+  "RB": [
+   "david montgomery",
+   "woody marks",
+   "jawhar jordan",
+   "british brooks",
+   "noah whittington"
+  ],
+  "WR": [
+   "nico collins",
+   "kayshon boutte",
+   "jaylin noel",
+   "tank dell",
+   "xavier hutchinson",
+   "mitchell tinsley",
+   "jared wayne",
+   "lewis bond"
+  ],
+  "TE": [
+   "dalton schultz",
+   "marlin klein",
+   "foster moreau",
+   "cade stover",
+   "brevin jordan"
+  ]
+ },
+ "IND": {
+  "QB": [
+   "daniel jones",
+   "anthony richardson",
+   "riley leonard"
+  ],
+  "RB": [
+   "jonathan taylor",
+   "seth mcgowan",
+   "dj giddens",
+   "davon booth"
+  ],
+  "WR": [
+   "alec pierce",
+   "josh downs",
+   "keenan allen",
+   "ashton dulin",
+   "deion burks",
+   "nick westbrookikhine",
+   "laquon treadwell",
+   "anthony gould"
+  ],
+  "TE": [
+   "tyler warren",
+   "mo aliecox",
+   "drew ogletree",
+   "will mallory",
+   "pharaoh brown"
+  ]
+ },
+ "JAX": {
+  "QB": [
+   "trevor lawrence",
+   "quinn ewers",
+   "nick mullens",
+   "joey aguilar"
+  ],
+  "RB": [
+   "bhayshul tuten",
+   "chris rodriguez",
+   "lequint allen",
+   "jmari taylor",
+   "ameer abdullah"
+  ],
+  "WR": [
+   "parker washington",
+   "brian thomas",
+   "jakobi meyers",
+   "travis hunter",
+   "josh cameron",
+   "cj williams",
+   "michael wortham",
+   "tim jones",
+   "austin trammell"
+  ],
+  "TE": [
+   "brenton strange",
+   "nate boerkircher",
+   "tanner koziol",
+   "quintin morris",
+   "hayden rucci"
+  ]
+ },
+ "KC": {
+  "QB": [
+   "patrick mahomes",
+   "justin fields",
+   "garrett nussmeier"
+  ],
+  "RB": [
+   "kenneth walker",
+   "emmett johnson",
+   "brashard smith",
+   "jaydn ott",
+   "nate carter"
+  ],
+  "WR": [
+   "rashee rice",
+   "xavier worthy",
+   "tyquan thornton",
+   "cyrus allen",
+   "jalen royals",
+   "nikko remigio",
+   "jeff caldwell",
+   "andrew armstrong",
+   "jimmy holiday"
+  ],
+  "TE": [
+   "travis kelce",
+   "noah gray",
+   "jared wiley",
+   "jake briningstool",
+   "john michael gyllenborg"
+  ]
+ },
+ "LAC": {
+  "QB": [
+   "justin herbert",
+   "trey lance",
+   "dj uiagalelei"
+  ],
+  "RB": [
+   "omarion hampton",
+   "keaton mitchell",
+   "kimani vidal",
+   "alec ingold",
+   "gregory desrosiers",
+   "amar johnson"
+  ],
+  "WR": [
+   "ladd mcconkey",
+   "quentin johnston",
+   "tre harris",
+   "brenen thompson",
+   "keandre lambertsmith",
+   "derius davis",
+   "theo wease"
+  ],
+  "TE": [
+   "oronde gadsden",
+   "david njoku",
+   "charlie kolar",
+   "patrick herbert"
+  ]
+ },
+ "LAR": {
+  "QB": [
+   "matthew stafford",
+   "ty simpson",
+   "jimmy garoppolo",
+   "stetson bennett"
+  ],
+  "RB": [
+   "kyren williams",
+   "blake corum",
+   "ronnie rivers",
+   "dean connors",
+   "jordan waters"
+  ],
+  "WR": [
+   "puka nacua",
+   "davante adams",
+   "konata mumpfield",
+   "tutu atwell",
+   "cj daniels",
+   "jordan whittington",
+   "xavier smith",
+   "alex bachman"
+  ],
+  "TE": [
+   "terrance ferguson",
+   "colby parkinson",
+   "tyler higbee",
+   "max klare",
+   "davis allen"
+  ]
+ },
+ "LV": {
+  "QB": [
+   "fernando mendoza",
+   "kirk cousins",
+   "aidan oconnell"
+  ],
+  "RB": [
+   "ashton jeanty",
+   "mike washington",
+   "dylan laube",
+   "roman hemby",
+   "raheem mostert",
+   "dare ogunbowale"
+  ],
+  "WR": [
+   "tre tucker",
+   "jalen nailor",
+   "jack bech",
+   "malik benson",
+   "donte thornton",
+   "dareke young",
+   "tyler lockett",
+   "cody white",
+   "deven thompkins",
+   "ronnie bell"
+  ],
+  "TE": [
+   "brock bowers",
+   "michael mayer",
+   "ian thomas",
+   "connor heyward",
+   "chris myarick",
+   "carter runyon"
+  ]
+ },
+ "MIA": {
+  "QB": [
+   "malik willis",
+   "kyle mccord",
+   "brady cook"
+  ],
+  "RB": [
+   "devon achane",
+   "jaylen wright",
+   "ollie gordon",
+   "jarquez hunter",
+   "carlos washington"
+  ],
+  "WR": [
+   "malik washington",
+   "chris bell",
+   "caleb douglas",
+   "jalen tolbert",
+   "kevin coleman",
+   "jalen reagor",
+   "ryan miller"
+  ],
+  "TE": [
+   "greg dulcich",
+   "justin joly",
+   "will kacmarek",
+   "seydou traore",
+   "ben sims",
+   "tre watson",
+   "cole turner"
+  ]
+ },
+ "MIN": {
+  "QB": [
+   "kyler murray",
+   "jj mccarthy",
+   "carson wentz",
+   "max brosmer"
+  ],
+  "RB": [
+   "jordan mason",
+   "aaron jones",
+   "demond claiborne",
+   "max bredeson",
+   "deejay dallas",
+   "jermar jefferson"
+  ],
+  "WR": [
+   "justin jefferson",
+   "jordan addison",
+   "jauan jennings",
+   "tai felton",
+   "myles price",
+   "jeshaun jones",
+   "michael briscoe",
+   "dillon bell"
+  ],
+  "TE": [
+   "tj hockenson",
+   "josh oliver",
+   "ben yurosek",
+   "gavin bartholomew",
+   "cam grandy"
+  ]
+ },
+ "NE": {
+  "QB": [
+   "drake maye",
+   "tommy devito",
+   "behren morton"
+  ],
+  "RB": [
+   "rhamondre stevenson",
+   "treveyon henderson",
+   "corey kiner",
+   "reggie gilliam",
+   "lan larison",
+   "myles montgomery",
+   "hassan haskins"
+  ],
+  "WR": [
+   "aj brown",
+   "romeo doubs",
+   "kyle williams",
+   "mack hollins",
+   "demario douglas",
+   "efton chism"
+  ],
+  "TE": [
+   "hunter henry",
+   "eli raridon",
+   "julian hill",
+   "tanner arkin",
+   "cameron latu",
+   "shane zylstra"
+  ]
+ },
+ "NO": {
+  "QB": [
+   "tyler shough",
+   "spencer rattler",
+   "zach wilson"
+  ],
+  "RB": [
+   "travis etienne",
+   "alvin kamara",
+   "kendre miller",
+   "audric estime",
+   "zamir white",
+   "cj donaldson"
+  ],
+  "WR": [
+   "chris olave",
+   "jordyn tyson",
+   "devaughn vele",
+   "bryce lance",
+   "cedric tillman",
+   "barion brown",
+   "mason tipton",
+   "kevin austin",
+   "trey palmer"
+  ],
+  "TE": [
+   "juwan johnson",
+   "oscar delp",
+   "noah fant",
+   "moliki matavao",
+   "stone smartt"
+  ]
+ },
+ "NYG": {
+  "QB": [
+   "jaxson dart",
+   "jameis winston",
+   "jake haener"
+  ],
+  "RB": [
+   "cam skattebo",
+   "tyrone tracy",
+   "najee harris",
+   "devin singletary",
+   "patrick ricard"
+  ],
+  "WR": [
+   "malik nabers",
+   "darnell mooney",
+   "malachi fields",
+   "odell beckham",
+   "charlie jones",
+   "jalin hyatt",
+   "braxton berrios",
+   "dalen cambre",
+   "gunner olszewski"
+  ],
+  "TE": [
+   "isaiah likely",
+   "theo johnson",
+   "thomas fidone",
+   "chris manhertz"
+  ]
+ },
+ "NYJ": {
+  "QB": [
+   "geno smith",
+   "cade klubnik",
+   "bailey zappe"
+  ],
+  "RB": [
+   "breece hall",
+   "braelon allen",
+   "isaiah davis",
+   "kene nwangwu"
+  ],
+  "WR": [
+   "garrett wilson",
+   "adonai mitchell",
+   "omar cooper",
+   "isaiah williams",
+   "tim patrick",
+   "arian smith"
+  ],
+  "TE": [
+   "kenyon sadiq",
+   "mason taylor",
+   "jeremy ruckert",
+   "jelani woods"
+  ]
+ },
+ "PHI": {
+  "QB": [
+   "jalen hurts",
+   "andy dalton",
+   "tanner mckee",
+   "cole payton"
+  ],
+  "RB": [
+   "saquon barkley",
+   "tank bigsby",
+   "jaydon blue",
+   "will shipley",
+   "dameon pierce",
+   "carson steele"
+  ],
+  "WR": [
+   "devonta smith",
+   "makai lemon",
+   "dontayvion wicks",
+   "hollywood brown",
+   "elijah moore",
+   "darius cooper",
+   "britain covey"
+  ],
+  "TE": [
+   "dallas goedert",
+   "eli stowers",
+   "grant calcaterra",
+   "johnny mundt",
+   "ej jenkins"
+  ]
+ },
+ "PIT": {
+  "QB": [
+   "aaron rodgers",
+   "drew allar",
+   "mason rudolph",
+   "will howard"
+  ],
+  "RB": [
+   "jaylen warren",
+   "rico dowdle",
+   "eli heidenreich",
+   "lew nichols",
+   "travis homer"
+  ],
+  "WR": [
+   "dk metcalf",
+   "michael pittman",
+   "germie bernard",
+   "roman wilson",
+   "kaden wetjen",
+   "ben skowronek",
+   "brandon johnson",
+   "brandon smith"
+  ],
+  "TE": [
+   "pat freiermuth",
+   "darnell washington",
+   "riley nowakowski",
+   "robert tonyan",
+   "lake mcree"
+  ]
+ },
+ "SEA": {
+  "QB": [
+   "sam darnold",
+   "jalen milroe",
+   "drew lock"
+  ],
+  "RB": [
+   "jadarian price",
+   "zach charbonnet",
+   "george holani",
+   "emanuel wilson",
+   "jacardia wright"
+  ],
+  "WR": [
+   "jaxon smithnjigba",
+   "rashid shaheed",
+   "cooper kupp",
+   "tory horton",
+   "montorie foster",
+   "jake bobo",
+   "velus jones",
+   "emmanuel henderson",
+   "ricky white"
+  ],
+  "TE": [
+   "aj barner",
+   "elijah arroyo",
+   "eric saubert",
+   "nick kallerup",
+   "brady russell",
+   "robbie ouzts"
+  ]
+ },
+ "SF": {
+  "QB": [
+   "brock purdy",
+   "mac jones",
+   "kurtis rourke"
+  ],
+  "RB": [
+   "christian mccaffrey",
+   "kaelon black",
+   "jordan james",
+   "isaac guerendo",
+   "kyle juszczyk",
+   "sincere mccormick"
+  ],
+  "WR": [
+   "mike evans",
+   "dezhaun stribling",
+   "deebo samuel",
+   "christian kirk",
+   "brandon aiyuk",
+   "demarcus robinson",
+   "jacob cowing",
+   "jordan watkins",
+   "khadarel hodge"
+  ],
+  "TE": [
+   "george kittle",
+   "jake tonges",
+   "luke farrell",
+   "brayden willis",
+   "khalil dinkins"
+  ]
+ },
+ "TB": {
+  "QB": [
+   "baker mayfield",
+   "jalon daniels",
+   "easton stick"
+  ],
+  "RB": [
+   "bucky irving",
+   "kenny gainwell",
+   "sean tucker",
+   "josh williams"
+  ],
+  "WR": [
+   "emeka egbuka",
+   "chris godwin",
+   "jalen mcmillan",
+   "ted hurst",
+   "tez johnson",
+   "kameron johnson",
+   "david sills"
+  ],
+  "TE": [
+   "cade otton",
+   "payne durham",
+   "bauer sharp",
+   "ko kieft",
+   "cj dippre"
+  ]
+ },
+ "TEN": {
+  "QB": [
+   "cam ward",
+   "mitchell trubisky",
+   "hendon hooker"
+  ],
+  "RB": [
+   "tony pollard",
+   "tyjae spears",
+   "nicholas singleton",
+   "michael carter",
+   "julius chestnut",
+   "kalel mullings"
+  ],
+  "WR": [
+   "carnell tate",
+   "wandale robinson",
+   "calvin ridley",
+   "elic ayomanor",
+   "chimere dike",
+   "xavier restrepo",
+   "kj osborn",
+   "tyren montgomery"
+  ],
+  "TE": [
+   "gunnar helm",
+   "daniel bellinger",
+   "kylen granson",
+   "david martinrobinson",
+   "joel wilson",
+   "jaren kanak"
+  ]
+ },
+ "WAS": {
+  "QB": [
+   "jayden daniels",
+   "marcus mariota",
+   "athan kaliakmanis",
+   "sam hartman"
+  ],
+  "RB": [
+   "jacory croskeymerritt",
+   "rachaad white",
+   "kaytron allen",
+   "jeremy mcnichols",
+   "robert henry"
+  ],
+  "WR": [
+   "terry mclaurin",
+   "stefon diggs",
+   "antonio williams",
+   "luke mccaffrey",
+   "treylon burks",
+   "jaylin lane",
+   "dyami brown",
+   "van jefferson"
+  ],
+  "TE": [
+   "chig okonkwo",
+   "ben sinnott",
+   "john bates",
+   "colson yankoff",
+   "jack westover"
+  ]
+ }
+}

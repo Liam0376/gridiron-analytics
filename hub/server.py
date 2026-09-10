@@ -783,12 +783,12 @@ def build_league_analytics(conn, league_id: str | None = None):
     # shadow real data here just like it did in /projections.
     _cw = compute_nfl_week()
     try:
-        row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 AND week <= ? ORDER BY season DESC, rowid DESC LIMIT 1", (_cw,))
+        row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 AND week <= ? ORDER BY season DESC, week DESC, rowid DESC LIMIT 1", (_cw,))
     except Exception:
         row = None
     if not row or not load_json_blob(row):
         try:
-            for cand in conn.execute("SELECT data, season, week FROM player_stats ORDER BY season DESC, rowid DESC LIMIT 10").fetchall():
+            for cand in conn.execute("SELECT data, season, week FROM player_stats ORDER BY season DESC, week DESC, rowid DESC LIMIT 10").fetchall():
                 if cand["week"] is not None and int(cand["week"]) > _cw:
                     continue
                 data = load_json_blob(cand)
@@ -798,7 +798,7 @@ def build_league_analytics(conn, league_id: str | None = None):
         except Exception:
             pass
     if not row:
-        row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE week <= ? ORDER BY season DESC, rowid DESC LIMIT 1", (_cw,))
+        row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE week <= ? ORDER BY season DESC, week DESC, rowid DESC LIMIT 1", (_cw,))
     players = load_json_blob(row) or []
 
     row = try_fetch_one(conn, "SELECT data FROM injury_status ORDER BY rowid DESC LIMIT 1")
@@ -1278,6 +1278,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.handle_rosters_raw(conn)
             elif path == "/hub-api/comparison":
                 self.handle_comparison(conn, qs)
+            elif path.startswith("/hub-api/games/predictions") or path.startswith("/hub-api/props/board"):
+                self.proxy_to_model(path.replace("/hub-api", ""), parsed.query)
             else:
                 self.send_error(404, f"unknown hub-api path {path}")
         except Exception:
@@ -1300,6 +1302,31 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
+
+    def proxy_to_model(self, path, qs):
+        """Forward GET requests to the model API on port 8000."""
+        import urllib.request, urllib.error
+        url = f"http://127.0.0.1:8000{path}"
+        if qs:
+            url += f"?{qs}"
+        try:
+            req = urllib.request.urlopen(url, timeout=15)
+            data = req.read()
+            self.send_response(req.status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+        except urllib.error.HTTPError as e:
+            body = e.read()
+            self.send_response(e.code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except Exception as e:
+            self.json({"error": f"proxy to model failed: {e}"}, status=502)
 
     # --- handlers ---
     def handle_meta(self, conn, qs):
@@ -1477,15 +1504,18 @@ class Handler(BaseHTTPRequestHandler):
         # Prefer SQL json_array_length>0 but fall back to Python scan if SQLite JSON is invalid (NaN)
         # why week <= current: stale future-week blobs (e.g. legacy week-10 demo
         # seed) otherwise shadow real data via season/week DESC ordering.
+        # Audit 22.0: sort by week DESC (not rowid DESC) so week=1 is preferred
+        # over week=0 when both exist — week=0 is the preseason baseline cache
+        # and week=current has actual game data.
         row = None
         _cw = compute_nfl_week()
         try:
-            row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 AND week <= ? ORDER BY season DESC, rowid DESC LIMIT 1", (_cw,))
+            row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 AND week <= ? ORDER BY season DESC, week DESC, rowid DESC LIMIT 1", (_cw,))
         except: row = None
         if not row or not load_json_blob(row):
             # Python fallback: scan recent rows for first non-empty list
             try:
-                for cand in conn.execute("SELECT data, season, week FROM player_stats ORDER BY season DESC, rowid DESC LIMIT 10").fetchall():
+                for cand in conn.execute("SELECT data, season, week FROM player_stats ORDER BY season DESC, week DESC, rowid DESC LIMIT 10").fetchall():
                     if cand["week"] is not None and int(cand["week"]) > _cw:
                         continue
                     data = load_json_blob(cand)
@@ -2102,11 +2132,11 @@ class Handler(BaseHTTPRequestHandler):
                 rostered.add(str(pid))
         row = None
         try:
-            row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 ORDER BY season DESC, rowid DESC LIMIT 1")
+            row = try_fetch_one(conn, "SELECT data FROM player_stats WHERE json_array_length(data)>0 ORDER BY season DESC, week DESC, rowid DESC LIMIT 1")
         except: row = None
         if not row or not load_json_blob(row):
             try:
-                for cand in conn.execute("SELECT data FROM player_stats ORDER BY season DESC, rowid DESC LIMIT 10").fetchall():
+                for cand in conn.execute("SELECT data FROM player_stats ORDER BY season DESC, week DESC, rowid DESC LIMIT 10").fetchall():
                     data = load_json_blob(cand)
                     if isinstance(data, list) and len(data) > 10:
                         row = cand

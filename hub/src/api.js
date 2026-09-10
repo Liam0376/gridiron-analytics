@@ -265,6 +265,7 @@ export async function fetchRefreshLog() {
 
 // Game predictions (spec 2026-09-10): market-consensus win%/predicted score
 // per scheduled game. Same model-direct/no-write pattern as props edges.
+// Routed through hub proxy (/hub-api) to avoid CORS (browser on 8001 → API on 8000).
 export async function fetchGamePredictions(args = {}) {
   return withCache('fetchGamePredictions', args, async () => {
     const { week, season } = args;
@@ -273,7 +274,7 @@ export async function fetchGamePredictions(args = {}) {
     if (season != null && season !== '') qs.set('season', String(season));
     const suffix = qs.toString() ? `?${qs}` : '';
     try {
-      const data = await getJSON(modelUrl(`/games/predictions${suffix}`));
+      const data = await getJSON(`${HUB_API}/games/predictions${suffix}`);
       return { games: data.games || [], meta: { timestamp: data.timestamp, week: data.week, season: data.season } };
     } catch (_) {
       return { games: [], meta: { cold: true } };
@@ -285,6 +286,7 @@ export async function fetchGamePredictions(args = {}) {
 // the given teams' model fair lines, no stored book line required — browses
 // a game's props by clicking it, instead of only showing manually-entered
 // lines. Same model-direct/no-write pattern as the other props reads.
+// Routed through hub proxy (/hub-api) to avoid CORS (browser on 8001 → API on 8000).
 export async function fetchPropsBoard(args = {}) {
   return withCache('fetchPropsBoard', args, async () => {
     const { teams, week, season } = args;
@@ -293,7 +295,7 @@ export async function fetchPropsBoard(args = {}) {
     if (week != null && week !== '') qs.set('week', String(week));
     if (season != null && season !== '') qs.set('season', String(season));
     try {
-      const data = await getJSON(modelUrl(`/props/board?${qs}`));
+      const data = await getJSON(`${HUB_API}/props/board?${qs}`);
       return { players: data.players || [], meta: { timestamp: data.timestamp, week: data.week, season: data.season } };
     } catch (_) {
       return { players: [], meta: { cold: true } };

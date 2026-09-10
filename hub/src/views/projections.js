@@ -8,6 +8,7 @@ import { playerCard } from '../components/playerCard.js';
 import { getTeamColor } from '../components/teamColors.js';
 import { openPlayerModal } from '../components/playerModal.js';
 import { escapeHtml } from '../lib/escape.js';
+import { relevanceTier } from '../lib/relevance.js';
 
 let allPlayers = [];
 let compById = new Map();
@@ -360,12 +361,13 @@ export async function renderProjections(root) {
     });
   });
 
-  let sortKey = 'projected_points', sortDir = -1;
+  let sortKey = 'projected_points', sortDir = -1, userSorted = false;
   root.querySelectorAll('th[data-sort]').forEach(th=>{
     th.style.cursor = 'pointer';
     const triggerSort = ()=>{
       const k = th.getAttribute('data-sort');
       if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = k==='player_name' ? 1 : -1; }
+      userSorted = true;
       currentPage = 1;
       renderTable();
       updateSortToggleLabel();
@@ -382,6 +384,7 @@ export async function renderProjections(root) {
   }
   root.querySelector('#toggleProjSortDir')?.addEventListener('click', ()=>{
     sortDir *= -1;
+    userSorted = true;
     currentPage = 1;
     renderTable();
     updateSortToggleLabel();
@@ -413,8 +416,13 @@ export async function renderProjections(root) {
 
   function renderTable() {
     let rows = filteredWithEdge(allPlayers);
-    // sort
+    // sort — default view demotes off-depth-chart players first (demote,
+    // don't remove); any explicit user sort stays pure.
     rows = [...rows].sort((a,b)=>{
+      if (!userSorted) {
+        const tier = relevanceTier(a) - relevanceTier(b);
+        if (tier !== 0) return tier;
+      }
       const av = getSortVal(a, sortKey);
       const bv = getSortVal(b, sortKey);
       if (av === null && bv === null) return 0;
