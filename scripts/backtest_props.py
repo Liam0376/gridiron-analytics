@@ -13,8 +13,7 @@ Metrics per market — no book lines exist ($0 notebooks: manual entry only):
   monotonic flag. Verdict via verdict_td_market.
 
 Empty-history rows (is_empty_projection) are EXCLUDED from calibration (fair
-0.0 + floor sigma would distort the sigmas under test) and counted separately
-— downstream edge is vetoed for them regardless (apply_prop_edge_rule).
+0.0 + floor sigma would distort the sigmas under test) and counted separately.
 
 Known quirks (same as fantasy backtests, not hidden):
 - Schedule temp/wind are OBSERVED post-game values, live uses Open-Meteo

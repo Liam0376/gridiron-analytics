@@ -1,22 +1,20 @@
-"""Player props odds math: fair odds, EV, edge rule. Pure functions only,
-plus a fair-line builder on stat-projector outputs (Task 3: imports
-project_player_stats read-only — never modifies the projector, scoring,
-decision, or comparison layers).
+"""Player props odds math: fair odds (devig) + a fair-line builder on
+stat-projector outputs (Task 3: imports project_player_stats read-only —
+never modifies the projector, scoring, decision, or comparison layers).
 
 Separate from fantasy projections: fantasy asks "who scores more PPR?", props asks
-"is the book's line mispriced vs my distribution?". This module does the second
-half (odds math). Fair-line means/sigmas arrive in Task 3 from `stat_projector`
-outputs — this file never imports the projector, the DB, or any adapter, so the
-math stays unit-testable with zero deps.
+"is the book's line mispriced vs my distribution?" — though as of 2026-09-10
+this module only answers the fair-line half; the book-line/edge comparison
+(EV, edge rule) was removed along with the API endpoints that used it — no
+free player-prop odds feed exists to compare against. `american_to_prob`
+stays (game_predictions.py uses it for real game-level market lines, a
+different free dataset). Fair-line means/sigmas arrive in Task 3 from
+`stat_projector` outputs — this file never imports the projector, the DB,
+or any adapter, so the math stays unit-testable with zero deps.
 
 Conventions (pinned Task 1, 2026-09-09):
 - `width` = HALF-width (src semantics: `lower = point - width`,
   `projection.py:216-217`), never the hub full-span rendering.
-- `prob_to_american` returns unrounded float (exact inverse of
-  `american_to_prob`); round only for display.
-- Edge defaults (`edge_pp_min=0.05`, `ev_min=0.04`): at edge >= 5pp, EV is always
-  >= 5% (EV = edge_pp * (q+1), q+1 > 1), so `ev_min` is a backstop for custom
-  thresholds, not the binding constraint at defaults. Honest, not redundant.
 """
 
 import math
@@ -29,27 +27,6 @@ from ffanalytics.stat_projector import project_player_stats
 # (sigma = width / Z_80). Approximation is flagged uncalibrated until
 # per-market shadow >= MIN_SHADOW_SAMPLES — see spec.
 Z_80 = 1.2815515655446004
-
-EDGE_PP_MIN = 0.05
-EV_MIN = 0.04
-
-
-def _require_prob(p: float, name: str = "p", allow_degenerate: bool = False) -> float:
-    """Validate a probability. Degenerate 0/1 allowed only when asked."""
-    try:
-        p = float(p)
-    except (TypeError, ValueError):
-        raise ValueError(f"{name} must be a number, got {p!r}")
-    if math.isnan(p):
-        raise ValueError(f"{name} probability must not be NaN")
-    lo, hi = (0.0, 1.0) if allow_degenerate else (0.0, 1.0)
-    if allow_degenerate:
-        if not (lo <= p <= hi):
-            raise ValueError(f"{name} probability must be in [0, 1], got {p}")
-    else:
-        if not (lo < p < hi):
-            raise ValueError(f"{name} probability must be in (0, 1), got {p}")
-    return p
 
 
 def _require_price(price: float) -> float:
@@ -74,34 +51,6 @@ def american_to_prob(price: float) -> float:
     if price > 0:
         return 100.0 / (price + 100.0)
     return abs(price) / (abs(price) + 100.0)
-
-
-def prob_to_american(p: float) -> float:
-    """No-vig fair American odds for a probability. Exact inverse of
-    `american_to_prob` (unrounded float — round for display).
-
-    0.5 -> 100 (even); 0.6 -> -150; 1/3 -> +200.
-    """
-    p = _require_prob(p)
-    if p == 0.5:
-        return 100.0
-    if p > 0.5:
-        return -100.0 * p / (1.0 - p)
-    return 100.0 * (1.0 - p) / p
-
-
-def ev_per_unit(p_model: float, book_price: float) -> float:
-    """Expected profit per $1 staked: p * payout - (1 - p) * 1.
-
-    Caller passes the side-adjusted model prob (P(over) with the over price,
-    or P(under) = 1 - P(over) with the under price). -110 both sides at true
-    p=0.5 gives EV = 0.5*(100/110) - 0.5 = -0.0455 per $1 — the full vig on
-    the staked dollar, not half. The bet must clear the juice, not just 50%.
-    """
-    p = _require_prob(p_model, "p_model", allow_degenerate=True)
-    price = _require_price(book_price)
-    payout = price / 100.0 if price > 0 else 100.0 / abs(price)
-    return p * payout - (1.0 - p)
 
 
 def poisson_anytime_td(mean_tds: float) -> float:
@@ -140,44 +89,6 @@ def normal_over_prob(mean: float, sigma: float, line: float) -> float:
             return 0.0
         return 0.5
     return 0.5 * math.erfc((line - mean) / (sigma * math.sqrt(2.0)))
-
-
-def apply_prop_edge_rule(
-    p_model: float,
-    book_price: float,
-    edge_pp_min: float = EDGE_PP_MIN,
-    ev_min: float = EV_MIN,
-    is_empty: bool = False,
-) -> dict:
-    """Edge decision for one side of one prop market.
-
-    Args:
-        p_model: side-adjusted model probability (P(over) vs over price, or
-            P(under) vs under price).
-        book_price: American price on that side.
-        is_empty: True when the projection is unknown (rookie/no history) —
-            vetoes VALUE unconditionally; unknown is not an edge.
-
-    Returns dict with book_prob, edge_pp, ev_per_unit, decision
-    ("VALUE" / "NO EDGE" / "NO EDGE (unknown)"). Never "LOCK" — RG copy rule.
-    """
-    p = _require_prob(p_model, "p_model", allow_degenerate=True)
-    price = _require_price(book_price)
-    book_prob = american_to_prob(price)
-    edge_pp = p - book_prob
-    ev = ev_per_unit(p, price)
-    if is_empty:
-        decision = "NO EDGE (unknown)"
-    elif edge_pp >= edge_pp_min and ev >= ev_min:
-        decision = "VALUE"
-    else:
-        decision = "NO EDGE"
-    return {
-        "book_prob": book_prob,
-        "edge_pp": edge_pp,
-        "ev_per_unit": ev,
-        "decision": decision,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -355,17 +266,6 @@ def build_prop_fair_lines(
         "is_empty_projection": is_empty,
         "markets": markets,
     }
-
-
-def prop_over_prob(market_entry, line):
-    """P(stat > line) for a normal-market entry from `build_prop_fair_lines`.
-
-    Poisson (yes/no) markets carry p_yes directly — over/under lines don't
-    apply, so this raises instead of guessing.
-    """
-    if market_entry.get("model") == "poisson":
-        raise ValueError("poisson markets are yes/no — use entry['p_yes']")
-    return normal_over_prob(market_entry["fair_line"], market_entry["sigma"], line)
 
 
 # ---------------------------------------------------------------------------
