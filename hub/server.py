@@ -1537,10 +1537,24 @@ class Handler(BaseHTTPRequestHandler):
                     "total_pts": 0.0,
                     "games": 0,
                     "week_pts": [],
+                    # why track this (user-caught live bug, 2026-09-10): the
+                    # model explicitly flags a rookie/no-history player as
+                    # is_empty_projection=True, projected_points=0.0 — honest
+                    # "unknown", the same discipline stat_projector.py's own
+                    # "tested and REJECTED imputing positional mean" comment
+                    # documents. Without tracking this, the priority chain
+                    # below fell through model->raw_pts->market and silently
+                    # showed a FantasyPros market guess as if it were the
+                    # model's number for players the model explicitly said it
+                    # couldn't project (confirmed live: 4 real rookies with
+                    # is_empty_projection=True showed 6.28/5.01/0.61/1.46).
+                    "is_empty": bool(p.get("is_empty_projection")),
                 }
             agg[pid]["total_pts"] += pts
             agg[pid]["games"] += 1
             agg[pid]["week_pts"].append(pts)
+            if p.get("is_empty_projection"):
+                agg[pid]["is_empty"] = True
             # nflverse quirk: prefer `team` over `recent_team`.
             if p.get("team"):
                 agg[pid]["team"] = p["team"]
@@ -1628,6 +1642,17 @@ class Handler(BaseHTTPRequestHandler):
 
             if m_pts is not None and float(m_pts) > 0:
                 pts = float(m_pts)
+            elif a.get("is_empty"):
+                # why stop here, not fall through (user-caught live bug):
+                # the model explicitly couldn't project this player (no
+                # history — rookie, or returning from injury with nothing
+                # to average). raw_pts is 0 for the same reason and would
+                # never have been shown anyway; the real risk was falling
+                # through further to mk_per_game (a FantasyPros market
+                # guess) and displaying that as if it were this app's own
+                # projection. Show 0/unknown instead, same honesty rule
+                # stat_projector.py's "explicit zero + flag" already follows.
+                pts = 0.0
             elif raw_pts > 0:
                 pts = raw_pts
             elif mk_per_game and mk_per_game > 0:
