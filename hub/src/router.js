@@ -17,4 +17,3 @@ export function getRoute() {
   return routes.find(r => r.id === id) || routes[0];
 }
 export function allRoutes() { return routes; }
-export function navigate(id) { location.hash = id; }

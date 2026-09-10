@@ -1,7 +1,7 @@
 // hub/src/api.js — read-only data layer. Never POSTs, never writes.
 // Tries 127.0.0.1:8000 GET endpoints first, falls back to hub read-only proxy (8002) which reads fantasy.db with mode=ro.
 // No import from src/ffanalytics — API boundary is HTTP / JSON only.
-import { getLeagueId, setLeagueId as storeLeagueId, getDraftTypeOverride } from './lib/league.js';
+import { getLeagueId, setLeagueId as storeLeagueId, getDraftTypeOverride, clearLeagueEconMemo } from './lib/league.js';
 
 const API_BASE = `http://${location.hostname}:8000`;
 const HUB_API = '/hub-api'; // proxied to 8002 when hub/server.py is running, otherwise 404 → we degrade gracefully
@@ -16,6 +16,11 @@ export function getActiveLeagueId() {
 export function setActiveLeague(id) {
   storeLeagueId(id);
   invalidateApiCache(); // cached payloads are per-league; never mix across switch
+  // why (graphify-audit finding): league.js's own 60s auction-economics
+  // memo (_econMemo — budget/roster shape/replacement counts) is a SEPARATE
+  // cache from invalidateApiCache() above. Without this, switching leagues
+  // could show the previous league's auction $/VOR values for up to 60s.
+  clearLeagueEconMemo();
 }
 
 function leagueQuery(explicitId, joiner = '?') {
