@@ -5,6 +5,7 @@ the others."""
 import sqlite3
 import json
 import math
+import re
 from datetime import datetime, timedelta
 
 import logging
@@ -45,8 +46,18 @@ def _log(conn: sqlite3.Connection, source: str, success: bool, error_message: st
     conn.commit()
 
 
+# why suffix strip (user-caught, generic — not one player): Sleeper stores
+# "Kenneth Walker", nflverse stores "Kenneth Walker III" — the raw-lowercase
+# key never matched, so the current-team patch below silently missed EVERY
+# suffixed name (Jr./Sr./II-V), not just this one, leaving stale nflverse
+# (prior-season) teams standing after a trade. Strip on both sides so the
+# join works regardless of which source (if either) carries the suffix.
+_NAME_SUFFIX_RE = re.compile(r"\s+(jr\.?|sr\.?|ii|iii|iv|v)$", re.IGNORECASE)
+
+
 def _norm_name_pos(name, pos):
-    return (str(name or "").strip().lower(), str(pos or "").upper())
+    n = _NAME_SUFFIX_RE.sub("", str(name or "").strip()).strip().lower()
+    return (n, str(pos or "").upper())
 
 
 def build_sleeper_team_map(sleeper_players: dict) -> dict:
@@ -141,18 +152,34 @@ def build_rookie_rows(sleeper_players: dict, have_keys: set, opp_map: dict, week
     return rows
 
 
-def build_sleeper_xwalk(sleeper_players: dict) -> dict:
+def build_sleeper_xwalk(sleeper_players: dict, name_pos_to_gsis: dict | None = None) -> dict:
     """Sleeper id -> GSIS id crosswalk for roster joins.
 
     League rosters carry Sleeper ids (e.g. "4046"); nflverse stats carry GSIS
     ids (e.g. "00-0033873") — direct dict joins match NOTHING in production
     (verified live: 169 rostered vs 2025 stats universe, 0 overlap), silently
     emptying start/sit, waiver and trade teams. Sleeper entries carry gsis_id;
-    this maps it. Skips entries missing either side.
+    this maps it primarily.
+
+    name_pos_to_gsis (optional, {(norm_name, POS): gsis_id} — build from
+    nflverse rows via _norm_name_pos) is a fallback for the direct id join:
+    user-caught live bug, Sleeper's own gsis_id field is None for some real,
+    correctly-rostered players (Kenneth Walker III confirmed — not a code
+    bug on either side, just a gap in Sleeper's dataset). Name+pos catches
+    what the id join misses; same normalization patch_proj_teams already
+    uses, so suffix mismatches (Jr./Sr./II-V) don't reopen this gap.
     """
     out = {}
     for sid, sp in (sleeper_players or {}).items():
-        gsis = (sp or {}).get("gsis_id")
+        sp = sp or {}
+        gsis = sp.get("gsis_id")
+        if not gsis and name_pos_to_gsis:
+            name = sp.get("full_name") or " ".join(
+                x for x in (sp.get("first_name"), sp.get("last_name")) if x
+            )
+            pos = sp.get("position")
+            if name and pos:
+                gsis = name_pos_to_gsis.get(_norm_name_pos(name, pos))
         if sid is not None and gsis:
             out[str(sid)] = str(gsis)
     return out
@@ -577,7 +604,14 @@ def run_refresh_with_data(
                         gsis_id TEXT NOT NULL
                     )"""
                 )
-                xwalk = build_sleeper_xwalk(sleeper_players_map)
+                name_pos_to_gsis = {}
+                for s in (data.get("player_stats") or []):
+                    nm = s.get("player_display_name") or s.get("player_name")
+                    pos = s.get("position") or s.get("position_group")
+                    gsis_id = s.get("player_id")
+                    if nm and pos and gsis_id:
+                        name_pos_to_gsis.setdefault(_norm_name_pos(nm, pos), str(gsis_id))
+                xwalk = build_sleeper_xwalk(sleeper_players_map, name_pos_to_gsis)
                 conn.execute("DELETE FROM sleeper_xwalk")
                 conn.executemany(
                     "INSERT OR REPLACE INTO sleeper_xwalk (sleeper_id, gsis_id) VALUES (?, ?)",

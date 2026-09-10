@@ -556,6 +556,79 @@ def test_props_board_two_teams_and_empty_projection_excluded():
         conn.close()
 
 
+def test_props_board_flags_unavailable_player_never_hides_them():
+    # why: user-caught bug — an OUT/IR player's stale projection rendered
+    # exactly like an active player's, no status shown. Board must fetch
+    # real injury status (sleeper-keyed) via the gsis<->sleeper xwalk and
+    # flag it, never hardcode a specific player, never silently drop them
+    # (dropping is its own dishonesty — hiding the model's blind spot).
+    conn, tmp = _fresh_db()
+    snap = _snap()
+    try:
+        _warm()
+        _CACHE.update({
+            "sleeper_xwalk": {"9001": "2544", "9002": "7500"},  # {sleeper_id: gsis_id}
+            "injury_status": {"9001": "Out", "9002": None},
+        })
+        with patch("ffanalytics.db._get_conn", return_value=conn):
+            resp = client.get("/props/board", params={"teams": "KC,BUF", "season": SEASON, "week": WEEK})
+        assert resp.status_code == 200, resp.text
+        rows = resp.json()["players"]
+        mahomes_rows = [r for r in rows if r["player_id"] == "2544"]
+        wr_rows = [r for r in rows if r["player_id"] == "7500"]
+        assert mahomes_rows and all(r["sleeper_id"] == "9001" for r in mahomes_rows)
+        assert all(r["injury_status"] == "Out" for r in mahomes_rows)
+        assert all(r["available"] is False for r in mahomes_rows)
+        # still present with a real fair line, not dropped or zeroed
+        assert any(r["market"] == "passing_yards" and r["fair_line"] == 270.0 for r in mahomes_rows)
+        assert wr_rows and all(r["available"] is True for r in wr_rows)
+    finally:
+        _restore(snap)
+        conn.close()
+
+
+def test_props_board_no_xwalk_leaves_status_unknown_not_crashed():
+    # why: missing/empty crosswalk (fresh DB, no sleeper sync yet) must
+    # degrade to injury_status=None/available=True, never 500.
+    conn, tmp = _fresh_db()
+    snap = _snap()
+    try:
+        _warm()
+        with patch("ffanalytics.db._get_conn", return_value=conn):
+            resp = client.get("/props/board", params={"teams": "KC", "season": SEASON, "week": WEEK})
+        assert resp.status_code == 200, resp.text
+        rows = resp.json()["players"]
+        assert all(r["sleeper_id"] is None for r in rows)
+        assert all(r["available"] is True for r in rows)
+    finally:
+        _restore(snap)
+        conn.close()
+
+
+def test_props_board_shows_actual_once_week_is_played():
+    conn, tmp = _fresh_db()
+    snap = _snap()
+    try:
+        _warm()
+        _CACHE.update({
+            "player_stats": _MAHOMES_HIST + _WR_HIST + [
+                {"player_id": "2544", "position": "QB", "team": "KC", "week": WEEK,
+                 "season_type": "REG", "passing_yards": 301.0, "passing_tds": 3,
+                 "is_empty_projection": False},
+            ],
+        })
+        with patch("ffanalytics.db._get_conn", return_value=conn):
+            resp = client.get("/props/board", params={"teams": "KC", "season": SEASON, "week": WEEK})
+        assert resp.status_code == 200, resp.text
+        rows = resp.json()["players"]
+        row = next(r for r in rows if r["player_id"] == "2544" and r["market"] == "passing_yards")
+        assert row["fair_line"] == 270.0  # unchanged: pre-game projection
+        assert row["actual"] == 301.0     # real box score for this week
+    finally:
+        _restore(snap)
+        conn.close()
+
+
 def test_props_board_503_without_cache():
     conn, tmp = _fresh_db()
     snap = _snap()

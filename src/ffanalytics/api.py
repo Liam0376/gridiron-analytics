@@ -1356,7 +1356,29 @@ def _evaluate_prop_edge(
     }
 
 
-def _fair_board_rows(proj_row: dict, history_rows: list[dict], prior_rows: list[dict] | None) -> list[dict]:
+# Sleeper injury_status vocabulary (see adapters/sleeper.py:get_injury_statuses)
+# that means "not going to play" — mirrors hub/src/components/badges.js's
+# injuryBadge() /out|ir|injured reserve/i test so backend "available" and
+# frontend badge color never disagree. Questionable/Doubtful stay available
+# (flagged, not hidden) — only these mean the projection is stale-by-default.
+_UNAVAILABLE_STATUSES = {"out", "ir", "injured reserve", "pup", "nfi", "suspended", "na"}
+
+
+def _is_unavailable(injury_status: str | None) -> bool:
+    if not injury_status:
+        return False
+    s = str(injury_status).strip().lower()
+    return s in _UNAVAILABLE_STATUSES
+
+
+def _fair_board_rows(
+    proj_row: dict,
+    history_rows: list[dict],
+    prior_rows: list[dict] | None,
+    sleeper_id: str | None = None,
+    injury_status: str | None = None,
+    actual_row: dict | None = None,
+) -> list[dict]:
     """Fair-line rows for EVERY market at a player's position — no book line
     required. This is what makes a game clickable into "browse this game's
     props": /props/edges only ever returns rows for a *stored* book line
@@ -1365,15 +1387,31 @@ def _fair_board_rows(proj_row: dict, history_rows: list[dict], prior_rows: list[
     sigma primitives _evaluate_prop_edge uses, just without the book-line
     comparison half (no p_model/edge/EV — there's no price to compare
     against). Empty-history players are skipped (fair 0.0 would be noise,
-    same reasoning `_evaluate_prop_edge`'s is_empty branch documents)."""
+    same reasoning `_evaluate_prop_edge`'s is_empty branch documents).
+
+    injury_status/sleeper_id are attached per row (not filtered out here —
+    the caller decides whether to exclude; showing an OUT player's stale
+    projection WITHOUT the status would be the actual dishonesty, per this
+    repo's calibration-honesty rule elsewhere). actual_row, when the target
+    week's real box score has landed (game played), adds an "actual" value
+    per market for predicted-vs-actual comparison — same market->stat-key
+    mapping as the fair side, just read off the real row instead."""
     if proj_row is None or bool(proj_row.get("is_empty_projection", False)):
         return []
     pos = (proj_row.get("position") or proj_row.get("position_group") or "").upper()
     market_defs = props_math.PROP_MARKETS.get(pos, [])
     if not market_defs:
         return []
+    # why appended, not in PROP_MARKETS: carries isn't a bettable prop
+    # market (no edge/EV/calibration machinery applies) — it's volume
+    # context the user asked to see on an RB's card. Same fair/sigma/actual
+    # computation as every other "normal" row below, just not wired into
+    # the edges/calibration system.
+    if pos == "RB":
+        market_defs = market_defs + [("carries", "carries", "normal")]
     name = proj_row.get("player_display_name") or proj_row.get("player_name") or ""
     team = proj_row.get("team") or proj_row.get("recent_team") or ""
+    unavailable = _is_unavailable(injury_status)
     rows = []
     for market, source, model in market_defs:
         if model == "poisson":
@@ -1385,11 +1423,23 @@ def _fair_board_rows(proj_row: dict, history_rows: list[dict], prior_rows: list[
                     pass
             if lam != lam or abs(lam) == float("inf"):
                 continue
+            actual_p_yes = None
+            if actual_row is not None and not actual_row.get("is_empty_projection"):
+                actual_lam = 0.0
+                for src in source.split("+"):
+                    try:
+                        actual_lam += float(actual_row.get(src, 0) or 0)
+                    except (TypeError, ValueError):
+                        pass
+                actual_p_yes = 1.0 if actual_lam > 0 else 0.0
             rows.append({
                 "player_id": str(proj_row.get("player_id", "")),
+                "sleeper_id": sleeper_id, "injury_status": injury_status,
+                "available": not unavailable,
                 "player_name": name, "position": pos, "team": team,
                 "market": market, "fair_line": round(lam, 3), "sigma": None,
                 "p_yes": round(props_math.poisson_anytime_td(lam), 4),
+                "actual_p_yes": actual_p_yes,
             })
         else:
             try:
@@ -1399,11 +1449,19 @@ def _fair_board_rows(proj_row: dict, history_rows: list[dict], prior_rows: list[
             if fair != fair or abs(fair) == float("inf"):
                 continue
             sigma = props_math.sigma_for_stat(history_rows, prior_rows, source)
+            actual = None
+            if actual_row is not None and not actual_row.get("is_empty_projection"):
+                try:
+                    actual = round(float(actual_row.get(source, 0) or 0), 2)
+                except (TypeError, ValueError):
+                    actual = None
             rows.append({
                 "player_id": str(proj_row.get("player_id", "")),
+                "sleeper_id": sleeper_id, "injury_status": injury_status,
+                "available": not unavailable,
                 "player_name": name, "position": pos, "team": team,
                 "market": market, "fair_line": round(fair, 2),
-                "sigma": round(sigma, 3),
+                "sigma": round(sigma, 3), "actual": actual,
             })
     return rows
 
@@ -1617,7 +1675,24 @@ def get_props_board(
     week = week if week is not None else (cache.get("week") or compute_nfl_week() or 1)
     team_set = {t.strip().upper() for t in teams.split(",") if t.strip()}
 
+    # gsis (model_projections' player_id) -> sleeper_id: injury_status and
+    # headshots are both sleeper_id-keyed (adapters/sleeper.py), but
+    # model_projections carries nflverse's gsis id. Same xwalk direction
+    # _resolve_base_stats uses elsewhere, just inverted for this lookup.
+    xwalk = _sleeper_xwalk_for(cache, league_id)  # {sleeper_id: gsis_id}
+    gsis_to_sleeper = {gsis: sid for sid, gsis in xwalk.items()}
+    injury_by_sleeper = cache.get("injury_status") or {}
+
+    # hist_lookup groups player_stats by player_id once; actual_by_pid (this
+    # target week's real box score, if the game's been played) is derived
+    # from it rather than a second scan over the same list.
     hist_lookup = _props_history_lookup(cache.get("player_stats"))
+    actual_by_pid: dict[str, dict] = {}
+    for pid, player_rows in hist_lookup.items():
+        for s in player_rows:
+            if s.get("week") == week and (s.get("season_type") or "REG") == "REG":
+                actual_by_pid[pid] = s
+                break
     rows: list[dict] = []
     for proj_row in cache.get("model_projections") or []:
         team = proj_row.get("team") or proj_row.get("recent_team") or ""
@@ -1625,7 +1700,12 @@ def get_props_board(
             continue
         pid = str(proj_row.get("player_id", ""))
         hist, prior = _split_history_prior(hist_lookup.get(pid, []), season, week)
-        rows.extend(_fair_board_rows(proj_row, hist, prior))
+        sleeper_id = gsis_to_sleeper.get(pid)
+        injury_status = injury_by_sleeper.get(sleeper_id) if sleeper_id else None
+        rows.extend(_fair_board_rows(
+            proj_row, hist, prior, sleeper_id=sleeper_id,
+            injury_status=injury_status, actual_row=actual_by_pid.get(pid),
+        ))
 
     return {
         "players": rows,

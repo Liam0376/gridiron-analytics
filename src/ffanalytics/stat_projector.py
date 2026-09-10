@@ -93,7 +93,7 @@ QB_STATS = [
     "rushing_yards", "rushing_tds", "fumbles_lost_total",
 ]
 SKILL_STATS = [
-    "rushing_yards", "rushing_tds", "receiving_yards", "receiving_tds",
+    "carries", "rushing_yards", "rushing_tds", "receiving_yards", "receiving_tds",
     "receptions", "fumbles_lost_total",
 ]
 KICKER_STATS = [

@@ -111,6 +111,54 @@ def test_patch_proj_teams_mover_stayer_unknown():
     assert projs[2]["team"] == "KC"
 
 
+def test_build_sleeper_xwalk_direct_gsis_id():
+    xwalk = refresh.build_sleeper_xwalk({
+        "4046": {"gsis_id": "00-0033873", "full_name": "Patrick Mahomes", "position": "QB"},
+    })
+    assert xwalk == {"4046": "00-0033873"}
+
+
+def test_build_sleeper_xwalk_name_fallback_when_gsis_missing():
+    # why (user-caught, live bug): real player, real Sleeper record, but
+    # Sleeper's own gsis_id field is None (data gap, not a code bug) —
+    # Kenneth Walker III confirmed live. Name+pos fallback (same
+    # normalization as patch_proj_teams) closes it without depending on
+    # Sleeper's field being populated.
+    xwalk = refresh.build_sleeper_xwalk(
+        {"8151": {"gsis_id": None, "full_name": "Kenneth Walker", "position": "RB"}},
+        name_pos_to_gsis={("kenneth walker", "RB"): "00-0038134"},
+    )
+    assert xwalk == {"8151": "00-0038134"}
+
+
+def test_build_sleeper_xwalk_no_fallback_stays_unmapped():
+    # no name_pos_to_gsis supplied, and no direct gsis_id -> skipped, not crashed
+    xwalk = refresh.build_sleeper_xwalk({
+        "8151": {"gsis_id": None, "full_name": "Kenneth Walker", "position": "RB"},
+    })
+    assert xwalk == {}
+
+
+def test_patch_proj_teams_matches_across_name_suffix_mismatch():
+    # why (user-caught, live bug): Sleeper stores "Kenneth Walker" (no
+    # suffix), nflverse stores "Kenneth Walker III" — pre-fix, the raw
+    # lowercase key never matched and a real trade (SEA -> KC) never
+    # patched, leaving the stale prior-season team standing. Generic fix
+    # (_norm_name_pos strips Jr./Sr./II-V both sides), verified here with a
+    # suffix on one side only, matching the real-world asymmetry.
+    projs = [
+        {"player_id": "8151", "player_display_name": "Kenneth Walker III",
+         "position": "RB", "team": "SEA", "recent_team": "SEA", "opponent_team": ""},
+    ]
+    team_map = refresh.build_sleeper_team_map({
+        "8151": {"full_name": "Kenneth Walker", "position": "RB", "team": "KC"},
+    })
+    assert refresh.patch_proj_teams(projs, team_map, {"KC": "DEN"}) == 1
+    assert projs[0]["team"] == "KC"
+    assert projs[0]["recent_team"] == "KC"
+    assert projs[0]["opponent_team"] == "DEN"
+
+
 def test_build_rookie_rows_filters_and_flags():
     sp_map = {
         "100": {"full_name": "Test Rookie", "position": "WR", "team": "KC",
@@ -220,10 +268,15 @@ def test_preseason_refresh_patches_teams_and_adds_rookies():
     blob_ids = {str(p.get("player_id")) for p in data["player_stats"]}
     assert {"gsis-vet1", "100"} <= blob_ids
     # Crosswalk: stored to DB + returned for cache (roster joins need it).
-    assert data["sleeper_xwalk"] == {"99": "gsis-vet1"}
+    # "100": "100" is the rookie's own row — no real gsis_id exists yet, so
+    # build_rookie_rows uses the sleeper_id as a placeholder player_id; the
+    # name-fallback (Task: Kenneth Walker III fix) correctly maps it to
+    # itself. Harmless — _resolve_base_stats already direct-matches "100"
+    # either way.
+    assert data["sleeper_xwalk"] == {"99": "gsis-vet1", "100": "100"}
     db_rows = {r["sleeper_id"]: r["gsis_id"] for r in conn.execute(
         "SELECT sleeper_id, gsis_id FROM sleeper_xwalk").fetchall()}
-    assert db_rows == {"99": "gsis-vet1"}
+    assert db_rows == {"99": "gsis-vet1", "100": "100"}
     conn.close()
 
 
