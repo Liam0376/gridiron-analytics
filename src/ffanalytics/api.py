@@ -201,6 +201,7 @@ async def request_id_middleware(request: Request, call_next):
 
 # Audit C3: guard concurrent refresh (launchd + hub/start.sh + manual)
 _REFRESH_LOCK = threading.Lock()
+_REFRESH_LOCK_HELD_BY_JOB = False  # transfer flag — endpoint releases only if job not queued
 
 
 _CACHE: dict = {
@@ -700,6 +701,8 @@ def _do_refresh_job(season: int, stats_season: int, ran_at_iso: str, week: int, 
             conn.close()
         except Exception:
             pass
+        global _REFRESH_LOCK_HELD_BY_JOB
+        _REFRESH_LOCK_HELD_BY_JOB = False
         try:
             _REFRESH_LOCK.release()
         except Exception:
@@ -728,11 +731,14 @@ def refresh(background_tasks: BackgroundTasks, body: RefreshRequest | None = Non
         # callers unchanged); {"league_id"} refreshes that league's own DB.
         lid = body.league_id if body and body.league_id else None
         background_tasks.add_task(_do_refresh_job, season, stats_season, ran_at_iso, week, lid)
+        global _REFRESH_LOCK_HELD_BY_JOB
+        _REFRESH_LOCK_HELD_BY_JOB = True
     except Exception:
-        try:
-            _REFRESH_LOCK.release()
-        except Exception:
-            pass
+        if not _REFRESH_LOCK_HELD_BY_JOB:
+            try:
+                _REFRESH_LOCK.release()
+            except Exception:
+                pass
         raise
     # why last-known sources: the job hasn't run yet, so per-source bools
     # can't be fresh; poll status_url for completion instead.
@@ -849,7 +855,10 @@ def get_projections(
         })
     out.sort(key=lambda x: x["projected_points"], reverse=True)
     page = out[offset:offset + limit]
-    return {"players": page, "count": len(page), "meta": {"cached": bool(cache["player_stats"]), "total": len(out)}}
+    meta = {"cached": bool(cache["player_stats"]), "total": len(out)}
+    if cache.get("last_updated"):
+        meta["last_updated"] = cache["last_updated"]
+    return {"players": page, "count": len(page), "meta": meta}
 
 
 @app.get("/league/draft")

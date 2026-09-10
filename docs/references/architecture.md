@@ -18,9 +18,9 @@ Follow: rejected → inline `# REJECTED` comment, not deletion.
 
 - `api.py` — in-memory `_CACHE`, `POST /refresh` via `run_refresh_with_data()`
 - `config.py` — `FEATURES`, `MIN_SHADOW_SAMPLES`, `FLEX_SCARCITY_MULTIPLIER`, weather. Inline `why`.
-- `db.py` + `schema.sql` — WAL, `row_factory=sqlite3.Row`, tables: `team_ratings`, `refresh_log`, `shadow_recommendations`, `league_settings`, `rosters`, `player_stats`, `injury_status`, `sleeper_matchups`, `news_data`, `weather`
+- `db.py` + `schema.sql` — WAL, `row_factory=sqlite3.Row`, tables: `team_ratings`, `refresh_log`, `shadow_recommendations`, `league_settings`, `rosters`, `player_stats`, `injury_status`, `sleeper_matchups`, `news_data`, `weather`, `market_consensus`, `draft_picks`, `league_transactions`, `prop_lines`, `sleeper_xwalk`
 - `refresh.py` — isolated sources, failures → `refresh_log` not abort
-- `adapters/{sleeper,nflverse,news,schedule,weather,pbp}.py` — injectable `session=`/`nfl_module=`, mockable. `nflverse.py` only Polars. Quirk: `team` not `recent_team`.
+- `adapters/{sleeper,nflverse,news,schedule,weather,pbp,fantasypros,fantasypros_csv,fantasypros_projections,statsguy}.py` — injectable `session=`/`nfl_module=`, mockable. `nflverse.py` only Polars. Quirk: `team` not `recent_team`.
 - `scoring.py` — `DEFAULT_SCORING` cold fallback; live = `sleeper.get_league_settings()`
 - `projection.py` — `use_features=True` retro (MAE≈0.98), `False` for predictions (tested bias).
 - `stat_projector.py` — 5-game ×2 → TD regression → usage blend → Vegas damping → weather → prior blend if <3 games. 18 rejected in header + `data/models/*/meta.json`.

@@ -100,6 +100,11 @@ export function matchesPlayer(p, parsed) {
     } else if (k === 'trending') {
       const want = value === 'true' || value === '1';
       if (Boolean(p.trending) !== want) return false;
+    } else if (k === 'roster') {
+      // Audit 22.0: roster:true filters to players on user's roster
+      const want = value === 'true' || value === '1';
+      const isRoster = Boolean(p._onRoster);
+      if (want !== isRoster) return false;
     }
   }
   return true;

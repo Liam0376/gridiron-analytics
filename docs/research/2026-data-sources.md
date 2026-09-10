@@ -11,7 +11,7 @@ training-data memory) — sports-data APIs change free tiers often.
 | League scoring/rosters/matchups/waivers | **Sleeper API** | Free | None | Official docs, stable |
 | Injury status (daily) | **Sleeper API** (`injury_status` field) | Free | None | Resets Wed mornings, game-week scoped |
 | Injury status (historical/backup) | **nflreadpy** `load_injuries()` | Free | None | Weekly cadence, CC-BY-SA attribution to FTN |
-| News/roster moves/depth charts | **ESPN hidden API** (fallback only) | Free | None | Unofficial, can break without notice |
+| News/roster moves/depth charts | **Sleeper API** (trending, injuries) + **nflreadpy** (injuries) | Free | None | ESPN hidden API planned but not implemented |
 | Weather (forecast, outdoor games) | **Open-Meteo** | Free | None | 16-day forecast, ~10k calls/day |
 
 ## 1. nflverse / nfl_data_py → nflreadpy

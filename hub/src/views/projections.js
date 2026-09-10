@@ -1,4 +1,4 @@
-import { fetchProjections, fetchComparison } from '../api.js';
+import { fetchProjections, fetchComparison, fetchRoster } from '../api.js';
 import { filterPlayers } from '../search.js';
 import { posBadge, injuryBadge, windBadge, confBadge } from '../components/badges.js';
 import { intervalBar } from '../components/intervalBar.js';
@@ -16,12 +16,13 @@ let currentQuery = '';
 let currentPage = 1;
 let compareEnabled = true;
 let edgeFilter = 'ALL'; // ALL | BUY | SELL
+let rosterPlayerIds = new Set(); // Audit 22.0: "My Roster" filter
 const PAGE_SIZE = 50;
 
 function edgeBadge(edge) {
   if (edge === 'BUY') return `<span class="badge" style="background:var(--emerald-dim); color:var(--emerald); border:1px solid rgba(16,185,129,0.22)">▲ BUY</span>`;
   if (edge === 'SELL') return `<span class="badge" style="background:var(--crimson-dim); color:var(--crimson); border:1px solid rgba(239,68,68,0.22)">▼ SELL</span>`;
-  return `<span class="badge" style="background:rgba(0,0,0,0.05); color:var(--text-faint); border:1px solid var(--border)">—</span>`;
+  return `<span class="badge" style="background:rgba(var(--text-rgb,0,0,0),0.05); color:var(--text-faint); border:1px solid var(--border)">—</span>`;
 }
 function deltaPtsBadge(d) {
   if (d == null) return `<span class="mono" style="color:var(--text-faint)">—</span>`;
@@ -45,7 +46,7 @@ function statDeltaBar(model, market, delta) {
   const pctM = Math.round((Math.abs(model) / maxAbs) * 100);
   const pctK = Math.round((Math.abs(market) / maxAbs) * 100);
   const dColor = delta > 0 ? 'var(--emerald)' : delta < 0 ? 'var(--crimson)' : 'var(--text-faint)';
-  return `<div style="display:flex; align-items:center; gap:6px; min-width:160px"><span class="mono" style="font-size:11px; min-width:44px; text-align:right">${model.toFixed(1)}</span><div style="flex:1; height:4px; background:rgba(0,0,0,0.06); border-radius:999px; position:relative; overflow:hidden"><div style="position:absolute; left:0; top:0; bottom:0; width:${pctM}%; background:var(--amber); opacity:0.9; border-radius:999px"></div><div style="position:absolute; left:0; top:0; bottom:0; width:${pctK}%; background:var(--sky); opacity:0.35; border-radius:999px"></div></div><span class="mono" style="font-size:11px; color:var(--text-muted); min-width:36px">${market.toFixed(1)}</span><span class="mono" style="font-size:11px; color:${dColor}; font-weight:700; min-width:36px; text-align:right">${delta > 0 ? '+' : ''}${delta.toFixed(1)}</span></div>`;
+  return `<div style="display:flex; align-items:center; gap:6px; min-width:160px"><span class="mono" style="font-size:11px; min-width:44px; text-align:right">${model.toFixed(1)}</span><div style="flex:1; height:4px; background:rgba(var(--text-rgb,0,0,0),0.06); border-radius:999px; position:relative; overflow:hidden"><div style="position:absolute; left:0; top:0; bottom:0; width:${pctM}%; background:var(--amber); opacity:0.9; border-radius:999px"></div><div style="position:absolute; left:0; top:0; bottom:0; width:${pctK}%; background:var(--sky); opacity:0.35; border-radius:999px"></div></div><span class="mono" style="font-size:11px; color:var(--text-muted); min-width:36px">${market.toFixed(1)}</span><span class="mono" style="font-size:11px; color:${dColor}; font-weight:700; min-width:36px; text-align:right">${delta > 0 ? '+' : ''}${delta.toFixed(1)}</span></div>`;
 }
 
 export async function renderProjections(root) {
@@ -62,15 +63,19 @@ export async function renderProjections(root) {
   // names keep them ("Michael Penix Jr.") — raw lower() never matches.
   const normName = (n) => String(n || '').toLowerCase().replace(/\b(jr\.?|sr\.?|ii|iii|iv|v)\b/g, '').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
   let sleeperIdByNamePos = new Map();
+  rosterPlayerIds = new Set(); // Audit 22.0: reset for "My Roster" filter
   try {
     const rosterData = await fetchRoster({});
     const allRosterPlayers = (rosterData.rosters || rosterData.leagueRosters || [])
       .flatMap(r => (r.players || []).map(pid => ({ player_id: pid, team: r.team_name })))
       .concat((rosterData.starters || []), (rosterData.bench || []), (rosterData.reserve || []));
     for (const p of allRosterPlayers) {
-      if (p.player_id && p.player_name) {
-        const key = `${normName(p.player_name)}|${(p.position || '').toUpperCase()}`;
-        sleeperIdByNamePos.set(key, String(p.player_id));
+      if (p.player_id) {
+        rosterPlayerIds.add(String(p.player_id));
+        if (p.player_name) {
+          const key = `${normName(p.player_name)}|${(p.position || '').toUpperCase()}`;
+          sleeperIdByNamePos.set(key, String(p.player_id));
+        }
       }
     }
   } catch {}
@@ -264,6 +269,7 @@ export async function renderProjections(root) {
           <button class="chip" data-chip="pos:TE">TE</button>
           <button class="chip" data-chip="healthy:true">Healthy</button>
           <button class="chip" data-chip="trending:true">Trending</button>
+          <button class="chip" data-chip="roster:true">My Roster</button>
           <button class="chip" data-chip="wind>15">Wind &gt;15</button>
           <button class="chip" data-chip="interval<3">Tight (±&lt;3)</button>
         </div>
@@ -383,6 +389,10 @@ export async function renderProjections(root) {
   updateSortToggleLabel();
 
   function filteredWithEdge(base) {
+    // Audit 22.0: tag roster membership for "My Roster" chip filter
+    for (const p of base) {
+      p._onRoster = rosterPlayerIds.has(String(p.player_id));
+    }
     let rows = filterPlayers(base, currentQuery);
     if (compareEnabled && hasComparison && edgeFilter !== 'ALL') {
       rows = rows.filter(p => (p.edge || 'NEUTRAL') === edgeFilter);
@@ -488,7 +498,7 @@ export async function renderProjections(root) {
         // stat deltas hidden row
         if (compareEnabled && hasComparison && p.stat_deltas && p.stat_deltas.length) {
           const statRows = p.stat_deltas.filter(s => s.market != null || s.model != null).slice(0,7).map(s=>`
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:4px 0; border-bottom:1px solid rgba(0,0,0,0.06)">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:4px 0; border-bottom:1px solid rgba(var(--text-rgb,0,0,0),0.06)">
               <span class="mono" style="font-size:11px; color:var(--text-muted); min-width:64px">${s.label}</span>
               ${statDeltaBar(s.model, s.market, s.delta)}
             </div>

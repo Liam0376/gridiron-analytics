@@ -19,7 +19,11 @@ over. Re-run this as more 2026 weeks complete; the n grows and the
 number gets more meaningful. This is a measurement script — it never
 touches POS_RESIDUALS or retunes anything, same discipline as
 coverage_2025.json's own "widths frozen" rule.
+
+Audit 22.0: saves per-week coverage to data/models/coverage_2026_history.json
+for time-series tracking across re-runs.
 """
+import json
 import sys
 from pathlib import Path
 
@@ -29,6 +33,8 @@ import nflreadpy as nfl
 from ffanalytics.stat_projector import build_weekly_projections, compute_conformal_bounds
 from ffanalytics.scoring import calculate_fantasy_points
 from ffanalytics.adapters import schedule as sched_adapter
+
+HISTORY_PATH = Path(__file__).resolve().parent.parent / "data" / "models" / "coverage_2026_history.json"
 
 
 def main():
@@ -85,16 +91,55 @@ def main():
     if total == 0:
         print("No overlapping player-weeks to score.")
         return
-    print(f"overall coverage: {hits / total:.4f}  (target 0.80, from POS_RESIDUALS - frozen, not retuned here)")
+    overall = hits / total
+    print(f"overall coverage: {overall:.4f}  (target 0.80, from POS_RESIDUALS - frozen, not retuned here)")
     print("by position:")
+    by_pos = {}
     for pos in sorted(by_pos_total):
         n = by_pos_total[pos]
-        print(f"  {pos}: {by_pos_hits[pos] / n:.4f}  (n={n})")
+        cov = by_pos_hits[pos] / n
+        by_pos[pos] = {"hits": by_pos_hits[pos], "total": n, "coverage": round(cov, 4)}
+        print(f"  {pos}: {cov:.4f}  (n={n})")
+
+    # Audit 22.0: save per-week snapshot for time-series tracking
+    _save_history(played_weeks, total, hits, overall, by_pos)
 
 
 def _is_empty_row(row: dict) -> bool:
     keys = ("passing_yards", "rushing_yards", "receiving_yards", "receptions")
     return all(not (row.get(k) or 0) for k in keys)
+
+
+def _save_history(played_weeks, total, hits, overall, by_pos):
+    """Append this run's snapshot to coverage_2026_history.json.
+
+    Each entry: {timestamp, weeks_played, n, hits, coverage, by_pos}.
+    The file is a JSON array; we load, append, and write back. If the
+    file is corrupted, we start fresh (measurement must never abort).
+    """
+    import datetime
+    HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    history = []
+    if HISTORY_PATH.exists():
+        try:
+            history = json.loads(HISTORY_PATH.read_text())
+            if not isinstance(history, list):
+                history = []
+        except Exception:
+            history = []
+    history.append({
+        "timestamp": datetime.datetime.now().isoformat(),
+        "weeks_played": played_weeks,
+        "n": total,
+        "hits": hits,
+        "coverage": round(overall, 4),
+        "by_pos": by_pos,
+    })
+    try:
+        HISTORY_PATH.write_text(json.dumps(history, indent=2))
+        print(f"\nSaved coverage snapshot to {HISTORY_PATH.name} ({len(history)} entries)")
+    except Exception as exc:
+        print(f"\nWarning: could not save history: {exc}")
 
 
 if __name__ == "__main__":

@@ -54,6 +54,10 @@ def get_connection(path: Path | None = None) -> sqlite3.Connection:
         conn.execute("PRAGMA synchronous=NORMAL")
     except Exception:
         pass
+    try:
+        conn.execute("PRAGMA foreign_keys=ON")
+    except Exception:
+        pass
     return conn
 
 
@@ -121,9 +125,9 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
         # IF NOT EXISTS here, additive only (never DROP), then user_version=4.
         # why UNIQUE not plain: live sqlite_master shows CREATE UNIQUE INDEX
         # for all six — a plain index would permit dupes the live DB rejects.
-        # why these columns: they mirror the inline UNIQUE(...) constraints
-        # already in schema.sql (season,week / season,week,kind / lat,lon,
-        # game_time_iso / season), so fresh and live DBs converge.
+        # Audit 22.0: these are now redundant with the composite PRIMARY KEYs
+        # in schema.sql for rosters, player_stats, news_data, market_consensus,
+        # injury_status. Kept for migration idempotency (additive only, never DROP).
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_rosters_sw "
             "ON rosters(season, week)"
@@ -212,3 +216,15 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             "ON team_ratings(season)"
         )
         conn.execute("PRAGMA user_version=8")
+
+    if cur_version < 9:
+        # Audit 22.0 — sleeper_matchups WHERE week=? scans all-season rows
+        # without a dedicated week index. The player_stats rowid index was
+        # dropped because rowid can't be referenced by name in indexes on
+        # tables with composite (non-INTEGER) PKs. Additive only, safe to
+        # re-run.
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_matchups_week "
+            "ON sleeper_matchups(week)"
+        )
+        conn.execute("PRAGMA user_version=9")

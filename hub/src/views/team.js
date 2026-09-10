@@ -117,20 +117,23 @@ export async function renderTeam(root) {
     const count = posStarters.length || 1;
     const avg = totalPts / count;
 
+    // Audit 22.0: thresholds use average (per-player strength), not total
+    // (which penalizes teams with more starters at a position). A team
+    // with 3 mediocre RBs shouldn't look "STRONGER" than one with 2 great ones.
     let label = 'SOLID';
     let cls = 'badge-amber';
     if (pos === 'QB') {
-      if (totalPts >= 18) { label = 'ELITE'; cls = 'badge-emerald'; }
-      else if (totalPts < 14) { label = 'WEAK'; cls = 'badge-crimson'; }
+      if (avg >= 18) { label = 'ELITE'; cls = 'badge-emerald'; }
+      else if (avg < 14) { label = 'WEAK'; cls = 'badge-crimson'; }
     } else if (pos === 'RB') {
-      if (totalPts >= 24) { label = 'STRONG'; cls = 'badge-emerald'; }
-      else if (totalPts < 16) { label = 'WEAK'; cls = 'badge-crimson'; }
+      if (avg >= 12) { label = 'STRONG'; cls = 'badge-emerald'; }
+      else if (avg < 8) { label = 'WEAK'; cls = 'badge-crimson'; }
     } else if (pos === 'WR') {
-      if (totalPts >= 28) { label = 'STRONG'; cls = 'badge-emerald'; }
-      else if (totalPts < 18) { label = 'WEAK'; cls = 'badge-crimson'; }
+      if (avg >= 14) { label = 'STRONG'; cls = 'badge-emerald'; }
+      else if (avg < 9) { label = 'WEAK'; cls = 'badge-crimson'; }
     } else if (pos === 'TE') {
-      if (totalPts >= 11) { label = 'STRONG'; cls = 'badge-emerald'; }
-      else if (totalPts < 7) { label = 'WEAK'; cls = 'badge-crimson'; }
+      if (avg >= 11) { label = 'STRONG'; cls = 'badge-emerald'; }
+      else if (avg < 7) { label = 'WEAK'; cls = 'badge-crimson'; }
     }
     return { pos, totalPts: totalPts.toFixed(1), avg: avg.toFixed(1), count: posStarters.length, label, cls };
   };

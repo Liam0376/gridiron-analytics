@@ -49,7 +49,13 @@ def log_recommendations_batch(
         )
         conn.commit()
         return len(rows)
-    except Exception:
+    except Exception as exc:
+        # Audit 22.0: log failure instead of silent return 0 — the caller
+        # has no way to know recommendations were lost.
+        import logging
+        logging.getLogger(__name__).warning(
+            "shadow: log_recommendations_batch failed (%s), %d rows lost", exc, len(rows)
+        )
         return 0
 
 

@@ -58,14 +58,18 @@ export function enrichPlayer(p, compRow, opts = {}) {
   const marketUncapped = comp.marketAuctionUncapped ?? ((vbdParams && comp.market_season_points != null)
     ? vbdAuctionUncapped(num(comp.market_season_points), pos, vbdParams)
     : null);
-  const marketAuction = num(
-    p.auction_price_paid ?? p.marketAuction ?? comp.marketAuction ?? marketVbd ?? Math.max(1, Math.round(gridironAuction * 0.9)),
-    1
-  );
+  // why check comp.marketAuction first: the fallback `gridironAuction * 0.9`
+  // fabricates a Value Edge when no real market data exists — user sees
+  // "+$12 edge" that's entirely manufactured (audit 22.0). Return null
+  // instead so the UI can show "Market: N/A" rather than a fake number.
+  const marketAuctionRaw = p.auction_price_paid ?? p.marketAuction ?? comp.marketAuction ?? marketVbd;
+  const marketAuction = marketAuctionRaw != null
+    ? num(marketAuctionRaw, 1)
+    : null;
 
   const replPts = (vbdParams?.replPts?.[pos] ?? 100);
   const vor = Math.max(0, modelSeason - replPts);
-  const deltaAuction = gridironAuction - marketAuction;
+  const deltaAuction = marketAuction != null ? gridironAuction - marketAuction : null;
 
   const slot = p.slot || defaultSlot;
   const ecr = comp.fp_ecr ?? p.fp_ecr ?? null;

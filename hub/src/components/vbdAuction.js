@@ -1,6 +1,7 @@
 // VBD (Value Based Drafting) auction pricing from comparison data
 // Mirrors auction.js logic: dynamic replacement levels + budget-proportional pricing
 import { leagueEconomics } from '../lib/league.js';
+import { SEASON_GAMES } from '../lib/auctionMath.js';
 
 const TEAMS = 12;
 const BUDGET = 200;
@@ -23,7 +24,9 @@ export function computeVbdParams(compPlayers, league) {
     const pos = (p.position || '').toUpperCase();
     if (!byPos[pos]) return;
     const weekly = Number(p.projected_points || p.weekly || 0);
-    const szn = Number(p.model_season_points || 0) || (weekly * 17);
+    // Audit 22.0: use league season length instead of hardcoded *17 —
+    // keeps consistent with auctionMath.js SEASON_GAMES constant.
+    const szn = Number(p.model_season_points || 0) || (weekly * SEASON_GAMES);
     byPos[pos].push(szn);
   });
 

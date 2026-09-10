@@ -58,9 +58,9 @@ export async function renderWaiver(root) {
 
     ${trending.length ? `
       <div class="card reveal in" style="margin-top:12px">
-        <div class="card-header"><h3>Trending adds</h3><span class="kicker">from Sleeper</span></div>
+        <div class="card-header"><h3>Trending adds</h3><span class="kicker">from Sleeper — ${trending.length} players</span></div>
         <div class="card-body row" style="gap:8px; flex-wrap:wrap">
-          ${trending.slice(0,12).map(t=>`<span class="badge trending-badge" style="background:var(--sky-dim); color:var(--sky); border:1px solid rgba(56,189,248,0.2); display:inline-flex; align-items:center; gap:6px">${t.player_id ? playerAvatar({player_id: t.player_id, player_name: t.player_name || '', position: t.position || '', team: t.team || ''}, 20) : ''}${escapeHtml(t.player_name || t.player_id || JSON.stringify(t).slice(0,24))}</span>`).join('')}
+          ${trending.slice(0,12).map(t=>`<button class="badge trending-badge" data-trending-pid="${t.player_id || ''}" style="background:var(--sky-dim); color:var(--sky); border:1px solid rgba(56,189,248,0.2); display:inline-flex; align-items:center; gap:6px; cursor:pointer; font:inherit; padding:4px 8px">${t.player_id ? playerAvatar({player_id: t.player_id, player_name: t.player_name || '', position: t.position || '', team: t.team || ''}, 20) : ''}${escapeHtml(t.player_name || t.player_id || JSON.stringify(t).slice(0,24))}${t.count ? `<span class="mono" style="font-size:10px; opacity:0.7">${(t.count/1000).toFixed(1)}k</span>` : ''}</button>`).join('')}
         </div>
       </div>
     ` : ``}
@@ -116,6 +116,17 @@ export async function renderWaiver(root) {
       const pid = el.getAttribute('data-pid');
       const found = recs.find(r => String(r.player_id) === String(pid));
       if (found) openPlayerModal(found, root);
+    });
+  });
+
+  // Audit 22.0: make trending badges clickable — opens player modal
+  root.querySelectorAll('[data-trending-pid]').forEach(el => {
+    el.addEventListener('click', () => {
+      const pid = el.getAttribute('data-trending-pid');
+      const t = trending.find(x => String(x.player_id) === String(pid));
+      if (t) {
+        openPlayerModal({player_id: t.player_id, player_name: t.player_name || '', position: t.position || '', team: t.team || ''}, root);
+      }
     });
   });
 }

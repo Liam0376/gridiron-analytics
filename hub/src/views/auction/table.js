@@ -247,6 +247,7 @@ export function showDraftModal(root, pid, name, suggestedVal, state, allRanked, 
         </div>
       </div>
       <div style="display:flex; gap:8px; justify-content:flex-end">
+        ${state.drafted[pid] ? `<button class="btn btn-ghost btn-sm" id="draftUndo" style="color:var(--crimson)">Undo pick</button>` : ''}
         <button class="btn btn-ghost btn-sm" id="draftCancel">Cancel</button>
       </div>
     </div>
@@ -267,4 +268,16 @@ export function showDraftModal(root, pid, name, suggestedVal, state, allRanked, 
       rerender();
     });
   });
+
+  // Audit 22.0: undo button — removes existing draft pick for this player
+  const undoBtn = modal.querySelector('#draftUndo');
+  if (undoBtn) {
+    undoBtn.addEventListener('click', () => {
+      delete state.drafted[pid];
+      state.myRoster = state.myRoster.filter(id => id !== pid);
+      saveDraftState(state);
+      modal.remove();
+      rerender();
+    });
+  }
 }

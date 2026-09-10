@@ -8,8 +8,8 @@ from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 
 try:
-    from ffanalytics.adapters.sleeper import _get_with_retry
-except Exception:  # pragma: no cover - optional retry helper, not required
+    from ffanalytics.adapters._retry import get_with_retry as _get_with_retry
+except ImportError:
     _get_with_retry = None
 
 BASE_URL = "https://api.fantasypros.com/public/v2/json/nfl"

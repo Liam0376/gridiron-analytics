@@ -1,40 +1,10 @@
 """StatsGuy Fantasy — free keyless market values from real trades.
 Values 0-10000 scale; mapped Sleeper ID -> gsis_id via Sleeper players DB."""
 
-import time
+from ffanalytics.adapters._retry import get_with_retry as _get_with_retry
 import requests
 
 BASE = "https://api.statsguyfantasy.com/api/v1"
-
-
-def _get_with_retry(http, url: str, timeout: int = 10, max_retries: int = 3):
-    last = None
-    for attempt in range(max_retries):
-        try:
-            resp = http.get(url, timeout=timeout)
-            last = resp
-            status = getattr(resp, "status_code", 200)
-            if status == 429:
-                retry_after = resp.headers.get("Retry-After") if hasattr(resp, "headers") else None
-                try:
-                    wait = float(retry_after) if retry_after else 1.5 * (attempt + 1)
-                except Exception:
-                    wait = 1.5 * (attempt + 1)
-                time.sleep(wait)
-                continue
-            if isinstance(status, int) and status >= 500 and attempt < max_retries - 1:
-                time.sleep(1.0 * (attempt + 1))
-                continue
-            if hasattr(resp, "raise_for_status"):
-                resp.raise_for_status()
-            return resp
-        except (requests.ConnectionError, requests.Timeout):
-            if attempt == max_retries - 1:
-                raise
-            time.sleep(1.0 * (attempt + 1))
-    if last is not None and hasattr(last, "raise_for_status"):
-        last.raise_for_status()
-    return last
 
 
 def get_statsguy_rankings(format: str = "non_sf_redraft", limit: int = 500, offset: int = 0, session=None) -> dict:

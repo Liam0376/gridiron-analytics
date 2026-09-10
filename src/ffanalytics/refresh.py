@@ -40,11 +40,15 @@ def _safe_dumps(obj) -> str:
 
 
 def _log(conn: sqlite3.Connection, source: str, success: bool, error_message: str | None, ran_at_iso: str) -> None:
+    # Audit 22.0: removed auto-commit here. refresh_log entries now commit
+    # with the caller's transaction (run_refresh: explicit commit at end;
+    # run_refresh_with_data: single commit at end). The prior auto-commit
+    # meant refresh_log said "success=1" even when the main data write
+    # rolled back — the audit trail lied.
     conn.execute(
         "INSERT INTO refresh_log (source, ran_at, success, error_message) VALUES (?, ?, ?, ?)",
         (source, ran_at_iso, 1 if success else 0, error_message),
     )
-    conn.commit()
 
 
 # why suffix strip (user-caught, generic — not one player): Sleeper stores
@@ -99,7 +103,9 @@ def patch_proj_teams(projs: list, team_by_np: dict, opp_map: dict) -> int:
                 if opp_map:
                     pr["opponent_team"] = opp_map.get(nt, pr.get("opponent_team", ""))
                 patched += 1
-        except Exception:
+        except Exception as exc:
+            logger.warning("patch_proj_teams: row failed — %s: %s",
+                           pr.get("player_display_name"), exc)
             continue
     return patched
 
@@ -265,6 +271,12 @@ def run_refresh(
         _log(conn, "ratings", False, str(exc), ran_at_iso)
         result["ratings"] = False
 
+    # Audit 22.0: commit refresh_log entries (previously auto-committed by
+    # _log(), which caused the audit trail to lie on rollback).
+    try:
+        conn.commit()
+    except Exception:
+        pass
     return result
 
 
@@ -408,6 +420,13 @@ def run_refresh_with_data(
                 pid = str(pr.get("player_id", ""))
                 if pid:
                     fpts = calculate_fantasy_points(pr, scoring)
+                    # Audit 22.0: guard against NaN/Inf from malformed rows —
+                    # round(NaN) → NaN leaks into proj_map, then into
+                    # enriched_player_stats JSON where _safe_dumps converts
+                    # it to 0, but in-memory consumers see NaN.
+                    import math
+                    if not math.isfinite(fpts):
+                        fpts = 0.0
                     pr["projected_points"] = round(fpts, 2)
                     proj_map[pid] = pr
             
@@ -833,10 +852,16 @@ def run_refresh_with_data(
                 # Cap total blobs across seasons to trailing 8 (week=0 baseline blobs
                 # excluded above since production stores week=0 full-season cache).
                 # Best-effort: keep latest 8 by (season, week) ordering.
+                # Audit 22.0: exclude week=0 from the global cap — it's the
+                # full-season baseline cache and must not be evicted by the
+                # trailing-8 limit.
                 conn.execute(
                     """DELETE FROM player_stats WHERE rowid NOT IN (
-                         SELECT rowid FROM player_stats ORDER BY season DESC, week DESC LIMIT 8
-                       ) AND (SELECT COUNT(*) FROM player_stats) > 8"""
+                         SELECT rowid FROM player_stats
+                         WHERE week != 0
+                         ORDER BY season DESC, week DESC LIMIT 8
+                       ) AND week != 0
+                       AND (SELECT COUNT(*) FROM player_stats WHERE week != 0) > 8"""
                 )
             except Exception as _pps_exc:
                 logger.warning(f"player_stats retention prune failed: {_pps_exc}")

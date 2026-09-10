@@ -53,7 +53,7 @@ def _vbd_auction_params_from_comps(comp_list, econ: dict | None = None):
     if not comp_list:
         return {}, POS_WEIGHT_FALLBACK.copy(), 0.0
 
-    # by_pos_model / market
+    # by_pos_model / market (single-pass collection, audit 22.0)
     by_pos_model: Dict[str, List[float]] = {pos: [] for pos in repl_counts}
     by_pos_market: Dict[str, List[float]] = {pos: [] for pos in repl_counts}
 
@@ -122,9 +122,13 @@ def _vbd_auction_params_from_comps(comp_list, econ: dict | None = None):
         except Exception:
             return 0.0
 
-    # raw totals per position for share calculation
+    # raw totals per position + weighted VOR in one pass (audit 22.0: merged
+    # two identical comp_list iterations into one). raw_model/market totals
+    # are accumulated first, then pos_weight + all_weighted follow.
     raw_model_per_pos = {pos: 0.0 for pos in repl_counts}
     raw_market_per_pos = {pos: 0.0 for pos in repl_counts}
+    # Collect per-player (m_sp, pos) for weighted VOR after pos_weight is known
+    _player_model_pts: List[tuple] = []
     for r in comp_list:
         if not isinstance(r, dict):
             continue
@@ -148,6 +152,7 @@ def _vbd_auction_params_from_comps(comp_list, econ: dict | None = None):
         raw_model_per_pos[pos] += _raw_vor(m_sp, pos, model_repl)
         if mk_sp is not None:
             raw_market_per_pos[pos] += _raw_vor(mk_sp, pos, market_repl)
+        _player_model_pts.append((m_sp, pos))
 
     raw_model_total = sum(raw_model_per_pos.values()) or 1.0
     raw_market_total = sum(raw_market_per_pos.values()) or 1.0
@@ -169,25 +174,10 @@ def _vbd_auction_params_from_comps(comp_list, econ: dict | None = None):
         raw = _raw_vor(season_pts, pos, repl_map)
         return raw * pos_weight.get(pos, 1.0)
 
-    # total weighted VOR over the league's starter slots
+    # total weighted VOR over the league's starter slots (audit 22.0: uses
+    # cached _player_model_pts instead of re-iterating comp_list a 3rd time)
     all_weighted: List[float] = []
-    for r in comp_list:
-        if not isinstance(r, dict):
-            continue
-        pos = (r.get("position") or r.get("position_group") or "UNK").upper()
-        if pos == "DST":
-            pos = "DEF"
-        if pos not in repl_counts:
-            continue
-        m_sp = r.get("model_season_points")
-        if m_sp is None:
-            m_sp = r.get("model_points")
-        if m_sp is None:
-            pp = r.get("projected_points") or r.get("point_estimate") or 0
-            try:
-                m_sp = float(pp or 0) * 17.0
-            except Exception:
-                m_sp = 0.0
+    for m_sp, pos in _player_model_pts:
         wv = _weighted_vor(m_sp, pos, model_repl)
         if wv > 0:
             all_weighted.append(wv)
@@ -288,6 +278,11 @@ def _replacement_levels(
 
     by_pos: Dict[str, List[float]] = {}
     for p in all_players:
+        # Audit 22.0: skip empty projections — a player with is_empty_projection
+        # has no real stat data yet (e.g. preseason bye). Including their 0.0
+        # projected_points inflates the replacement pool and deflates VBD values.
+        if p.get("is_empty_projection"):
+            continue
         pos = (p.get("position") or p.get("position_group") or "UNK").upper()
         pts = float(p.get("projected_points", 0) or 0)
         by_pos.setdefault(pos, []).append(pts)
@@ -300,7 +295,10 @@ def _replacement_levels(
         replacement_rank = int(slots * num_teams)
         projections = by_pos.get(pos, [])
         if replacement_rank < len(projections):
-            levels[pos] = projections[replacement_rank]
+            # 0-indexed: replacement_rank=N means player N+1 is the first
+            # below-replacement player, so the replacement level is the
+            # projection of player at index N-1 (the last above-replacement).
+            levels[pos] = projections[max(0, replacement_rank - 1)]
         elif projections:
             levels[pos] = projections[-1]
         else:

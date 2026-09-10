@@ -48,7 +48,7 @@ def get_forecast(lat: float, lon: float, game_time_iso: str, session=None) -> di
                 return cached_data
 
     try:
-        from ffanalytics.adapters.sleeper import _get_with_retry
+        from ffanalytics.adapters._retry import get_with_retry as _get_with_retry
         url = (
             f"{BASE_URL}?latitude={lat}&longitude={lon}"
             "&hourly=temperature_2m,wind_speed_10m,precipitation_probability"

@@ -313,7 +313,7 @@ export function computeAuctionMath(players, compRaw, compById, compByNamePos, st
 export function edgeBadgeAuction(edge) {
   if (edge === 'BUY') return `<span class="badge" style="background:var(--emerald-dim); color:var(--emerald); border:1px solid rgba(16,185,129,0.22); font-size:10px">▲ BUY</span>`;
   if (edge === 'SELL') return `<span class="badge" style="background:var(--crimson-dim); color:var(--crimson); border:1px solid rgba(239,68,68,0.22); font-size:10px">▼ SELL</span>`;
-  return `<span class="badge" style="background:rgba(0,0,0,0.05); color:var(--text-faint); border:1px solid var(--border); font-size:10px">—</span>`;
+  return `<span class="badge" style="background:rgba(var(--text-rgb,0,0,0),0.05); color:var(--text-faint); border:1px solid var(--border); font-size:10px">—</span>`;
 }
 
 export function deltaSeasonBadge(d) {

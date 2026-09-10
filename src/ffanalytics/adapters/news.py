@@ -5,7 +5,7 @@ import logging
 import random
 import time
 import requests
-from ffanalytics.adapters.sleeper import _get_with_retry
+from ffanalytics.adapters._retry import get_with_retry as _get_with_retry
 
 logger = logging.getLogger(__name__)
 

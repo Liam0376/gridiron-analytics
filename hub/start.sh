@@ -179,7 +179,7 @@ try:
         try:
             age=(datetime.datetime.now() - datetime.datetime.fromisoformat(last)).total_seconds()/3600
             if age>24:
-                stale=True; reason=f"stale {age:.1f}h ago"
+                stale=True; reason=f"stale {age:.1f}h ago (>24h threshold)"
         except: stale=True; reason="bad timestamp"
     # also cold if player_stats empty
     if counts.get("player_stats",0)==0:

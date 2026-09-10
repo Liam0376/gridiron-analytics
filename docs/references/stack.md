@@ -3,13 +3,13 @@
 Read before running tests or dev servers. Backpressure: run checks, fix self — don't narrate lint.
 
 - Python >=3.12, `src` layout, `pythonpath=["src"]`. Use `.venv/bin/python`.
-- Required: `SLEEPER_LEAGUE_ID` or `config.py` raises. `1397736035240173568` live, `test` for unit.
+- Required: `SLEEPER_LEAGUE_ID` for `POST /refresh` (calls `require_league_id`). Hub/reads work without it — league id arrives per-request (UI setup / `?league_id=` / POST body). `1397736035240173568` live, `test` for unit.
 - Optional: `FFANALYTICS_DB_PATH` overrides `data/fantasy.db` (WAL, auto-creates). `data/*.db*` gitignored.
 - No lint/format/CI in repo — don't hunt for ruff/black/eslint.
 
 ## Commands
 
-- Tests: `SLEEPER_LEAGUE_ID=1397736035240173568 .venv/bin/pytest -q` (68 pass, 4 skipped; `RUN_INTEGRATION=1` hits Sleeper)
+- Tests: `SLEEPER_LEAGUE_ID=1397736035240173568 .venv/bin/pytest -q` (204 pass, 4 skipped; `RUN_INTEGRATION=1` hits Sleeper)
 - Single: `.venv/bin/pytest tests/test_rating.py::test_update_winner_rating_increases -v`
 - Integration: `RUN_INTEGRATION=1 .venv/bin/pytest tests/test_integration.py -v`
 - Dev: `.venv/bin/uvicorn ffanalytics.api:app --reload` — `503` until `POST /refresh`

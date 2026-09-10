@@ -250,7 +250,7 @@ function renderStatBar(label, value, maxVal, color, unit) {
         <span class="faint">${label}</span>
         <strong style="color:${color}">${val.toLocaleString()} ${unit}</strong>
       </div>
-      <div style="height:8px; background:rgba(0,0,0,0.06); border-radius:4px; overflow:hidden">
+      <div style="height:8px; background:rgba(var(--text-rgb,0,0,0),0.06); border-radius:4px; overflow:hidden">
         <div style="width:${pct}%; height:100%; background:${color}; border-radius:4px"></div>
       </div>
     </div>

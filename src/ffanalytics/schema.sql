@@ -9,11 +9,11 @@ CREATE TABLE IF NOT EXISTS team_ratings (
 );
 
 CREATE TABLE IF NOT EXISTS refresh_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
     source TEXT NOT NULL,           -- 'nflreadpy', 'sleeper', 'open-meteo'
     ran_at TEXT NOT NULL,           -- ISO8601, passed in by caller (no Date.now in workflows, but fine at runtime)
     success INTEGER NOT NULL,       -- 0/1
-    error_message TEXT
+    error_message TEXT,
+    PRIMARY KEY (source, ran_at)
 );
 
 CREATE TABLE IF NOT EXISTS shadow_recommendations (
@@ -32,27 +32,29 @@ CREATE TABLE IF NOT EXISTS league_settings (
     data JSON NOT NULL
 );
 
+-- Audit 22.0: these tables used AUTOINCREMENT PKs with UNIQUE constraints,
+-- causing INSERT OR REPLACE to create new rowids (b-tree bloat, future FK
+-- orphans). For fresh DBs, use composite PKs instead. Existing DBs need a
+-- rebuild migration (deferred — no FKs reference these ids today).
+
 CREATE TABLE IF NOT EXISTS rosters (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
     season INTEGER NOT NULL,
     week INTEGER NOT NULL,
     data JSON NOT NULL,
-    UNIQUE(season, week)
+    PRIMARY KEY (season, week)
 );
 
 CREATE TABLE IF NOT EXISTS player_stats (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
     season INTEGER NOT NULL,
     week INTEGER NOT NULL,
     data JSON NOT NULL,
-    UNIQUE(season, week)
+    PRIMARY KEY (season, week)
 );
 
 CREATE TABLE IF NOT EXISTS injury_status (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
     season INTEGER NOT NULL,
     data JSON NOT NULL,
-    UNIQUE(season)
+    PRIMARY KEY (season)
 );
 
 CREATE TABLE IF NOT EXISTS sleeper_matchups (
@@ -66,17 +68,15 @@ CREATE TABLE IF NOT EXISTS sleeper_matchups (
 );
 
 CREATE TABLE IF NOT EXISTS news_data (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
     season INTEGER NOT NULL,
     week INTEGER NOT NULL,
     kind TEXT NOT NULL,  -- 'trending' or 'injuries'
     data JSON NOT NULL,
     fetched_at TEXT NOT NULL,
-    UNIQUE(season, week, kind)
+    PRIMARY KEY (season, week, kind)
 );
 
 CREATE TABLE IF NOT EXISTS weather (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
     lat REAL NOT NULL,
     lon REAL NOT NULL,
     game_time_iso TEXT NOT NULL,
@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS weather (
     wind_mph REAL,
     precip_prob REAL,
     fetched_at TEXT NOT NULL,
-    UNIQUE(lat, lon, game_time_iso)
+    PRIMARY KEY (lat, lon, game_time_iso)
 );
 
 CREATE TABLE IF NOT EXISTS market_consensus (
@@ -162,3 +162,15 @@ CREATE INDEX IF NOT EXISTS idx_shadow_resolved
 ON shadow_recommendations(kind, actual_outcome)
 WHERE actual_outcome IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_team_ratings_season ON team_ratings(season);
+
+-- Audit 22.0: player_stats is the most-queried table. The hub's common
+-- pattern is ORDER BY season DESC, rowid DESC LIMIT 1 (latest season).
+-- The UNIQUE(season, week) implicit index covers season filtering;
+-- SQLite's natural rowid ordering handles the DESC scan.
+-- No explicit rowid index needed — rowid can't be referenced by name
+-- in index definitions on tables with composite (non-INTEGER) PKs.
+
+-- Audit 22.0: sleeper_matchups WHERE week = ? — week is the 2nd column
+-- in the (season, week, roster_id) PK; a dedicated week index avoids
+-- scanning all-season rows for a single-week query.
+CREATE INDEX IF NOT EXISTS idx_matchups_week ON sleeper_matchups(week);
