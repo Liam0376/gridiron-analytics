@@ -13,7 +13,9 @@ parameters, there is nothing to "gate" the way stat_projector/props
 backtests do — there's no free parameter to overfit. What we DO owe: the
 conversion math (devig, spread->score) must be correct and the source must
 be labeled honestly as market consensus, never presented as our own
-prediction. See scripts/validate_game_predictions.py for the historical
+prediction. Games whose books haven't posted lines yet are still emitted
+(nulls, source "schedule") so schedule browsing never drops teams.
+See scripts/validate_game_predictions.py for the historical
 accuracy/calibration report (informational, not a ship/reject gate)."""
 
 import math
@@ -54,26 +56,54 @@ def predicted_score(spread_line: float, total_line: float) -> tuple[float, float
 
 def game_prediction(game: dict) -> dict | None:
     """One row of market-derived prediction for a schedule game dict (as
-    returned by adapters/schedule.get_schedule). Returns None if the game
-    lacks lines (bye-adjacent edge cases, data gaps) — never guesses.
+    returned by adapters/schedule.get_schedule). Returns None only when the
+    matchup itself is unusable (missing teams) — games whose books haven't
+    posted lines yet are returned with null win probs/scores and source
+    "schedule" so every scheduled game stays browsable (user-caught live
+    bug, 2026-09-10: books only post ~1-2 weeks out, so from week 8 nearly
+    every game was dropped and whole teams vanished from the Props tab).
+    Nulls are JSON-safe by construction (never NaN) and must render as
+    "pending", never 0% — see hub props.js guards.
     """
     home = game.get("home_team")
     away = game.get("away_team")
+    if not home or not away:
+        return None
     spread = game.get("spread_line")
     total = game.get("total_line")
     home_ml = game.get("home_moneyline")
     away_ml = game.get("away_moneyline")
-    if not home or not away or spread is None or total is None or home_ml is None or away_ml is None:
-        return None
     # why isfinite (code-review finding): nflreadpy/Polars can hand back NaN
     # for a line that's technically "present" (not None) — a NaN spread/total
     # would propagate through predicted_score() into the JSON response and
-    # raise on serialize. Quarantine the row instead (never guess a score).
-    if not all(math.isfinite(v) for v in (spread, total, home_ml, away_ml)):
-        return None
-
-    p_home, p_away = devig_two_way(home_ml, away_ml)
-    home_score, away_score = predicted_score(spread, total)
+    # raise on serialize. Treat NaN as missing (never guess a score).
+    lines_ok = (
+        spread is not None and total is not None
+        and home_ml is not None and away_ml is not None
+        and all(math.isfinite(v) for v in (spread, total, home_ml, away_ml))
+    )
+    if lines_ok:
+        p_home, p_away = devig_two_way(home_ml, away_ml)
+        home_score, away_score = predicted_score(spread, total)
+        probs = {
+            "home_win_prob": round(p_home, 4),
+            "away_win_prob": round(p_away, 4),
+            "predicted_home_score": round(home_score, 1),
+            "predicted_away_score": round(away_score, 1),
+            "spread_line": spread,
+            "total_line": total,
+            "source": "market_consensus",
+        }
+    else:
+        probs = {
+            "home_win_prob": None,
+            "away_win_prob": None,
+            "predicted_home_score": None,
+            "predicted_away_score": None,
+            "spread_line": spread if isinstance(spread, (int, float)) and math.isfinite(spread) else None,
+            "total_line": total if isinstance(total, (int, float)) and math.isfinite(total) else None,
+            "source": "schedule",
+        }
 
     return {
         "game_id": game.get("game_id"),
@@ -81,13 +111,7 @@ def game_prediction(game: dict) -> dict | None:
         "week": game.get("week"),
         "home_team": home,
         "away_team": away,
-        "home_win_prob": round(p_home, 4),
-        "away_win_prob": round(p_away, 4),
-        "predicted_home_score": round(home_score, 1),
-        "predicted_away_score": round(away_score, 1),
-        "spread_line": spread,
-        "total_line": total,
-        "source": "market_consensus",
+        **probs,
         "final": game.get("home_score") is not None and game.get("away_score") is not None,
         "actual_home_score": game.get("home_score"),
         "actual_away_score": game.get("away_score"),

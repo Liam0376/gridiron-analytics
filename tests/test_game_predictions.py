@@ -32,14 +32,25 @@ def test_predicted_score_matches_spread_and_total():
     assert home + away == 46.0
 
 
-def test_game_prediction_missing_lines_returns_none():
-    assert game_prediction({"home_team": "KC", "away_team": "BAL"}) is None
+def test_game_prediction_missing_lines_returns_lineless_row():
+    # why (user-caught live bug, 2026-09-10): dropping line-less games hid
+    # whole teams from the Props tab (books post ~1-2 weeks out; from week
+    # 8 nearly every game was dropped). Rows emit with nulls + source
+    # "schedule" so every game stays browsable; only missing TEAMS drop.
+    pred = game_prediction({"home_team": "KC", "away_team": "BAL"})
+    assert pred["home_win_prob"] is None
+    assert pred["predicted_home_score"] is None
+    assert pred["source"] == "schedule"
+    assert pred["final"] is False
+    assert game_prediction({"home_team": "KC"}) is None
+    assert game_prediction({}) is None
 
 
 def test_game_prediction_nan_line_quarantines_row_not_500():
     # why (code-review finding): nflreadpy/Polars can hand back NaN for a
-    # "present" (not None) line — must quarantine the row, never let NaN
-    # reach json.dumps and crash the whole /games/predictions response.
+    # "present" (not None) line — must degrade to the lineless row, never
+    # let NaN reach json.dumps and crash the whole /games/predictions
+    # response.
     import math
 
     row = {
@@ -48,9 +59,13 @@ def test_game_prediction_nan_line_quarantines_row_not_500():
         "home_moneyline": -148, "away_moneyline": 124,
         "spread_line": float("nan"), "total_line": 46.0,
     }
-    assert game_prediction(row) is None
+    pred = game_prediction(row)
+    assert pred["source"] == "schedule"
+    assert pred["home_win_prob"] is None
+    assert pred["spread_line"] is None  # NaN never leaks, even partial
+    assert pred["total_line"] == 46.0  # finite partial lines are kept
     row["spread_line"] = float("inf")
-    assert game_prediction(row) is None
+    assert game_prediction(row)["source"] == "schedule"
 
 
 def test_game_prediction_full_row():

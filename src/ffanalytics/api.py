@@ -1383,6 +1383,11 @@ def get_game_predictions(
     with _league_conn(league_id) as conn:
         if conn is not None:
             for pred in predictions:
+                # why consensus-only: lineless rows (source "schedule") are
+                # not predictions — logging them as such would pollute the
+                # shadow record with non-predictions.
+                if pred.get("source") != "market_consensus":
+                    continue
                 try:
                     shadow.log_game_prediction_once(
                         conn, season, week, pred["game_id"], pred,

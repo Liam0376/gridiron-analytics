@@ -12,6 +12,12 @@ import { trapFocus } from '../lib/focusTrap.js';
 import { sortGameCards } from '../lib/relevance.js';
 
 function winPctChip(pct, isFavorite) {
+  // why null-guard (user-caught live bug, 2026-09-10): books post lines
+  // ~1-2 weeks out, so later-week games arrive with null win probs —
+  // rendering those as 0% would be a lie. "—" until lines post.
+  if (pct == null) {
+    return `<span class="mono" style="background:var(--surface-raised); color:var(--text-faint); border-radius:6px; padding:2px 6px; font-weight:700">—</span>`;
+  }
   const bg = isFavorite ? 'var(--emerald-dim)' : 'var(--surface-raised)';
   const fg = isFavorite ? 'var(--emerald)' : 'var(--text-muted)';
   return `<span class="mono" style="background:${bg}; color:${fg}; border-radius:6px; padding:2px 6px; font-weight:700">${Math.round(pct * 100)}%</span>`;
@@ -204,8 +210,11 @@ export async function renderProps(root) {
               <thead><tr><th>Matchup</th><th>Win %</th><th>Predicted score</th><th>Status</th></tr></thead>
               <tbody>
                 ${games.map(g => {
-                  const homeFav = g.home_win_prob >= g.away_win_prob;
+                  const hasLines = g.home_win_prob != null && g.away_win_prob != null;
+                  const homeFav = hasLines && g.home_win_prob >= g.away_win_prob;
                   const teamsKey = `${g.away_team},${g.home_team}`;
+                  const pendingChip = (!g.final && g.source !== 'market_consensus')
+                    ? ` <span class="badge" style="background:var(--surface-raised); color:var(--text-faint); border:1px solid var(--border)">lines pending</span>` : '';
                   return `
                   <tr class="props-game-row" data-teams="${escapeAttr(teamsKey)}" data-final="${g.final ? '1' : ''}" tabindex="0"
                       aria-label="View player props for ${escapeAttr(g.away_team || '')} at ${escapeAttr(g.home_team || '')}"
@@ -219,10 +228,10 @@ export async function renderProps(root) {
                       <div style="margin-top:4px">${winPctChip(g.home_win_prob, homeFav)}</div>
                     </td>
                     <td class="mono">
-                      ${g.final ? `<span style="font-weight:700">${g.actual_away_score}</span>` : `${Number(g.predicted_away_score).toFixed(1)}`}<br>
-                      ${g.final ? `<span style="font-weight:700">${g.actual_home_score}</span>` : `${Number(g.predicted_home_score).toFixed(1)}`}
+                      ${g.final ? `<span style="font-weight:700">${g.actual_away_score}</span>` : (g.predicted_away_score != null ? `${Number(g.predicted_away_score).toFixed(1)}` : '—')}<br>
+                      ${g.final ? `<span style="font-weight:700">${g.actual_home_score}</span>` : (g.predicted_home_score != null ? `${Number(g.predicted_home_score).toFixed(1)}` : '—')}
                     </td>
-                    <td>${gameStatusChip(g.final)}</td>
+                    <td>${gameStatusChip(g.final)}${pendingChip}</td>
                   </tr>`;
                 }).join('')}
               </tbody>
@@ -230,7 +239,7 @@ export async function renderProps(root) {
           </div>
           <div style="padding:10px 16px; font-size:11px; color:var(--text-faint)">
             Win% and predicted score are real market consensus (spread/total/moneyline, devigged) — not this app's own model.
-            Final games show the actual score in place of the prediction.
+            Final games show the actual score in place of the prediction. Games whose books haven't posted lines yet show — but stay clickable for props.
           </div>` : `
           <div style="padding:20px; font-size:13px; color:var(--text-muted)">
             No schedule loaded for this week yet.
