@@ -27,3 +27,18 @@ def test_get_injury_history_converts_to_plain_dicts():
     )
     result = nflverse.get_injury_history(2026, nfl_module=fake_nfl)
     assert result == [{"player_id": "4046", "report_status": "Questionable"}]
+
+def test_get_player_ids_converts_to_plain_dicts():
+    # why (user-caught live bug, 2026-09-10): the sleeper_id<->gsis_id
+    # name+pos xwalk fallback only matched players with a stat line THIS
+    # week — a real starter who didn't play (bye/injury/backup) couldn't
+    # resolve even though their gsis_id is a stable identity. load_players()
+    # is nflverse's full player-identity master list, not week-filtered.
+    from ffanalytics.adapters import nflverse
+    fake_nfl = Mock()
+    fake_nfl.load_players.return_value = _FakePolarsFrame(
+        [{"gsis_id": "00-0037834", "display_name": "Brock Purdy", "position": "QB"}]
+    )
+    result = nflverse.get_player_ids(nfl_module=fake_nfl)
+    assert result == [{"gsis_id": "00-0037834", "display_name": "Brock Purdy", "position": "QB"}]
+    fake_nfl.load_players.assert_called_once_with()

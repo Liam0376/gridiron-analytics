@@ -647,6 +647,28 @@ def run_refresh_with_data(
                     )"""
                 )
                 name_pos_to_gsis = {}
+                # why load_players() first, not just player_stats (user-caught
+                # live bug, 2026-09-10): player_stats only has rows for
+                # players with a stat line THIS week — a real starter who
+                # simply didn't play (bye, injury, backup) had no row to
+                # match against, even though their gsis_id is a stable
+                # identity unrelated to weekly participation. Confirmed
+                # live: Brock Purdy (real SF starter) failed to resolve for
+                # exactly this reason. load_players() is nflverse's full
+                # ~25k-player identity master list, not filtered to any
+                # week — covers the gap. Kept as its own try/except (per-
+                # source isolation): if this fetch fails, fall through to
+                # the smaller player_stats-derived map exactly as before,
+                # never abort the whole xwalk build over it.
+                try:
+                    for s in nflverse.get_player_ids(nfl_module=nfl_module):
+                        nm = s.get("display_name")
+                        pos = s.get("position")
+                        gsis_id = s.get("gsis_id")
+                        if nm and pos and gsis_id:
+                            name_pos_to_gsis.setdefault(_norm_name_pos(nm, pos), str(gsis_id))
+                except Exception as _pid_exc:
+                    logger.warning(f"refresh: load_players() fetch failed, xwalk fallback degraded to player_stats-only: {_pid_exc}")
                 for s in (data.get("player_stats") or []):
                     nm = s.get("player_display_name") or s.get("player_name")
                     pos = s.get("position") or s.get("position_group")

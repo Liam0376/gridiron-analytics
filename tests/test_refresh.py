@@ -305,6 +305,57 @@ def test_preseason_refresh_patches_teams_and_adds_rookies():
     conn.close()
 
 
+def test_xwalk_resolves_player_absent_from_this_weeks_stats():
+    # why (user-caught live bug, 2026-09-10): the name+pos xwalk fallback
+    # only matched players with a row in THIS week's player_stats — a real
+    # starter who didn't play (bye/injury/backup) had no row to match
+    # against, even though their gsis_id is a stable identity unrelated to
+    # weekly participation. Confirmed live: Brock Purdy (real SF starter,
+    # simply hadn't posted a week-1 stat line) failed to resolve for
+    # exactly this reason. load_players() (nflverse's full ~25k player
+    # identity list, not week-filtered) closes the gap — this player
+    # appears ONLY there, not in player_stats, and must still resolve.
+    conn, tmp = _fresh_conn()
+    players_map = {
+        "501": {"full_name": "Bench Starter", "position": "QB", "team": "SF",
+                "years_exp": 3, "active": True, "status": "Active"},
+    }
+    fake_nfl = Mock()
+
+    class _Frame:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def to_dicts(self):
+            return self._rows
+
+    # deliberately NO player_stats row for "Bench Starter" — only in load_players()
+    fake_nfl.load_player_stats.return_value = _Frame(_vet_rows())
+    fake_nfl.load_players.return_value = _Frame([
+        {"gsis_id": "gsis-bench1", "display_name": "Bench Starter", "position": "QB"},
+    ])
+    fake_nfl.load_schedules.return_value = _Frame([
+        {"week": 1, "game_type": "REG", "season": 2026, "home_team": "KC", "away_team": "BUF"},
+    ])
+    sched_cache_path = (
+        Path(__file__).resolve().parent.parent / "data" / "nfl_cache" / "schedule_2026.json"
+    )
+    sched_backup = sched_cache_path.read_text() if sched_cache_path.exists() else None
+    try:
+        _, data = refresh.run_refresh_with_data(
+            conn, season=2026, sleeper_session=_mock_sleeper_session(players_map),
+            nfl_module=fake_nfl, ran_at_iso="2026-09-09T12:00:00",
+            stats_season=2025, league_id="123",
+        )
+        assert data["sleeper_xwalk"].get("501") == "gsis-bench1"
+    finally:
+        if sched_backup is not None:
+            sched_cache_path.write_text(sched_backup)
+        elif sched_cache_path.exists():
+            sched_cache_path.unlink()
+        conn.close()
+
+
 def test_prune_props_tables_keeps_pending():
     from ffanalytics import shadow
 
