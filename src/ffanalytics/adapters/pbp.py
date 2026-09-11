@@ -11,35 +11,15 @@ snap data unavailable). Handles zero-division and dome temp None.
 """
 
 import json
-import logging
-import random
-import time
 from collections import defaultdict
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from ffanalytics.adapters._retry import call_with_retry as _call_with_retry
 
 # Persistent cache dir is the only cache; all callers must populate
 # data/nfl_cache/pbp_{season}.json before relying on cached PBP.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 PERSISTENT_CACHE_DIR = _REPO_ROOT / "data" / "nfl_cache"
-
-
-# Audit 6.0: single clear network call site in this module is
-# nfl.load_pbp(seasons=[...]) in get_pbp_features, so it gets the same 3x
-# retry wrapper as nflverse/schedule/news (log attempts + jitter, additive).
-def _call_with_retry(fn, max_retries=3, backoff_base=1.5):
-    for attempt in range(max_retries):
-        try:
-            return fn()
-        except Exception as exc:
-            if attempt == max_retries - 1:
-                raise
-            logger.warning(
-                "pbp: attempt %d/%d failed (%s); retrying",
-                attempt + 1, max_retries, exc,
-            )
-            time.sleep(backoff_base * (attempt + 1) + random.uniform(0, 0.5))
 
 
 def _load_from_cache(season: int) -> list[dict] | None:
@@ -285,7 +265,7 @@ def get_pbp_features(season: int, nfl_module=None) -> list[dict]:
             return cached
 
     nfl = nfl_module if nfl_module is not None else __import__("nflreadpy")
-    frame = _call_with_retry(lambda: nfl.load_pbp(seasons=[season]))
+    frame = _call_with_retry(lambda: nfl.load_pbp(seasons=[season]), name="pbp")
     rows = frame.to_dicts()
     aggregated = _aggregate_pbp_rows(rows, season)
 

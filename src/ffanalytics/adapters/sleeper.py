@@ -1,36 +1,10 @@
-import time
 import requests
+from ffanalytics.adapters._retry import get_with_retry as _get_with_retry
 
 BASE_URL = "https://api.sleeper.app/v1"
 
 def _session_or_default(session):
     return session or requests
-
-def _get_with_retry(http, url: str, timeout: int = 10, max_retries: int = 3) -> requests.Response:
-    last_resp = None
-    for attempt in range(max_retries):
-        try:
-            resp = http.get(url, timeout=timeout)
-            last_resp = resp
-            status = getattr(resp, "status_code", 200)
-            if status == 429:
-                retry_after_hdr = getattr(resp, "headers", {}).get("Retry-After") if hasattr(resp, "headers") else None
-                retry_after = float(retry_after_hdr or (1.5 * (attempt + 1)))
-                time.sleep(retry_after)
-                continue
-            if isinstance(status, int) and status >= 500 and attempt < max_retries - 1:
-                time.sleep(1.0 * (attempt + 1))
-                continue
-            if hasattr(resp, "raise_for_status"):
-                resp.raise_for_status()
-            return resp
-        except (requests.ConnectionError, requests.Timeout):
-            if attempt == max_retries - 1:
-                raise
-            time.sleep(1.0 * (attempt + 1))
-    if last_resp is not None and hasattr(last_resp, "raise_for_status"):
-        last_resp.raise_for_status()
-    return last_resp
 
 def get_nfl_state(session=None) -> dict:
     http = _session_or_default(session)

@@ -1,31 +1,11 @@
 """NFL schedule adapter. Wraps nflreadpy.load_schedules() — no Polars escapes."""
 
 
-import logging
-import random
-import time
-
-logger = logging.getLogger(__name__)
-
-def _call_with_retry(fn, max_retries=3, backoff_base=1.5):
-    for attempt in range(max_retries):
-        try:
-            return fn()
-        except Exception as exc:
-            if attempt == max_retries - 1:
-                raise
-            # why log+jitter: prior bare-Except retry was silent (failures
-            # invisible until refresh_log) and thundering-herd prone; keep
-            # 3x/backoff semantics, jitter is additive only.
-            logger.warning(
-                "schedule: attempt %d/%d failed (%s); retrying",
-                attempt + 1, max_retries, exc,
-            )
-            time.sleep(backoff_base * (attempt + 1) + random.uniform(0, 0.5))
+from ffanalytics.adapters._retry import call_with_retry as _call_with_retry
 
 def get_schedule(season: int, week: int | None = None, nfl_module=None) -> list[dict]:
     nfl = nfl_module if nfl_module is not None else __import__("nflreadpy")
-    frame = _call_with_retry(lambda: nfl.load_schedules(seasons=[season]))
+    frame = _call_with_retry(lambda: nfl.load_schedules(seasons=[season]), name="schedule")
     rows = frame.to_dicts()
     if week is not None:
         rows = [r for r in rows if r.get("week") == week]

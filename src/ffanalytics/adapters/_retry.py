@@ -2,6 +2,8 @@
 that was previously duplicated across sleeper.py, statsguy.py, and
 imported cross-module by weather.py and fantasypros.py."""
 
+import logging
+import random
 import time
 import requests
 
@@ -34,13 +36,22 @@ def get_with_retry(http, url: str, timeout: int = 10, max_retries: int = 3) -> r
     raise requests.ConnectionError(f"all {max_retries} retries failed for {url}")
 
 
-def call_with_retry(fn, max_retries: int = 3, backoff_base: float = 1.5):
-    """Generic function-level retry with exponential backoff + jitter."""
-    import random
+def call_with_retry(fn, name: str = "call", max_retries: int = 3, backoff_base: float = 1.5):
+    """Generic function-level retry with exponential backoff + jitter.
+
+    why log+jitter: a bare-except retry is silent (failures invisible until
+    refresh_log) and thundering-herd prone; 3x/backoff semantics kept,
+    jitter is additive only.
+    """
+    log = logging.getLogger(__name__)
     for attempt in range(max_retries):
         try:
             return fn()
         except Exception as exc:
             if attempt == max_retries - 1:
                 raise
+            log.warning(
+                "%s: attempt %d/%d failed (%s); retrying",
+                name, attempt + 1, max_retries, exc,
+            )
             time.sleep(backoff_base * (attempt + 1) + random.uniform(0, 0.5))
