@@ -1,14 +1,28 @@
-import { fetchWaiver, fetchNews, fetchComparison } from '../api.js';
+import { fetchWaiver, fetchNews, fetchComparison, fetchRostersFull, fetchRoster } from '../api.js';
 import { posBadge } from '../components/badges.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
 import { getTeamColor } from '../components/teamColors.js';
 import { escapeHtml, safeUrl } from '../lib/escape.js';
 import { openPlayerModal } from '../components/playerModal.js';
+import { getSelectedTeamId, setSelectedTeamId, renderTeamSelector, bindTeamSelector } from '../components/teamSelector.js';
 
 export async function renderWaiver(root) {
+  // Bulk-first, same pattern as team.js: one /rosters-full pass gets every
+  // team's owner_id so the selector doesn't need a per-team fetch.
+  const bulkData = await fetchRostersFull().catch(() => null);
+  const leagueRosters = bulkData?.leagueRosters || bulkData?.allTeams || [];
+
+  let selectedId = getSelectedTeamId();
+  if (!selectedId && leagueRosters.length) {
+    selectedId = String(leagueRosters[0].roster_id);
+    setSelectedTeamId(selectedId);
+  }
+  const selectedTeam = leagueRosters.find(t => String(t.roster_id) === String(selectedId));
+  const ownerId = selectedTeam?.owner_id || null;
+
   const [waiver, news, compData] = await Promise.all([
-    fetchWaiver(), fetchNews(), fetchComparison({ limit: 2000 }).catch(() => ({ players: [] })),
+    fetchWaiver({ owner_id: ownerId }), fetchNews(), fetchComparison({ limit: 2000 }).catch(() => ({ players: [] })),
   ]);
   const recs = waiver.recommendations || [];
   // why merge (user-caught live bug, 2026-09-10): without this, opening a
@@ -33,6 +47,7 @@ export async function renderWaiver(root) {
     <div class="hero reveal in">
       <h1>Waivers</h1>
       <p>Ranked by improvement over roster, not raw points.</p>
+      ${leagueRosters.length ? `<div style="margin-top:8px; max-width:280px">${renderTeamSelector(leagueRosters, selectedId)}</div>` : ''}
       <details style="margin-top:8px" aria-label="How waiver priority works">
         <summary style="cursor:pointer; font-weight:600" title="Toggle waiver explainer">How priority works</summary>
         <p style="margin-top:8px">Ranked by <code class="inline">improvement_over_roster</code> (<code class="inline">decision.py:get_waiver_priority</code>), not raw points. A 12-pt WR who replaces your 4-pt WR is worth more than a 13-pt QB you don't need.</p>
@@ -110,6 +125,8 @@ export async function renderWaiver(root) {
       </div>
     </div>
   `;
+
+  bindTeamSelector(() => renderWaiver(root));
 
   root.querySelectorAll('[data-pid]').forEach(el => {
     el.addEventListener('click', () => {

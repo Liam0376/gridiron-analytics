@@ -231,14 +231,19 @@ export async function fetchRostersFull() {
 
 export async function fetchWaiver(args = {}) {
   return withCache('fetchWaiver', args, async () => {
-    try {
-      const data = await getJSON(modelUrl('/recommendations/waiver'));
-      return { recommendations: data.recommendations || [], meta: { timestamp: data.timestamp } };
-    } catch (_) {
-      const hub = await tryHub('/waiver');
-      if (hub) return hub;
-      return { recommendations: [], meta: { cold: true } };
+    const { owner_id } = args;
+    // owner_id is required by /recommendations/waiver (roster-aware comparison
+    // against YOUR worst starter per position) — without it the model 400s and
+    // we silently fall to the generic non-roster-aware hub fallback below.
+    if (owner_id) {
+      try {
+        const data = await getJSON(modelUrl(`/recommendations/waiver?owner_id=${encodeURIComponent(owner_id)}`));
+        return { recommendations: data.recommendations || [], meta: { timestamp: data.timestamp } };
+      } catch (_) { /* fall through to hub */ }
     }
+    const hub = await tryHub(`/waiver${owner_id ? `?owner_id=${encodeURIComponent(owner_id)}` : ''}`);
+    if (hub) return hub;
+    return { recommendations: [], meta: { cold: true } };
   });
 }
 
