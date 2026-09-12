@@ -501,6 +501,13 @@ def get_waiver_priority(
             "player_id": agent.get("player_id"),
             "player_name": agent.get("player_name", f"Player {agent.get('player_id')}"),
             "position": agent_pos,
+            "team": agent.get("team"),
+            # why (user-caught live bug, 2026-09-11): hub playerAvatar()
+            # needs sleeper_id to build a CDN headshot URL — waiver_recs
+            # dropped every field on `agent` except the ones read here, so
+            # rows always fell back to initials regardless of xwalk health.
+            "sleeper_id": agent.get("sleeper_id"),
+            "injury_status": agent.get("injury_status"),
             "projected_points": agent_pts,
             "improvement_over_roster": round(improvement, 2),
             "vbd": round(_vbd(agent, replacement), 2),

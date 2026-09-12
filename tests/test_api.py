@@ -355,3 +355,78 @@ def test_player_lookup_prefers_model_projections_over_sparse_box_scores():
     assert "00-0039738" in lookup, "model_projections entry must resolve"
     assert "00-0031588" in lookup, "player_stats-only entry must still resolve as fallback"
     assert lookup["00-0039738"]["player_display_name"] == "Projected Only"
+
+
+def test_waiver_excludes_rostered_players_across_id_spaces():
+    # why (user-caught live bug, 2026-09-11): rosters carry Sleeper ids,
+    # stats_lookup keys are mostly GSIS ids (nflverse) — the free-agent
+    # exclusion set only checked the raw Sleeper id against stats_lookup
+    # keys, so a direct match almost never happened and truly-rostered
+    # stars (e.g. CMC) showed up as top "free agent" waiver recs. Fix
+    # cross-maps both ways via sleeper_xwalk before excluding.
+    snap = _snapshot_cache()
+    try:
+        _CACHE.update({
+            "league_settings": {
+                "scoring_settings": {},
+                "roster_positions": ["RB", "RB"],
+                "users": [],
+            },
+            "rosters": [{"owner_id": "1", "roster_id": 1, "players": ["111", "114"]}],
+            # {sleeper_id: gsis_id}
+            "sleeper_xwalk": {"111": "00-1111111", "114": "00-9990003"},
+            "player_stats": [
+                {"player_id": "00-1111111", "short_name": "Rostered Star",
+                 "position": "RB", "position_group": "RB", "projected_points": 20.0},
+                {"player_id": "00-9990003", "short_name": "Rostered Weak RB",
+                 "position": "RB", "position_group": "RB", "projected_points": 3.0},
+                {"player_id": "00-2222222", "short_name": "True Free Agent",
+                 "position": "RB", "position_group": "RB", "projected_points": 15.0},
+            ],
+            "injury_status": {},
+            "season": 2025,
+            "week": 1,
+        })
+        resp = client.get("/recommendations/waiver", params={"owner_id": "1"})
+        assert resp.status_code == 200
+        recs = {r["player_id"]: r for r in resp.json()["recommendations"]}
+        assert "00-1111111" not in recs, "rostered player leaked into waiver recs"
+        assert "00-9990003" not in recs, "rostered player leaked into waiver recs"
+        assert "00-2222222" in recs
+        assert recs["00-2222222"]["replaces_player_name"] == "Rostered Weak RB"
+        assert recs["00-2222222"]["sleeper_id"] is None  # no xwalk entry for this one
+    finally:
+        _restore_cache(snap)
+
+
+def test_waiver_attaches_sleeper_id_for_headshots():
+    # why: hub playerAvatar() needs sleeper_id/espn_id to build a CDN
+    # headshot URL — /recommendations/waiver never attached it (same gap
+    # f7a1b1e fixed for /projections), so waiver rows always fell back to
+    # initials regardless of xwalk health.
+    snap = _snapshot_cache()
+    try:
+        _CACHE.update({
+            "league_settings": {
+                "scoring_settings": {},
+                "roster_positions": ["RB", "RB"],
+                "users": [],
+            },
+            "rosters": [{"owner_id": "1", "roster_id": 1, "players": ["114"]}],
+            "sleeper_xwalk": {"114": "00-9990003", "222": "00-2222222"},
+            "player_stats": [
+                {"player_id": "00-9990003", "short_name": "Rostered Weak RB",
+                 "position": "RB", "position_group": "RB", "projected_points": 3.0},
+                {"player_id": "00-2222222", "short_name": "Has Xwalk",
+                 "position": "RB", "position_group": "RB", "projected_points": 15.0},
+            ],
+            "injury_status": {},
+            "season": 2025,
+            "week": 1,
+        })
+        resp = client.get("/recommendations/waiver", params={"owner_id": "1"})
+        assert resp.status_code == 200
+        recs = {r["player_id"]: r for r in resp.json()["recommendations"]}
+        assert recs["00-2222222"]["sleeper_id"] == "222"
+    finally:
+        _restore_cache(snap)

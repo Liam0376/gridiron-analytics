@@ -416,6 +416,7 @@ def _build_player_dict(
     base_stats: dict,
     injury_status: dict[str, str | None],
     owner_id: str | None = None,
+    sleeper_id: str | None = None,
 ) -> dict:
     """Build a single player dict from nflverse base_stats.
 
@@ -465,6 +466,10 @@ def _build_player_dict(
     }
     if owner_id is not None:
         player["owner_id"] = owner_id
+    # hub avatars resolve headshots via sleeper_id (adapters/sleeper.py) —
+    # start-sit/waiver/trade rows carry GSIS-space player_id, same gap
+    # f7a1b1e fixed for /projections.
+    player["sleeper_id"] = sleeper_id
     return player
 
 
@@ -490,6 +495,9 @@ def _process_roster_data(
     stats_lookup = _create_player_lookup(player_stats, model_projections)
     scoring_settings = league_settings.get("scoring_settings", {})
     roster_positions = league_settings.get("roster_positions", [])
+    # {sleeper_id: gsis_id} -> {gsis_id: sleeper_id}, used both to attach
+    # sleeper_id for headshots and to cross-space-match rostered ids below.
+    gsis_to_sleeper = {gsis: sid for sid, gsis in (sleeper_xwalk or {}).items()}
 
     from ffanalytics.decision import _optimal_lineup
 
@@ -517,24 +525,36 @@ def _process_roster_data(
             if not base_stats:
                 continue
             team_players.append(
-                _build_player_dict(player_id_str, base_stats, injury_status, owner_id=current_owner)
+                _build_player_dict(player_id_str, base_stats, injury_status,
+                                    owner_id=current_owner, sleeper_id=player_id_str)
             )
 
         starters, bench = _optimal_lineup(team_players, roster_positions)
         roster_players.extend(starters)
         bench_players.extend(bench)
 
-    # Free agents: players with stats but not on any roster
+    # Free agents: players with stats but not on any roster.
+    # why both id spaces (user-caught live bug, 2026-09-11): rosters carry
+    # Sleeper ids, stats_lookup keys are mostly GSIS ids (same mismatch
+    # _resolve_base_stats works around for the roster path above) — a
+    # direct-only exclusion set matched almost nothing, so truly-rostered
+    # stars (e.g. CMC) showed up as top "free agent" waiver recs. Add the
+    # GSIS equivalent of every rostered Sleeper id so both spaces exclude.
     rostered_player_ids = set()
     for roster in rosters:
         for player_id in roster.get("players", []):
-            rostered_player_ids.add(str(player_id))
+            pid = str(player_id)
+            rostered_player_ids.add(pid)
+            gsis = (sleeper_xwalk or {}).get(pid)
+            if gsis:
+                rostered_player_ids.add(gsis)
 
     free_agents = []
     for player_id_str, base_stats in stats_lookup.items():
         if player_id_str not in rostered_player_ids:
             free_agents.append(
-                _build_player_dict(player_id_str, base_stats, injury_status)
+                _build_player_dict(player_id_str, base_stats, injury_status,
+                                    sleeper_id=gsis_to_sleeper.get(player_id_str))
             )
 
     return roster_players, bench_players, free_agents
