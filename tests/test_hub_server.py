@@ -240,10 +240,12 @@ def test_hub_qhat_matches_conformal_py():
     ]
     for residuals in cases:
         assert hubserver.qhat(residuals) == pytest.approx(real_qhat(residuals)), residuals
-    # hub's defensive extras (empty input, NaN/Inf filtering) are its own
-    # behavior — not something conformal.py's qhat does (it raises on empty
-    # input instead) — so they're asserted directly, not diffed against it.
-    assert hubserver.qhat([]) == pytest.approx(real_qhat(
+    # hub's defensive extras (NaN/Inf filtering) are its own behavior.
+    # why explicit 5.0 on empty (correctness batch 2026-09-12): src raises
+    # ValueError on empty and projection.py falls back to 5.0. Hub mirrors
+    # that contract now, not the WR 10.2 fallback. None still uses WR.
+    assert hubserver.qhat([]) == 5.0
+    assert hubserver.qhat(None) == pytest.approx(real_qhat(
         [0.7, 1.8, 3.0, 4.4, 5.8, 7.2, 8.8, 10.2, 11.9]
     ))
     assert hubserver.qhat([float("nan"), float("inf"), 2.0, 4.0, 6.0]) == pytest.approx(

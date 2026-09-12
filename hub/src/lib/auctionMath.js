@@ -63,14 +63,12 @@ export function mergeComparisonPlayers(players, compRaw) {
 //                 reproducing legacy numbers exactly — see leagueEconomics)
 export function computeAuctionMath(players, compRaw, compById, compByNamePos, state, opts = {}) {
   const league = opts.league || leagueEconomics({});
-  const teams = league.teams;
   const budget = opts.budget ?? league.budget;
   const remaining = opts.remaining ?? SEASON_GAMES;
   const replIdx = {};
   for (const pos of ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']) {
     replIdx[pos] = Math.max(0, (league.replCounts[pos] ?? 12) - 1);
   }
-  const flexSlotsTotal = league.flexSlots * teams;
   const rosterSize = league.startersPerTeam + league.benchPerTeam;
 
   const compPlayers = compRaw?.players || [];
@@ -137,7 +135,10 @@ export function computeAuctionMath(players, compRaw, compById, compByNamePos, st
   });
   Object.values(byPos).forEach(arr => arr.sort((a, b) => b.ros - a.ros));
 
-  // Replacement levels (positional)
+  // Replacement levels (positional, pure).
+  // why pure positional (correctness batch 2026-09-12): mirrors Python
+  // src/ffanalytics/comparison/_auction.py _replacement_points. The prior
+  // max(posRepl, flexRepl) floor minted a second $ rule and drifted VOR/$.
   const replPts = {};
   for (const pos of Object.keys(byPos)) {
     const arr = byPos[pos];
@@ -145,19 +146,10 @@ export function computeAuctionMath(players, compRaw, compById, compByNamePos, st
     replPts[pos] = arr[idx]?.ros ?? (arr[arr.length - 1]?.ros ?? 0);
   }
 
-  // FLEX pool: remaining RB/WR/TE after positional starters
-  const flexPool = [
-    ...byPos.RB.slice(league.replCounts.RB),
-    ...byPos.WR.slice(league.replCounts.WR),
-    ...byPos.TE.slice(league.replCounts.TE),
-  ].sort((a, b) => b.ros - a.ros);
-  const flexRepl = flexPool[flexSlotsTotal - 1]?.ros ?? 0;
-
-  // Weighted VOR (model)
+  // Weighted VOR (model, pure positional replacement)
   rosPlayers.forEach(p => {
     const pos = (p.position || '').toUpperCase();
-    let baseRepl = replPts[pos] ?? 0;
-    if (['RB', 'WR', 'TE'].includes(pos)) baseRepl = Math.max(baseRepl, flexRepl);
+    const baseRepl = replPts[pos] ?? 0;
     p.repl = baseRepl;
     const rawVor = Math.max(0, p.ros - baseRepl);
     const w = POS_WEIGHT[pos] ?? 1;
@@ -189,16 +181,9 @@ export function computeAuctionMath(players, compRaw, compById, compByNamePos, st
     const idx = replIdx[pos] ?? 0;
     marketReplPts[pos] = arr[idx]?.marketRos ?? (arr[arr.length - 1]?.marketRos ?? 0);
   }
-  const marketFlexPool = [
-    ...marketByPos.RB.slice(league.replCounts.RB),
-    ...marketByPos.WR.slice(league.replCounts.WR),
-    ...marketByPos.TE.slice(league.replCounts.TE),
-  ].sort((a, b) => (b.marketRos || 0) - (a.marketRos || 0));
-  const marketFlexRepl = marketFlexPool[flexSlotsTotal - 1]?.marketRos ?? 0;
   rosPlayers.forEach(pp => {
     const pos = (pp.position || '').toUpperCase();
-    let base = marketReplPts[pos] ?? 0;
-    if (['RB', 'WR', 'TE'].includes(pos)) base = Math.max(base, marketFlexRepl);
+    const base = marketReplPts[pos] ?? 0;
     pp.marketRepl = base;
     const raw = Math.max(0, (pp.marketRos || 0) - base);
     const w = POS_WEIGHT[pos] ?? 1;

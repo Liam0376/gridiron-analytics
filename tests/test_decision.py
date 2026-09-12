@@ -126,6 +126,22 @@ def test_evaluate_trade():
     assert result["winner"] in ("Team A", "Fair")
 
 
+def test_evaluate_trade_small_fallback_reports_points_not_dollars():
+    # why (correctness batch 2026-09-12): 2-for-1 fallback comp_list yielded
+    # dollar_per_vor 11.43 and reported 59.4 VOR as $678.7. Gate on use_market.
+    team_a = [
+        {"player_id": "a1", "position_group": "RB", "projected_points": 20.0},
+        {"player_id": "a2", "position_group": "WR", "projected_points": 15.0},
+    ]
+    team_b = [
+        {"player_id": "b1", "position_group": "RB", "projected_points": 10.0},
+    ]
+    res = evaluate_trade(team_a, team_b, {}, ["QB", "RB", "WR", "TE"])
+    assert res["ros_dollars_are_real_dollars"] is False
+    assert "pts (no market data" in res["recommendation"]
+    assert "$" not in res["recommendation"]
+
+
 def test_get_decision_layer_recommendations():
     roster_players = [
         {"player_id": "1", "player_name": "QB1", "position_group": "QB", "projected_points": 20.0}

@@ -6,7 +6,8 @@ market_share / model_share, clamped [0.5, 1.5] to avoid thin-data overcorrection
 
 _STARTER_BUDGET_POOL = 2352.0
 _POS_REPL_COUNTS = {"QB": 12, "RB": 28, "WR": 32, "TE": 12, "K": 12, "DEF": 12}
-_FALLBACK_WEIGHTS = {"QB": 0.65, "RB": 1.10, "WR": 0.92, "TE": 0.78}
+_FALLBACK_WEIGHTS = {"QB": 0.65, "RB": 1.10, "WR": 0.92, "TE": 0.78, "K": 0.0, "DEF": 0.0, "DST": 0.0}
+_STREAMER_POS = ("K", "DEF", "DST")
 
 
 def _replacement_points(
@@ -69,7 +70,11 @@ def _build_pos_weights(rows: list[dict], repl_counts: dict | None = None) -> dic
 
 def _weighted_vor(season_pts, pos: str, repl_map: dict, pos_weights: dict) -> float:
     raw = _raw_vor(season_pts, pos, repl_map)
-    return raw * pos_weights.get(pos, 1.0)
+    # why streamer default 0.0 (correctness batch 2026-09-12): DST rows never
+    # get a weight entry (repl_counts has DEF, not DST), so .get default 1.0
+    # minted unweighted VOR. Streamers weight 0 outside this map.
+    default_w = 0.0 if pos in _STREAMER_POS else 1.0
+    return raw * pos_weights.get(pos, default_w)
 
 
 def _uncapped_auction_value(

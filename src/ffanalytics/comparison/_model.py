@@ -291,6 +291,29 @@ def _build_stat_deltas(
     return stat_deltas
 
 
+def _season_shrink_factor(
+    p: dict,
+    market_season_points: float | None,
+) -> float:
+    """Shared >=51 shrink factor so header totals and panel agree.
+
+    why helper (correctness batch 2026-09-12): _compute_season_totals shrank
+    points and stats 20 percent toward market, but _build_season_stat_deltas
+    recomputed raw model*17. One function owns the factor, both apply it.
+    """
+    try:
+        neutral_pts = p.get("_neutral_points") if p.get("_neutral_points") is not None else float(
+            p.get("projected_points") or p.get("point_estimate") or 0
+        )
+        raw = round(neutral_pts * 17, 1) if neutral_pts and neutral_pts > 0 else None
+        if raw and market_season_points is not None and abs(raw - market_season_points) >= 51:
+            shrunk = round(0.80 * raw + 0.20 * market_season_points, 1)
+            return shrunk / raw if raw else 1.0
+    except Exception:
+        pass
+    return 1.0
+
+
 def _compute_season_totals(
     p: dict,
     market_season_points: float | None,
@@ -345,9 +368,14 @@ def _compute_season_totals(
 def _build_season_stat_deltas(
     p: dict,
     market_season_stats: dict[str, float],
+    shrink_factor: float = 1.0,
 ) -> list[dict]:
     season_stat_deltas: list[dict] = []
     _neutral_stats_for_season = p.get("_neutral_stats") or {}
+    try:
+        shrink_factor = float(shrink_factor or 1.0)
+    except Exception:
+        shrink_factor = 1.0
     for mdl_k, _slp_k, label in COMPARE_STATS:
         market_s = market_season_stats.get(mdl_k)
         model_w = (
@@ -358,7 +386,7 @@ def _build_season_stat_deltas(
         if model_w is None and market_s is None:
             continue
         try:
-            mv_s = float(model_w) * 17 if model_w is not None else 0.0
+            mv_s = float(model_w) * 17 * shrink_factor if model_w is not None else 0.0
             kv_s = float(market_s) if market_s is not None else 0.0
             d_s = round(mv_s - kv_s, 1) if market_s is not None else None
             if abs(mv_s) > 0.5 or (market_s is not None and abs(kv_s) > 0.5):
@@ -450,7 +478,10 @@ def build_model_rows(
                 delta_rank, fp_ecr, delta_pts, delta_season,
                 current_edge=edge, current_score=edge_score,
             )
-        season_stat_deltas = _build_season_stat_deltas(p, market_season_stats)
+        season_stat_deltas = _build_season_stat_deltas(
+            p, market_season_stats,
+            shrink_factor=_season_shrink_factor(p, market_season_points),
+        )
 
         rows.append({
             "player_id": pid,

@@ -122,6 +122,31 @@ def test_neutral_points_and_shrinkage():
     assert row["model_season_stats"]["receiving_yards"] < 1360.0
 
 
+def test_season_panel_shrink_parity():
+    # why (correctness batch 2026-09-12): header shrank but panel was raw.
+    # neutral 20.0 x 17 = 340 vs market 200 delta 140 shrinks to 312.0.
+    # Panel model for passing_yards 300 x 17 x factor must match.
+    model_projs = [
+        {
+            "player_id": "p9",
+            "player_display_name": "Parity QB",
+            "position": "QB",
+            "team": "KC",
+            "projected_points": 20.0,
+            "passing_yards": 300,
+            "_neutral_points": 20.0,
+            "_neutral_stats": {"passing_yards": 300},
+        }
+    ]
+    fp_map = {("parity qb", "KC", "QB"): {"fpts": 200.0, "passing_yards": 4000.0}}
+    res = build_comparison(model_projs, {}, [], None, fp_map, [])
+    row = res[0]
+    assert row["model_season_points"] == 312.0
+    panel = {d["key"]: d for d in row["season_stat_deltas"]}
+    assert "passing_yards" in panel
+    assert panel["passing_yards"]["model"] == round(300 * 17 * (312.0 / 340.0), 1)
+
+
 def test_draft_aware_auction_preserved():
     model_projs = [
         {
@@ -164,3 +189,13 @@ def test_budget_pool_and_positional_weights():
     total = sum(r["auction"] for r in res if r["auction"] > 0)
     # Should be near 2352 (bench $1 each) within 300 tolerance for synthetic data
     assert 2000 < total < 3000
+
+
+def test_streamer_vor_weight_zero_for_k_def_dst():
+    # why (correctness batch 2026-09-12): DST missed the 0 clamp and minted
+    # unweighted VOR via .get default 1.0. K/DEF/DST all weight 0.
+    from ffanalytics.comparison._auction import _weighted_vor
+    assert _weighted_vor(300.0, "DST", {"DST": 100.0}, {}) == 0.0
+    assert _weighted_vor(300.0, "K", {"K": 100.0}, {}) == 0.0
+    assert _weighted_vor(300.0, "DEF", {"DEF": 100.0}, {}) == 0.0
+    assert _weighted_vor(300.0, "RB", {"RB": 100.0}, {"RB": 1.1}) > 0

@@ -54,3 +54,23 @@ def test_evaluate_unresolved_shadow_recommendations():
     ).fetchone()
     assert json.loads(row["actual_outcome"]) == {"actual_points": 18.5, "week": 1}
     conn.close()
+
+
+def test_batch_failure_reports_input_count():
+    # why (correctness batch 2026-09-12): first-row KeyError reported
+    # 0 rows lost for 1 input via len(rows). Must report len(recs).
+    import logging
+    conn, tmp = _fresh_conn()
+    bad = [{"season": 2026, "week": 1}]  # missing kind -> KeyError
+    records = []
+    handler = logging.Handler()
+    handler.emit = lambda r: records.append(r.getMessage())  # type: ignore
+    logger = logging.getLogger("ffanalytics.shadow")
+    logger.addHandler(handler)
+    try:
+        out = shadow.log_recommendations_batch(conn, bad)
+    finally:
+        logger.removeHandler(handler)
+    assert out == 0
+    assert any("1 rows lost" in m for m in records)
+    conn.close()

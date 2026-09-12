@@ -52,9 +52,12 @@ def log_recommendations_batch(
     except Exception as exc:
         # Audit 22.0: log failure instead of silent return 0 — the caller
         # has no way to know recommendations were lost.
+        # why len(recs) not len(rows) (correctness batch 2026-09-12): a
+        # first-row KeyError left rows empty and reported 0 rows lost for
+        # 1 input. Input count is the honest loss number.
         import logging
         logging.getLogger(__name__).warning(
-            "shadow: log_recommendations_batch failed (%s), %d rows lost", exc, len(rows)
+            "shadow: log_recommendations_batch failed (%s), %d rows lost", exc, len(recs)
         )
         return 0
 

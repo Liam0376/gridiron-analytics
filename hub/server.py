@@ -165,12 +165,17 @@ def _calc_points_from_raw(p: dict, scoring: dict) -> float:
         return 0.0
     return pts
 
-# --- Vendored conformal (minimal) ---
+# --- Vendored conformal (minimal, mirrors src/ffanalytics/conformal.py) ---
 def qhat(residuals, alpha=0.2):
     import math
-    # Audit: fallback to WR residuals if empty (mirrors stat_projector POS_RESIDUALS default)
-    if not residuals:
-        residuals=[0.7,1.8,3.0,4.4,5.8,7.2,8.8,10.2,11.9]
+    # why explicit 5.0 on empty (correctness batch 2026-09-12): src raises
+    # ValueError on empty and projection.py falls back to 5.0. The prior
+    # WR-residual fallback silently returned 10.2 for an explicit empty
+    # input. None (no input) still uses the WR default for unknown position.
+    if residuals is None:
+        residuals = [0.7,1.8,3.0,4.4,5.8,7.2,8.8,10.2,11.9]
+    if isinstance(residuals, list) and len(residuals) == 0:
+        return 5.0
     # Filter NaN/inf
     clean=[]
     for r in residuals:
@@ -189,10 +194,9 @@ def qhat(residuals, alpha=0.2):
     rank = min(rank, n)
     return a[rank - 1]
 
-# --- Vendored week calc (mirrors api.py:24) ---
-# NOTE(divergence): src/ffanalytics/config.py::compute_nfl_week returns 0 in
-# preseason, but hub keeps 1 so the UI always has a valid 1-18 week slate.
-# TODO: unify preseason sentinel (0 vs 1) once hub handles week-0 empty slate gracefully.
+# --- Vendored week calc (mirrors src/ffanalytics/config.py) ---
+# Both return 1 preseason so the UI always has a valid 1-18 week slate.
+# Unified 2026-09-03 (config returned 0 before, hub returned 1).
 def compute_nfl_week(now=None):
     if now is None:
         now = datetime.now()
