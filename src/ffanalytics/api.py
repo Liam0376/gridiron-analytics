@@ -372,6 +372,16 @@ def _sleeper_xwalk_for(cache: dict, league_id: str | None) -> dict:
         return {}
 
 
+def _gsis_to_sleeper_for(cache: dict, league_id: str | None) -> dict:
+    """GSIS->Sleeper map (inverse of _sleeper_xwalk_for) — gsis-keyed
+    endpoints (/projections, /props/board) need this direction to resolve
+    a hub avatar's sleeper_id from a player_stats row's gsis player_id.
+    Roster-keyed endpoints (start-sit/waiver/trade) don't need this: their
+    player_id is already Sleeper-format, straight from Sleeper rosters."""
+    xwalk = _sleeper_xwalk_for(cache, league_id)
+    return {gsis: sid for sid, gsis in xwalk.items()}
+
+
 def _resolve_base_stats(stats_lookup: dict, xwalk: dict, player_id_str: str) -> dict:
     """Roster-id -> stats row. Direct match first (covers Sleeper-keyed rows
     like rookies and gsis-keyed fixtures), then the Sleeper->GSIS crosswalk
@@ -832,12 +842,10 @@ def get_projections(
             scoring = json.loads(srow["data"]).get("scoring_settings", {}) if srow else {}
 
     # gsis (player_stats' player_id) -> sleeper_id: hub avatars resolve
-    # headshots via sleeper_id/espn_id (adapters/sleeper.py), same xwalk
-    # direction /props/board already uses (api.py:1335) — /projections never
-    # attached it, so every row fell back to initials regardless of xwalk
-    # health (user-caught live bug, 2026-09-11).
-    xwalk = _sleeper_xwalk_for(cache, league_id)  # {sleeper_id: gsis_id}
-    gsis_to_sleeper = {gsis: sid for sid, gsis in xwalk.items()}
+    # headshots via sleeper_id/espn_id (adapters/sleeper.py) — /projections
+    # never attached it, so every row fell back to initials regardless of
+    # xwalk health (user-caught live bug, 2026-09-11).
+    gsis_to_sleeper = _gsis_to_sleeper_for(cache, league_id)
 
     out = []
     for p in players:
@@ -1340,10 +1348,8 @@ def get_props_board(
 
     # gsis (model_projections' player_id) -> sleeper_id: injury_status and
     # headshots are both sleeper_id-keyed (adapters/sleeper.py), but
-    # model_projections carries nflverse's gsis id. Same xwalk direction
-    # _resolve_base_stats uses elsewhere, just inverted for this lookup.
-    xwalk = _sleeper_xwalk_for(cache, league_id)  # {sleeper_id: gsis_id}
-    gsis_to_sleeper = {gsis: sid for sid, gsis in xwalk.items()}
+    # model_projections carries nflverse's gsis id.
+    gsis_to_sleeper = _gsis_to_sleeper_for(cache, league_id)
     injury_by_sleeper = cache.get("injury_status") or {}
 
     # hist_lookup groups player_stats by player_id once; actual_by_pid (this
