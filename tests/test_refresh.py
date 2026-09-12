@@ -128,6 +128,19 @@ def test_build_sleeper_xwalk_direct_gsis_id():
     assert xwalk == {"4046": "00-0033873"}
 
 
+def test_build_sleeper_xwalk_strips_whitespace_in_gsis_id():
+    # why (user-caught live bug, 2026-09-11): Sleeper's own gsis_id field
+    # carries a leading space for ~866/7483 real players (confirmed live:
+    # sleeper_id 5859 = A.J. Brown -> " 00-0035676") — unstripped, that
+    # value never matches nflverse's clean GSIS keys anywhere downstream,
+    # so A.J. Brown (rostered) leaked into waiver recs as a "free agent"
+    # and never got a headshot.
+    xwalk = refresh.build_sleeper_xwalk({
+        "5859": {"gsis_id": " 00-0035676", "full_name": "A.J. Brown", "position": "WR"},
+    })
+    assert xwalk == {"5859": "00-0035676"}
+
+
 def test_build_sleeper_xwalk_name_fallback_when_gsis_missing():
     # why (user-caught, live bug): real player, real Sleeper record, but
     # Sleeper's own gsis_id field is None (data gap, not a code bug) —

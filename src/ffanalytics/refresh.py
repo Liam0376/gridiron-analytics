@@ -200,7 +200,14 @@ def build_sleeper_xwalk(sleeper_players: dict, name_pos_to_gsis: dict | None = N
     out = {}
     for sid, sp in (sleeper_players or {}).items():
         sp = sp or {}
-        gsis = sp.get("gsis_id")
+        # why .strip() (user-caught live bug, 2026-09-11): Sleeper's own
+        # gsis_id field carries a leading space for ~866/7483 players
+        # (confirmed live, e.g. sleeper_id 5859 = A.J. Brown -> " 00-0035676")
+        # — untouched, that value never matches nflverse's clean GSIS keys
+        # anywhere downstream, so those players silently fell through both
+        # the waiver free-agent exclusion (rostered stars leaked in as
+        # "free agents") and headshot sleeper_id resolution.
+        gsis = (sp.get("gsis_id") or "").strip() or None
         if not gsis and name_pos_to_gsis:
             name = sp.get("full_name") or " ".join(
                 x for x in (sp.get("first_name"), sp.get("last_name")) if x
@@ -209,7 +216,7 @@ def build_sleeper_xwalk(sleeper_players: dict, name_pos_to_gsis: dict | None = N
             if name and pos:
                 gsis = name_pos_to_gsis.get(_norm_name_pos(name, pos))
         if sid is not None and gsis:
-            out[str(sid)] = str(gsis)
+            out[str(sid)] = str(gsis).strip()
     return out
 
 
