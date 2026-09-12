@@ -6,8 +6,14 @@ export function buildTiers(players, { gap = 2.0, cap = 6, useFlex = false } = {}
   if (!players || players.length === 0) return [];
   // Optionally apply flex adjustment before tiering is done server-side; here we just tier by provided points.
   const sorted = [...players].sort((a,b) => (b.projected_points ?? b.point_estimate ?? 0) - (a.projected_points ?? a.point_estimate ?? 0));
-  // Adaptive gap: if interval widths are known, increase gap to avoid splitting within uncertainty
-  const medianWidth = median(sorted.map(p => p.width ?? p.projection_width ?? 5));
+  // Adaptive gap: if interval widths are known, increase gap to avoid splitting within uncertainty.
+  // why clamp 3-14 (calibration honesty batch 2026-09-12): season view
+  // scales widths by sqrt(remaining), which inflated the median and
+  // overmerged tiers. Same clamp as intervals.
+  const medianWidth = median(sorted.map(p => {
+    const w = Number(p.width ?? p.projection_width ?? 5);
+    return Math.max(3.0, Math.min(14.0, w));
+  }));
   const effGap = Math.max(gap, medianWidth * 0.7);
 
   const tiers = [];
