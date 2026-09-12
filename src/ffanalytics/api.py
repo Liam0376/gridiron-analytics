@@ -372,6 +372,20 @@ def _sleeper_xwalk_for(cache: dict, league_id: str | None) -> dict:
         return {}
 
 
+def _player_stats_from_db(league_id: str | None) -> list[dict]:
+    """Most recent stored player_stats snapshot, DB-backed — cold-cache
+    fallback for gsis-keyed endpoints (/projections, /props/board) so a
+    freshly (re)started process degrades to last-refresh data instead of
+    hard-503ing until the next POST /refresh completes."""
+    with _league_conn(league_id) as conn:
+        if conn is None:
+            return []
+        row = conn.execute(
+            "SELECT data FROM player_stats WHERE data IS NOT NULL AND length(data) > 1000 ORDER BY rowid DESC LIMIT 1"
+        ).fetchone()
+        return json.loads(row["data"]) if row else []
+
+
 def _gsis_to_sleeper_for(cache: dict, league_id: str | None) -> dict:
     """GSIS->Sleeper map (inverse of _sleeper_xwalk_for) — gsis-keyed
     endpoints (/projections, /props/board) need this direction to resolve
@@ -1338,7 +1352,16 @@ def get_props_board(
     # from history + prior pool with true OOS week filtering — same math
     # as refresh, scoped to two teams (milliseconds per modal open).
     cache = _cache_for(league_id)
-    if not cache.get("player_stats"):
+    player_stats = cache.get("player_stats")
+    if not player_stats:
+        # why DB fallback (user-caught live bug, 2026-09-11): in-memory
+        # player_stats is process-local and empty after every model
+        # restart/reload until the next full refresh completes, even when
+        # the data itself is fresh — same class of bug as the
+        # /games/predictions schedule-cache fix above. Degrade to the last
+        # refresh's stored snapshot instead of hard-503ing on a cold process.
+        player_stats = _player_stats_from_db(league_id)
+    if not player_stats:
         raise HTTPException(
             status_code=503, detail="Data not available. Run /refresh first to load data."
         )
@@ -1355,7 +1378,7 @@ def get_props_board(
     # hist_lookup groups player_stats by player_id once; actual_by_pid (this
     # target week's real box score, if the game's been played) is derived
     # from it rather than a second scan over the same list.
-    hist_lookup = _props_history_lookup(cache.get("player_stats"))
+    hist_lookup = _props_history_lookup(player_stats)
     actual_by_pid: dict[str, dict] = {}
     for pid, player_rows in hist_lookup.items():
         for s in player_rows:

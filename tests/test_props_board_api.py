@@ -228,6 +228,40 @@ def test_props_board_shows_actual_once_week_is_played():
         _restore(snap)
         conn.close()
 
+def test_props_board_falls_back_to_db_when_cache_cold():
+    # why (user-caught live bug, 2026-09-11): in-memory player_stats is
+    # process-local and empty after every model restart/reload until the
+    # next full refresh completes, even when the data itself is current —
+    # same class of bug as the /games/predictions schedule-cache fix.
+    # /props/board now degrades to the last refresh's stored DB snapshot
+    # (_player_stats_from_db) instead of hard-503ing on a cold process.
+    import json as _json
+
+    conn, tmp = _fresh_db()
+    snap = _snap()
+    try:
+        _CACHE.update({
+            "league_settings": {"scoring_settings": {}, "roster_positions": []},
+            "rosters": [],
+            "player_stats": None,  # simulates a cold process
+            "model_projections": None,
+            "injury_status": {},
+        })
+        conn.execute(
+            "INSERT INTO player_stats VALUES (?, ?, ?)",
+            (SEASON, WEEK, _json.dumps(_MAHOMES_HIST + _WR_HIST)),
+        )
+        conn.commit()
+        with patch("ffanalytics.db._get_conn", return_value=conn):
+            resp = client.get("/props/board", params={"teams": "KC", "season": SEASON, "week": WEEK})
+        assert resp.status_code == 200, resp.text
+        markets = {r["market"] for r in resp.json()["players"] if r["player_id"] == "2544"}
+        assert "passing_yards" in markets
+    finally:
+        _restore(snap)
+        conn.close()
+
+
 def test_props_board_503_without_cache():
     conn, tmp = _fresh_db()
     snap = _snap()
