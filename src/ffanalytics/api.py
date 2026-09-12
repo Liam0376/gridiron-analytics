@@ -830,6 +830,14 @@ def get_projections(
             ).fetchone()
             scoring = json.loads(srow["data"]).get("scoring_settings", {}) if srow else {}
 
+    # gsis (player_stats' player_id) -> sleeper_id: hub avatars resolve
+    # headshots via sleeper_id/espn_id (adapters/sleeper.py), same xwalk
+    # direction /props/board already uses (api.py:1335) — /projections never
+    # attached it, so every row fell back to initials regardless of xwalk
+    # health (user-caught live bug, 2026-09-11).
+    xwalk = _sleeper_xwalk_for(cache, league_id)  # {sleeper_id: gsis_id}
+    gsis_to_sleeper = {gsis: sid for sid, gsis in xwalk.items()}
+
     out = []
     for p in players:
         pid = str(p.get("player_id") or p.get("id") or "")
@@ -851,6 +859,7 @@ def get_projections(
         injury = (cache.get("injury_status") or {}).get(pid)
         out.append({
             "player_id": pid,
+            "sleeper_id": gsis_to_sleeper.get(pid),
             "player_name": p.get("player_display_name") or p.get("short_name") or p.get("player_name") or pid,
             "position": pos,
             "position_group": pos,

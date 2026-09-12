@@ -218,6 +218,38 @@ def test_projections_rescore_stale_nonzero():
         _restore_cache(snap)
 
 
+def test_projections_attaches_sleeper_id_for_headshots():
+    # why (user-caught live bug, 2026-09-11): /projections never attached
+    # sleeper_id, unlike /props/board which already resolves it via the same
+    # xwalk (api.py:1335) — hub's playerAvatar() needs sleeper_id/espn_id to
+    # build a CDN headshot URL, so every row silently fell back to initials
+    # regardless of xwalk health.
+    snap = _snapshot_cache()
+    try:
+        _clear_cache()
+        _CACHE.update({
+            "league_settings": {"scoring_settings": {}, "roster_positions": [], "users": []},
+            "rosters": [],
+            "sleeper_xwalk": {"999": "00-1234567"},  # {sleeper_id: gsis_id}
+            "player_stats": [
+                {"player_id": "00-1234567", "short_name": "Has Xwalk",
+                 "position": "WR", "position_group": "WR", "projected_points": 10.0},
+                {"player_id": "00-9999999", "short_name": "No Xwalk",
+                 "position": "WR", "position_group": "WR", "projected_points": 5.0},
+            ],
+            "injury_status": {},
+            "season": 2025,
+            "week": 5,
+        })
+        resp = client.get("/projections")
+        assert resp.status_code == 200
+        players = {p["player_id"]: p for p in resp.json()["players"]}
+        assert players["00-1234567"]["sleeper_id"] == "999"
+        assert players["00-9999999"]["sleeper_id"] is None
+    finally:
+        _restore_cache(snap)
+
+
 def test_start_sit_survives_position_fields_present_but_none():
     # why (user-caught live bug, 2026-09-10): dict.get(key, default) only
     # applies default when key is MISSING, not when its value is explicitly
