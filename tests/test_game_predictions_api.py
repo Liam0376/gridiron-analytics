@@ -62,12 +62,18 @@ def _warm(schedule=None):
 
 
 def test_games_predictions_503_without_schedule():
+    # why season=2000 (2026-09-11 fallback fix): /games/predictions now
+    # falls back to data/nfl_cache/schedule_<season>.json when the in-memory
+    # cache is cold (see api.py get_game_predictions) — the real current
+    # season's file genuinely exists on disk, so this test must target a
+    # season with no such file to still exercise the true-503 path. 2000 is
+    # the query param's minimum (ge=2000) and has no cache file.
     conn, tmp = _fresh_db()
     snap = _snap()
     try:
         _CACHE.update({"schedule": None})
         with patch("ffanalytics.db._get_conn", return_value=conn):
-            resp = client.get("/games/predictions")
+            resp = client.get("/games/predictions?season=2000&week=1")
         assert resp.status_code == 503
     finally:
         _restore(snap)

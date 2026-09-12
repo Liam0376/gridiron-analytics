@@ -17,6 +17,7 @@ import uuid
 import contextvars
 from contextlib import asynccontextmanager, contextmanager
 from datetime import timedelta
+from pathlib import Path
 
 import threading
 
@@ -1440,11 +1441,27 @@ def get_game_predictions(
     # this as a model call would misrepresent where the number comes from.
     cache = _cache_for(league_id)
     schedule = cache.get("schedule")
-    if not schedule:
-        raise HTTPException(
-            status_code=503, detail="Data not available. Run /refresh first to load data."
-        )
     season = season if season is not None else (cache.get("season") or get_stats_season())
+    if not schedule:
+        # why file fallback (user-caught live bug, 2026-09-11): in-memory
+        # schedule cache is process-local and empty after every model
+        # restart/reload until the next full refresh completes, even when
+        # the data itself is fresh. refresh.py already writes this exact
+        # file for the hub's own read (data/nfl_cache/schedule_<season>.json
+        # — refresh.py:389-410); reuse it here instead of hard-503ing on a
+        # cold process with otherwise-current data.
+        try:
+            _sched_path = (
+                Path(__file__).resolve().parents[2]
+                / "data" / "nfl_cache" / f"schedule_{season}.json"
+            )
+            schedule = json.loads(_sched_path.read_text())
+        except Exception:
+            schedule = None
+        if not schedule:
+            raise HTTPException(
+                status_code=503, detail="Data not available. Run /refresh first to load data."
+            )
     week = week if week is not None else (cache.get("week") or compute_nfl_week() or 1)
 
     games = [g for g in schedule if g.get("season") == season and g.get("week") == week]

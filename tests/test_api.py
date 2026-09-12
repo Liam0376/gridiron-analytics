@@ -218,6 +218,47 @@ def test_projections_rescore_stale_nonzero():
         _restore_cache(snap)
 
 
+def test_game_predictions_falls_back_to_schedule_file_when_cache_cold():
+    # why (user-caught live bug, 2026-09-11): the model's in-memory schedule
+    # cache is process-local — every restart/reload (dev --reload, a crash,
+    # a manual bounce) wipes it, and start.sh's staleness check skips
+    # POST /refresh whenever the DB data still looks fresh, leaving
+    # /games/predictions hard-503ing even though the underlying data is
+    # current. refresh.py already writes data/nfl_cache/schedule_<season>.json
+    # for the hub's own read (refresh.py:389-410); this endpoint now falls
+    # back to that same file instead of requiring a fresh /refresh call.
+    from pathlib import Path
+    import json as _json
+
+    season = 2099  # unused elsewhere, avoids colliding with real cache data
+    sched_path = (
+        Path(__file__).resolve().parents[1]
+        / "data" / "nfl_cache" / f"schedule_{season}.json"
+    )
+    snap = _snapshot_cache()
+    try:
+        _clear_cache()
+        _CACHE.update({
+            "league_settings": {"scoring_settings": {}, "roster_positions": [], "users": []},
+            "rosters": [],
+            "player_stats": [],
+            "injury_status": {},
+            # no "schedule" key — simulates a cold process
+        })
+        sched_path.parent.mkdir(parents=True, exist_ok=True)
+        sched_path.write_text(_json.dumps([
+            {"season": season, "week": 1, "home_team": "SEA", "away_team": "NE"},
+        ]))
+        resp = client.get(f"/games/predictions?week=1&season={season}")
+        assert resp.status_code == 200
+        games = resp.json()["games"]
+        assert len(games) == 1
+        assert games[0]["home_team"] == "SEA"
+    finally:
+        sched_path.unlink(missing_ok=True)
+        _restore_cache(snap)
+
+
 def test_projections_attaches_sleeper_id_for_headshots():
     # why (user-caught live bug, 2026-09-11): /projections never attached
     # sleeper_id, unlike /props/board which already resolves it via the same
