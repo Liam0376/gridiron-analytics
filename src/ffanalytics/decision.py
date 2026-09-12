@@ -630,8 +630,12 @@ def evaluate_trade(
     b_weekly, b_ros = side_value(team_b_players)
 
     diff_points = a_ros - b_ros
-    # Dollar conversion
-    has_dollars = bool(dollar_per_vor and dollar_per_vor != 0)
+    # Dollar conversion: only real dollars when derived from market consensus.
+    # why use_market gate (correctness batch 2026-09-12): the small-set
+    # fallback (2-4 players) still yields nonzero dollar_per_vor via pool /
+    # tiny total VOR (e.g. $11.43/VOR), which mislabels points as dollars.
+    # Gate on use_market so fallback reports honest points with suffix.
+    has_dollars = bool(use_market and dollar_per_vor and dollar_per_vor != 0)
     if has_dollars:
         diff_dollars = diff_points * dollar_per_vor
         a_dollars = a_ros * dollar_per_vor
