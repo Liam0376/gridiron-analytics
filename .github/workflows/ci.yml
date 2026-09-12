@@ -38,18 +38,21 @@ jobs:
 
   secrets-scan:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       # Prefer gitleaks if present on the runner; fall back to grep for
-      # api-key-ish patterns. Allow-if-missing: never fail the build here.
+      # api-key-ish patterns. Fails the build on a hit (docs batch
+      # 2026-09-12 — the old `|| true` swallowed hits). Gitleaks absence
+      # still runs the grep fallback instead of failing open. The value
+      # pattern needs 8+ non-space chars so code references like
+      # startswith("FANTASYPROS_API_KEY=") don't false-positive; .env is
+      # gitignored local-only and excluded so local runs match CI.
       - run: |
           if command -v gitleaks >/dev/null 2>&1; then
-            gitleaks detect --no-git -v || true
+            gitleaks detect --no-git -v
           else
             echo "gitleaks not on runner — grep fallback"
-            ! grep -RInE "FANTASYPROS_API_KEY\s*=\s*[^[:space:]#]+" --exclude-dir=.venv --exclude-dir=node_modules --exclude-dir=.git . || true
-            ! grep -RIniE "(api[_-]?key|secret)\s*[:=]\s*['\"][A-Za-z0-9_\-]{16,}['\"]" --exclude-dir=.venv --exclude-dir=node_modules --exclude-dir=.git . || true
+            ! grep -RInE "FANTASYPROS_API_KEY\s*=\s*\S{8,}" --exclude=.env --exclude-dir=.venv --exclude-dir=node_modules --exclude-dir=.git .
+            ! grep -RIniE "(api[_-]?key|secret)\s*[:=]\s*['\"][A-Za-z0-9_\-]{16,}['\"]" --exclude=.env --exclude-dir=.venv --exclude-dir=node_modules --exclude-dir=.git .
             echo "secrets grep fallback done"
           fi
-        continue-on-error: true

@@ -63,9 +63,8 @@ Production build: `npm run build` → `hub/dist/`
   - **Game predictions** (`GET /games/predictions`) — win%/predicted score
     from real market lines (spread/total/moneyline off the schedule feed,
     devigged), labeled `market_consensus` — never this app's own model.
-  - **Edge board** — model fair lines vs *manually entered* book lines
-    (`GET /props/edges`); entry form POSTs to the model directly (hub never
-    writes). Chips read `VALUE / TRACKING / NO EDGE` — never "LOCK".
+  - **Edge board** — model fair lines per market (`GET /props/edges`);
+    hub never writes. Edge copy never reads "LOCK".
   - **Game props** (click a game row) — player-card grid (`GET
     /props/board`) showing every market's fair line for that game's
     players, no book line required; a colored edge chip overlays when one
@@ -87,12 +86,12 @@ Wind penalty is `−(wind−15)×WEATHER_WIND_PENALTY_PER_MPH` for QB/WR/K only 
 
 ## Troubleshooting
 
-- **Empty tables:** Fresh clone has `player_stats: 0` — run `POST /refresh` in-season. Hub shows warm empty states with the exact `curl` to run.
+- **Empty tables:** Fresh clone has `player_stats: 0` — run `POST /refresh` in-season. Hub shows warm empty states naming the missing data plus the refresh step.
 - **API down:** Hub degrades to DB snapshot — staleness dot turns `cold`, tables show last DB state.
 - **Verify isolation failed:** See `hub/verify-isolation.sh` output — fix the flagged line (usually a `0.0.0.0` or stray `import`).
 
 ## Tech
 
 - Vite + vanilla JS (no React) + CSS variables (see `hub/DESIGN.md` — Scoreboard Command Center, L2)
-- Fonts: Instrument Sans + JetBrains Mono + Fragment Mono
+- Fonts: system stack, zero webfonts (see `hub/DESIGN.md` typography plus `hub/src/styles/tokens.css`)
 - No WebGL, no Lenis; `prefers-reduced-motion` respected

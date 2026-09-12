@@ -185,10 +185,10 @@ hardening PRs:
   log correlation across model → proxy → hub. Hub owner to forward the header,
   backend owner to emit it. Until then, correlate via timestamps in
   `logs/refresh.*.log` and `/tmp/fantasy-hub-*.log`.
-- **`DB_PATH` allowlist:** `FFANALYTICS_DB_PATH` / `--db` currently accept any
-  path. Hub owner should restrict to the repo `data/` dir (reject `..` /
-  absolute escapes) so a misconfigured env can't point the read-only proxy at
-  an unintended SQLite file. Until then, only set it to a path under `data/`.
+- **`DB_PATH` allowlist:** shipped — `FFANALYTICS_DB_PATH` is restricted to
+  the repo `data/` dir in `src/ffanalytics/config.py:50-55` (model) and
+  `hub/server.py:209-247` (proxy, rejects `..` / absolute escapes).
+  Keep setting it to a path under `data/`.
 
 ## Uninstall the job
 

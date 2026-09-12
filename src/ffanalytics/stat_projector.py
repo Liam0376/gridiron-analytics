@@ -41,7 +41,11 @@ included, no longer K-zeroed as in early scratch backtest_final.py):
   - Rest days: negligible effect
   - QB snap-share scaling (2026-09-10, 2025 holdout weeks 4-18, n=5425):
     REJECTED — evidence: data/ml/backtest_snap_share_results.json
-    (scripts/backtest_snap_share.py). Mechanism is causally right
+    (scripts/backtest_snap_share.py). NOTE (docs batch 2026-09-12): the
+    stored artifact runs all-universe arms at n=8049, not the header's
+    2025-holdout paired comparison at n=5425 — sample mismatch, verdict
+    REJECTED stands either way, do not gate on either t alone.
+    Mechanism is causally right
     (2025 mop-up mean 0.043; takeover 0.82) and directionally positive
     (MAE -0.028, QB MAE -0.28, bias fixed, pairwise flat), but paired-t
     overall t=1.66 (p~0.10) and QB-only t=1.66 (p~0.10) — not
@@ -52,8 +56,10 @@ included, no longer K-zeroed as in early scratch backtest_final.py):
     outcomes) once n suffices — see validate_2026_coverage.py pattern.
   - XGBoost point-level with PBP opportunity (2026-08-28, 3-season, 15,956 rows
     weeks 4-18, 38 cols, TimeSeriesSplit(3), 10,531→5,425): REJECTED — evidence:
-    data/models/xgb_meta.json val 4.514 vs true stat 4.474 (local val) and
-    4.563 true combined — fails OOS. Without K: 4.556 vs 4.61 local, still
+    data/ml/backtest_ml_results.json grid w=1.0 val 4.514 vs w=0.0 true stat
+    4.474 (local val) and 4.563 true combined — fails OOS. (xgb_meta.json
+    val_mae 4.556 is the without-K split, n=4978 — different cut, same
+    verdict.) Without K: 4.556 vs 4.61 local, still
     fails. Ensemble w=0.40 4.45 >4.474 local → fail OOS (combined 4.448 >4.536
     would pass but is in-sample 2024 leakage; OOS gate is val only).
   - XGBoost stat-level per-stat (16 boosters 2026-08-28, same 38 cols, real PBP):
@@ -72,6 +78,9 @@ included, no longer K-zeroed as in early scratch backtest_final.py):
 
   SUPERSEDED local numbers (do not gate — different n/split/scoring;
   production gate is the 4.563/0.648/74.1% freeze above):
+  - NOTE (docs batch 2026-09-12): stored combined artifacts recompute
+    n=10706, stat mae 4.536 — 355 rows above the freeze n=10351.
+    Unexplained delta; freeze stands until reconciled, never retune here.
   - Local val 2025-only true scoring: stat 4.474, XGB point 4.514,
     stat-level 4.463, ensemble w=0.40 (val-tuned, leaky) 4.45.
   - Combined 2024-2025 in-sample (includes train): ensemble 4.448 vs stat
