@@ -11,6 +11,13 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export REPO_ROOT
 mkdir -p "$REPO_ROOT/logs"
+# Pre-refresh backup (docs batch 2026-09-12): online-safe WAL-aware .backup,
+# dated, keep last 7. Skips when DB missing (fresh clone) or sqlite3 absent.
+if [ -f "$REPO_ROOT/data/fantasy.db" ] && command -v sqlite3 >/dev/null 2>&1; then
+    BAK="$REPO_ROOT/data/fantasy.db.bak-$(date +%F)"
+    sqlite3 "$REPO_ROOT/data/fantasy.db" ".backup '$BAK'" 2>/dev/null && \
+        ls -t "$REPO_ROOT"/data/fantasy.db.bak-* 2>/dev/null | tail -n +8 | xargs rm -f -- 2>/dev/null || true
+fi
 LOCK="/tmp/ffanalytics-refresh.lock"
 if command -v flock >/dev/null 2>&1; then
     exec flock -n "$LOCK" -c 'curl -sf --max-time 300 --retry 2 -X POST http://localhost:8000/refresh >>"$REPO_ROOT/logs/refresh.out.log" 2>&1 && echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) refresh ok" >>"$REPO_ROOT/logs/refresh.out.log"' || {
