@@ -20,6 +20,17 @@ let edgeFilter = 'ALL'; // ALL | BUY | SELL
 let rosterPlayerIds = new Set(); // Audit 22.0: "My Roster" filter
 const PAGE_SIZE = 50;
 
+// Interval fallback mirrors src/ffanalytics/projection.py v1
+// (calibration honesty batch 2026-09-12). Change together. Widths frozen.
+// Unknown players get the same scaled band as calibrated peers, never a
+// narrower fixed default that understates their uncertainty.
+const POS_W = { QB: 1.45, RB: 1.07, WR: 1.12, TE: 0.88, K: 0.55, DEF: 0.75 };
+function scaledFallbackWidth(pos, pts) {
+  const pf = POS_W[(pos || 'UNK').toUpperCase()] ?? 1.0;
+  const qf = pts > 12 ? Math.min(1.60, 1.0 + (pts - 12) * 0.022) : 1.0;
+  return Math.max(3.0, Math.min(14.0, 5.0 * pf * qf));
+}
+
 function edgeBadge(edge) {
   if (edge === 'BUY') return `<span class="badge" style="background:var(--emerald-dim); color:var(--emerald); border:1px solid rgba(16,185,129,0.22)">▲ BUY</span>`;
   if (edge === 'SELL') return `<span class="badge" style="background:var(--crimson-dim); color:var(--crimson); border:1px solid rgba(239,68,68,0.22)">▼ SELL</span>`;
@@ -114,9 +125,9 @@ export async function renderProjections(root) {
         team: (c.team || '').toUpperCase(),
         projected_points: c.model_points ?? c.projected_points ?? 0,
         point_estimate: c.model_points ?? c.projected_points ?? 0,
-        projection_lower: c.projection_lower ?? ((c.model_points ?? 0) - 2.5),
-        projection_upper: c.projection_upper ?? ((c.model_points ?? 0) + 2.5),
-        width: c.width ?? 5.0,
+        projection_lower: c.projection_lower ?? ((c.model_points ?? 0) - scaledFallbackWidth(c.position, c.model_points ?? 0)),
+        projection_upper: c.projection_upper ?? ((c.model_points ?? 0) + scaledFallbackWidth(c.position, c.model_points ?? 0)),
+        width: c.width ?? scaledFallbackWidth(c.position, c.model_points ?? 0),
         injury_status: c.injury_status || null,
         market_points: c.market_points,
         delta_points: c.delta_points,
@@ -178,7 +189,8 @@ export async function renderProjections(root) {
     p.point_estimate = Number(weekly.toFixed(2));
     p.weekly = Number(weekly.toFixed(2));
 
-    const width = Number(c?.interval_width ?? c?.width ?? p.width ?? 5.0);
+    const rawWidth = c?.interval_width ?? c?.width ?? p.width;
+    const width = Number(rawWidth ?? scaledFallbackWidth(p.position, weekly));
     p.width = Number(width.toFixed(2));
     // why no /2: width is HALF-width (unified 2026-09-09). Floor restores
     // src's max(0,…) that the old symmetric rebuild discarded.

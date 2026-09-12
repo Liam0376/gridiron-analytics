@@ -211,3 +211,23 @@ def test_interval_widths_clamped_frozen():
     for r in (tiny, huge):
         assert 3.0 <= r["width"] <= 14.0
         assert r["lower_bound"] <= r["point_estimate"] <= r["upper_bound"]
+
+
+def test_interval_factors_parity_v1():
+    # why (calibration honesty batch 2026-09-12): pos/point factors are
+    # triplicated in projection.py, decision.py, hub/server.py. Pin v1.
+    from ffanalytics import projection as proj
+    from ffanalytics import decision as dec
+    expected = {"QB": 1.45, "RB": 1.07, "WR": 1.12, "TE": 0.88, "K": 0.55, "DEF": 0.75}
+    assert proj.POS_WIDTH_FACTORS == expected
+    assert dec.POS_WIDTH_FACTORS == expected
+    assert proj.INTERVAL_FACTORS_VERSION == dec.INTERVAL_FACTORS_VERSION == 1
+    # hub mirror pinned by text (runtime isolation forbids import)
+    from pathlib import Path
+    hub_src = Path(__file__).resolve().parent.parent / "hub" / "server.py"
+    text = hub_src.read_text()
+    for pos, val in expected.items():
+        assert f'"{pos}": {val}' in text
+    # spot width: QB 20pts = 5.0 * 1.45 * 1.176 = 8.53
+    out = dec._ensure_intervals({"projected_points": 20.0, "position": "QB"})
+    assert out["width"] == round(max(3.0, min(14.0, 5.0 * 1.45 * 1.176)), 2)

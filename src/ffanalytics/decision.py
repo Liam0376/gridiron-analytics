@@ -23,6 +23,11 @@ POS_REPL_COUNTS = config.POS_REPL_COUNTS
 POS_WEIGHT_FALLBACK = config.POS_WEIGHT_FALLBACK
 STARTER_BUDGET_POOL = config.STARTER_BUDGET_POOL
 
+# Interval factors mirror projection.py v1 (calibration honesty batch
+# 2026-09-12). Change together plus the parity test. Widths frozen.
+POS_WIDTH_FACTORS = {"QB": 1.45, "RB": 1.07, "WR": 1.12, "TE": 0.88, "K": 0.55, "DEF": 0.75}
+INTERVAL_FACTORS_VERSION = 1
+
 # Opponent-defense adjustment gate — default OFF (mirrors projection.py ENABLE_OPPONENT_RATING).
 # tested and REJECTED — evidence: stat_projector.py:22-24 opponent defense factors hurt
 # correlation (0.690→0.687) even with multi-season shrinkage; defense rankings don't persist
@@ -331,7 +336,7 @@ def _ensure_intervals(p: Dict) -> Dict:
     if "projection_lower" in p and "projection_upper" in p and "width" in p:
         return p
 
-    m = {"QB": 1.45, "RB": 1.07, "WR": 1.12, "TE": 0.88, "K": 0.55, "DEF": 0.75}
+    m = POS_WIDTH_FACTORS
     pos_factor = m.get(pos, 1.0)
     pt_factor = 1.0 if pts <= 12 else min(1.60, 1.0 + (pts - 12) * 0.022)
     width = max(3.0, min(14.0, 5.0 * pos_factor * pt_factor))

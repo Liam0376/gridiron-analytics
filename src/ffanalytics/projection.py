@@ -9,8 +9,19 @@ from ffanalytics.conformal import interval, qhat
 from ffanalytics.scoring import calculate_fantasy_points, apply_flex_adjustment, count_flex_slots
 import math
 
+# Canonical interval factors (calibration honesty batch 2026-09-12, v1).
+# decision.py and hub/server.py mirror these numbers with a version comment.
+# Change all three together plus the parity test. Widths frozen otherwise.
+POS_WIDTH_FACTORS = {"QB": 1.45, "RB": 1.07, "WR": 1.12, "TE": 0.88, "K": 0.55, "DEF": 0.75}
+POINT_FACTOR_CAP = 1.60
+POINT_FACTOR_SLOPE = 0.022
+POINT_FACTOR_BASE = 12.0
+WIDTH_MIN = 3.0
+WIDTH_MAX = 14.0
+INTERVAL_FACTORS_VERSION = 1
+
 # Opponent-rating adjustment gate — default OFF.
-# tested and REJECTED — evidence: stat_projector.py:22-24 opponent defense
+# tested and REJECTED — evidence: stat_projector.py:22-24, opponent defense
 # factors hurt correlation (0.690→0.687) even with multi-season shrinkage;
 # defense rankings don't persist year-to-year (Spearman rho=0.05-0.34).
 # Kept behind this flag for research only; production path leaves it OFF.
@@ -185,21 +196,20 @@ def calculate_projection(
     # Interval width: conformal qhat base scaled by position and point magnitude.
     # Scaling breaks the formal coverage guarantee from Vovk et al. — these are
     # heuristic intervals informed by conformal prediction, not calibrated ones.
-    # Position factors derived from per-pos MAE / overall 4.16 (QB 1.45, RB/WR 1.07, TE 0.87, K 0.55)
+    # Position factors derived from per-pos MAE / overall 4.16 (QB 1.45, RB 1.07, WR 1.12, TE 0.88, K 0.55, DEF 0.75)
     # Point factor captures blow-up tail: stars projected 25-30 pts have fat tails (MAE top5 8.53 vs 4.16)
     def _pos_width_factor(pos: str) -> float:
-        m = {"QB": 1.45, "RB": 1.07, "WR": 1.12, "TE": 0.88, "K": 0.55, "DEF": 0.75}
-        return m.get((pos or "UNK").upper(), 1.0)
+        return POS_WIDTH_FACTORS.get((pos or "UNK").upper(), 1.0)
 
     def _point_factor(pts: float) -> float:
-        if pts <= 12:
+        if pts <= POINT_FACTOR_BASE:
             return 1.0
-        return min(1.60, 1.0 + (pts - 12) * 0.022)
+        return min(POINT_FACTOR_CAP, 1.0 + (pts - POINT_FACTOR_BASE) * POINT_FACTOR_SLOPE)
 
     # Base width from conformal residuals or default 5.0
     if historical_residuals and len(historical_residuals) > 0:
         try:
-            base_width = qhat(historical_residuals, alpha=0.2)  # 80% confidence interval
+            base_width = qhat(historical_residuals, alpha=0.2)  # heuristic 80% target, not calibrated (see above)
         except ValueError:
             base_width = 5.0
     else:
@@ -212,7 +222,7 @@ def calculate_projection(
         pos = str(player_stats.get("position_group", "UNK")).upper()
     width = base_width * _pos_width_factor(pos) * _point_factor(point_estimate)
     # Clamp to avoid degenerate intervals: min 3.0 (K still readable), max 14.0 (QB ceiling)
-    width = max(3.0, min(14.0, width))
+    width = max(WIDTH_MIN, min(WIDTH_MAX, width))
     lower_bound = max(0.0, point_estimate - width)
     upper_bound = point_estimate + width
 

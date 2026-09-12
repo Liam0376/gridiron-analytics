@@ -16,8 +16,11 @@ export function windBadge(wind) {
   return `<span class="badge-wind ${level}">${level === 'ok' ? '◍' : '⚑'} ${label}</span>`;
 }
 export function confBadge(width) {
+  // why no HIGH (calibration honesty batch 2026-09-12): clamp min is 3.0
+  // in every interval path, so w < 3 never fires and promised precision
+  // that never emits. MED/WIDE only.
   const w = Number(width ?? 5);
-  const label = w < 3 ? 'HIGH' : w < 6 ? 'MED' : 'WIDE';
-  const cls = w < 3 ? 'high' : w < 6 ? 'medium' : 'low';
-  return `<span class="badge" style="background:${cls==='high'?'var(--emerald-dim)':cls==='medium'?'var(--amber-dim)':'rgba(var(--text-rgb,0,0,0),0.05)'}; color:${cls==='high'?'var(--emerald)':cls==='medium'?'var(--amber)':'var(--text-muted)'}; border:1px solid ${cls==='high'?'rgba(16,185,129,0.2)':cls==='medium'?'rgba(245,158,11,0.2)':'var(--border)'}">${label} · ±${w.toFixed(1)}</span>`;
+  const label = w < 6 ? 'MED' : 'WIDE';
+  const cls = w < 6 ? 'medium' : 'low';
+  return `<span class="badge" style="background:${cls==='medium'?'var(--amber-dim)':'rgba(var(--text-rgb,0,0,0),0.05)'}; color:${cls==='medium'?'var(--amber)':'var(--text-muted)'}; border:1px solid ${cls==='medium'?'rgba(245,158,11,0.2)':'var(--border)'}">${label} · ±${w.toFixed(1)}</span>`;
 }
