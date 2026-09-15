@@ -70,12 +70,22 @@ included, no longer K-zeroed as in early scratch backtest_final.py):
     direction). Trailing xFP gaps are noise at weekly resolution, or the
     pull double-counts the usage trend's form capture. The xfp_adjust
     pipeline param stays (tested, default-off) as the instrument, not a win.
-  - Individualized TD prior (X2, 2026-09-15): PENDING, not rejected —
-    consistent MAE wins both samples (2025 t=26.3 diff +0.112; 2026wk1
-    t=11.0 diff +0.154, corr neutral both) but pre-registered secondary,
-    so it cannot promote on this evidence. Held for a confirmatory test
-    with a flat-lower-mean control (individualized vs merely lower) +
-    accumulated 2026. See opportunity plan Task 3.
+  - Individualized TD prior (X2, 2026-09-15): SUPERSEDED by the POP
+    control same day — population xFP prior beats individualization both
+    samples (X2-vs-POP paired-t t=-5.05 on 2025, t=-2.65 on 2026wk1, both
+    favoring POP). Trailing individual xFP TD rates are too noisy to beat
+    their own mean: shrink all the way. The td_prior pipeline param stays
+    (tested, default-off) as the instrument, not a win.
+  - Population xFP TD priors (POP/FROZEN, 2026-09-15): VERDICT PROMOTE,
+    implementation pending user confirm (opportunity-td-priors spec).
+    Proposed POS_TD_MEANS: RB rush 0.20/rec 0.04, WR rec 0.18/rush 0.005,
+    TE rec 0.14; QB/K untouched — X2/POP never applied there, no evidence.
+    Evidence: data/ml/backtest_opportunity_results.json — BASE-FROZEN
+    paired-t t=42.4 (diff +0.099) on 2025 holdout n=8049 and t=16.1
+    (diff +0.124) on 2026wk1 n=652, corr neutral both, bias improved;
+    FROZEN reproduces live-POP within noise (parity diff +0.006/+0.003).
+    Weight stays 30%, mechanism unchanged — only the prior LEVEL was
+    stale (production means sat far above xFP-implied scoring rates).
   - XGBoost stat-level per-stat (16 boosters 2026-08-28, same 38 cols, real PBP):
     REJECTED — evidence: data/models/stat_level/meta.json val 4.463 vs true
     stat 4.474 local (+0.011 win) but corr 0.658 vs 0.6918 (stale K-zeroed
