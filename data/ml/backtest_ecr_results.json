@@ -13,11 +13,11 @@
     "pos": {
      "QB": {
       "n": 61,
-      "spearman_model": 0.7189317821258593,
+      "spearman_model": 0.7180856689582231,
       "spearman_ecr": 0.7690639873083024,
       "disagree_n": 23,
-      "model_wins": 14,
-      "ecr_wins": 9,
+      "model_wins": 13,
+      "ecr_wins": 10,
       "ties": 0
      },
      "K": {
@@ -31,16 +31,16 @@
      },
      "WR": {
       "n": 165,
-      "spearman_model": 0.651248898031149,
+      "spearman_model": 0.6508294820078541,
       "spearman_ecr": 0.6791173563433335,
-      "disagree_n": 113,
-      "model_wins": 75,
+      "disagree_n": 114,
+      "model_wins": 76,
       "ecr_wins": 37,
       "ties": 1
      },
      "TE": {
       "n": 91,
-      "spearman_model": 0.7056059882146837,
+      "spearman_model": 0.7046344959388436,
       "spearman_ecr": 0.747045707915273,
       "disagree_n": 53,
       "model_wins": 40,
@@ -49,7 +49,7 @@
      },
      "RB": {
       "n": 104,
-      "spearman_model": 0.6110636935879654,
+      "spearman_model": 0.6114264376400299,
       "spearman_ecr": 0.7080337138589566,
       "disagree_n": 51,
       "model_wins": 32,
@@ -73,17 +73,17 @@
    "QB": {
     "weeks": 1,
     "n": 61,
-    "spearman_model_mean": 0.7189,
+    "spearman_model_mean": 0.7181,
     "spearman_ecr_mean": 0.7691,
     "disagree_n": 23,
-    "model_wins": 14,
-    "ecr_wins": 9,
+    "model_wins": 13,
+    "ecr_wins": 10,
     "ties": 0
    },
    "RB": {
     "weeks": 1,
     "n": 104,
-    "spearman_model_mean": 0.6111,
+    "spearman_model_mean": 0.6114,
     "spearman_ecr_mean": 0.708,
     "disagree_n": 51,
     "model_wins": 32,
@@ -93,7 +93,7 @@
    "TE": {
     "weeks": 1,
     "n": 91,
-    "spearman_model_mean": 0.7056,
+    "spearman_model_mean": 0.7046,
     "spearman_ecr_mean": 0.747,
     "disagree_n": 53,
     "model_wins": 40,
@@ -103,13 +103,85 @@
    "WR": {
     "weeks": 1,
     "n": 165,
-    "spearman_model_mean": 0.6512,
+    "spearman_model_mean": 0.6508,
     "spearman_ecr_mean": 0.6791,
-    "disagree_n": 113,
-    "model_wins": 75,
+    "disagree_n": 114,
+    "model_wins": 76,
     "ecr_wins": 37,
     "ties": 1
    }
+  },
+  "threshold_sweep": {
+   "QB/T6": {
+    "mw": 27,
+    "ew": 25
+   },
+   "QB/T8": {
+    "mw": 27,
+    "ew": 24
+   },
+   "QB/T10": {
+    "mw": 24,
+    "ew": 22
+   },
+   "QB/T12": {
+    "mw": 22,
+    "ew": 18
+   },
+   "RB/T6": {
+    "mw": 47,
+    "ew": 48
+   },
+   "RB/T8": {
+    "mw": 47,
+    "ew": 48
+   },
+   "RB/T10": {
+    "mw": 42,
+    "ew": 45
+   },
+   "RB/T12": {
+    "mw": 42,
+    "ew": 45
+   },
+   "TE/T6": {
+    "mw": 68,
+    "ew": 19
+   },
+   "TE/T8": {
+    "mw": 68,
+    "ew": 19
+   },
+   "TE/T10": {
+    "mw": 64,
+    "ew": 18
+   },
+   "TE/T12": {
+    "mw": 64,
+    "ew": 18
+   },
+   "WR/T6": {
+    "mw": 101,
+    "ew": 61
+   },
+   "WR/T8": {
+    "mw": 97,
+    "ew": 59
+   },
+   "WR/T10": {
+    "mw": 96,
+    "ew": 56
+   },
+   "WR/T12": {
+    "mw": 94,
+    "ew": 55
+   }
+  },
+  "recommended_thresholds": {
+   "QB": 12,
+   "RB": 12,
+   "TE": 8,
+   "WR": 10
   }
  }
 }
