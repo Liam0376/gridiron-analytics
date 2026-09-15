@@ -85,6 +85,23 @@ def test_v7_table_exists_after_init():
     conn.close()
 
 
+def test_v12_weekly_projections_table_exists_after_init():
+    # Independent per-week projections (Matchups/Projections week pickers) —
+    # see stat_projector.compute_ros_projections' per_week breakdown.
+    tmp = tempfile.TemporaryDirectory()
+    conn = db.get_connection(Path(tmp.name) / "test.db")
+    db.init_schema(conn)
+    tables = {r["name"] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "weekly_projections" in tables
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(weekly_projections)")}
+    assert {"season", "week", "player_id", "projected_points",
+            "projection_lower", "projection_upper", "width", "opponent_team"}.issubset(cols)
+    ver = conn.execute("PRAGMA user_version").fetchone()[0]
+    assert ver >= 12
+    conn.close()
+
+
 def test_v8_indexes_exist_after_init():
     # why (database-audit finding): count_logged/count_resolved (shadow.py)
     # and rating_updates.py's season-scoped team_ratings read were full

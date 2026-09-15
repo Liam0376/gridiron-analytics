@@ -799,6 +799,27 @@ def run_refresh_with_data(
                             ran_at_iso,
                         ),
                     )
+                    # Persist the independent per-week breakdown too (was
+                    # computed above and discarded after summing into
+                    # ros_points) — hub week pickers (Matchups, Projections)
+                    # read this table so switching weeks shows that week's
+                    # own opponent/vegas/weather-specific number instead of
+                    # a static season-average snapshot.
+                    for wk, wp in (rp.get("per_week") or {}).items():
+                        conn.execute(
+                            """INSERT OR REPLACE INTO weekly_projections
+                               (season, week, player_id, player_name, position, team,
+                                opponent_team, projected_points, projection_lower,
+                                projection_upper, width, wind_mph, updated_at)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (
+                                season, wk, rp["player_id"], rp["player_display_name"],
+                                rp["position"], rp["team"], wp.get("opponent", ""),
+                                wp["points"], wp.get("lower"), wp.get("upper"),
+                                wp.get("width"), wp.get("wind_mph", 0),
+                                ran_at_iso,
+                            ),
+                        )
             except Exception as _ros_exc:
                 logger.warning(f"refresh: ros_projections failed: {_ros_exc}")
         except Exception as p_exc:

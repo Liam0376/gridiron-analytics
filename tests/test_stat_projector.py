@@ -3,6 +3,7 @@ from ffanalytics.stat_projector import (
     project_player_stats,
     build_weekly_projections,
     compute_conformal_bounds,
+    compute_ros_projections,
     weighted_recent_avg,
 )
 
@@ -68,6 +69,53 @@ def test_build_weekly_projections():
     assert "projection_lower" in p
     assert "projection_upper" in p
     assert p["projection_lower"] <= p["projected_points"] <= p["projection_upper"]
+
+
+def test_compute_ros_projections_per_week_is_independent_not_summed_snapshot():
+    # why (live bug 2026-09-15): hub week pickers (Matchups, Projections)
+    # showed the identical number for every week because nothing persisted
+    # a per-week breakdown — compute_ros_projections already builds one via
+    # build_weekly_projections(target_week=wk) per remaining week, then
+    # discarded everything but the sum. This locks the per_week shape and
+    # proves two different weeks for the same player carry their own
+    # (points, lower, upper, width, opponent) rather than one repeated value.
+    season_stats = [
+        {"player_id": "p1", "player_display_name": "Test QB", "position": "QB",
+         "team": "KC", "week": 1, "season_type": "REG",
+         "passing_yards": 250, "passing_tds": 2},
+        {"player_id": "p1", "player_display_name": "Test QB", "position": "QB",
+         "team": "KC", "week": 2, "season_type": "REG",
+         "passing_yards": 300, "passing_tds": 3},
+    ]
+    schedule = [
+        {"game_type": "REG", "week": 3, "home_team": "KC", "away_team": "LV",
+         "total_line": 30.0, "spread_line": -3.0, "roof": "outdoors", "temp": 65, "wind": 5},
+        {"game_type": "REG", "week": 4, "home_team": "DEN", "away_team": "KC",
+         "total_line": 50.0, "spread_line": -10.0, "roof": "outdoors", "temp": 65, "wind": 5},
+    ]
+    scoring = {"pass_yd": 0.04, "pass_td": 4, "pass_int": -2}
+
+    result = compute_ros_projections(
+        season_stats, schedule, scoring, current_week=3,
+    )
+    assert len(result) == 1
+    rp = result[0]
+    per_week = rp["per_week"]
+    assert {3, 4}.issubset(per_week.keys())
+    for wk in (3, 4):
+        wp = per_week[wk]
+        assert set(wp.keys()) == {"points", "lower", "upper", "width", "opponent", "wind_mph"}
+        assert wp["lower"] <= wp["points"] <= wp["upper"]
+    # Different opponent/vegas context per week — not the same row repeated.
+    assert per_week[3]["opponent"] == "LV"
+    assert per_week[4]["opponent"] == "DEN"
+    assert per_week[3]["points"] != per_week[4]["points"]
+    # ros_points is the sum of the (real, independent) per-week points —
+    # never a naive point-estimate × remaining_games multiplier.
+    assert rp["ros_points"] == pytest.approx(
+        sum(wp["points"] for wp in per_week.values()), abs=0.01
+    )
+    assert rp["remaining_games"] == len(per_week)
 
 
 def test_cross_season_week_filter_bypass():

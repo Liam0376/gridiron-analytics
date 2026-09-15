@@ -780,7 +780,7 @@ def _norm_n(name: str) -> str:
     n = re.sub(r"[^a-z0-9 ]", "", n)
     return re.sub(r"\s+", " ", n).strip()
 
-def build_league_analytics(conn, league_id: str | None = None):
+def build_league_analytics(conn, league_id: str | None = None, week: int | None = None):
     row = try_fetch_one(conn, "SELECT data FROM rosters ORDER BY rowid DESC LIMIT 1")
     rosters = load_json_blob(row) or []
     
@@ -838,6 +838,36 @@ def build_league_analytics(conn, league_id: str | None = None):
     byes_map = get_nfl_team_byes()
     # PERF: compute once per request — never per-player (was N file reads).
     _opponent_map = get_nfl_opponent_map(compute_nfl_week())
+
+    # Explicit week (Matchups week picker) — independent per-week rows.
+    # weekly_projections.player_id is GSIS-style (nflverse), but Sleeper's
+    # own /players/nfl only backfills gsis_id for ~1/3 of entries — the
+    # name+position fallback mirrors comp_by_name_pos below for players
+    # Sleeper has no gsis_id for (confirmed live: Jalen Hurts' Sleeper
+    # entry has gsis_id=None despite having real weekly_projections rows).
+    # Both empty when week is None or nothing's precomputed for it yet
+    # (falls through to the season-average/market blend below per-player).
+    wk_map: dict[str, sqlite3.Row] = {}
+    wk_by_name_pos: dict[tuple, sqlite3.Row] = {}
+    if week is not None:
+        try:
+            season_row = try_fetch_one(
+                conn, "SELECT season FROM weekly_projections ORDER BY season DESC LIMIT 1"
+            )
+            if season_row:
+                wk_rows = conn.execute(
+                    "SELECT player_id, player_name, position, opponent_team, projected_points, "
+                    "projection_lower, projection_upper, width FROM weekly_projections "
+                    "WHERE season = ? AND week = ?",
+                    (season_row[0], week),
+                ).fetchall()
+                wk_map = {str(r["player_id"]): r for r in wk_rows}
+                wk_by_name_pos = {
+                    (_norm_n(r["player_name"]), (r["position"] or "").upper()): r
+                    for r in wk_rows
+                }
+        except Exception:
+            wk_map, wk_by_name_pos = {}, {}
 
     draft_prices = {}
     try:
@@ -901,30 +931,50 @@ def build_league_analytics(conn, league_id: str | None = None):
                 {}
             )
 
-            # Universal League-Wide Projection Engine for ALL 12 Teams:
-            raw_pts = float(st.get("projected_points") or st.get("fantasy_points") or 0)
-            m_pts = comp.get("model_points")
-            mk_s = comp.get("market_season_points")
-            mk_per_game = round(float(mk_s) / 17.0, 2) if (mk_s is not None and float(mk_s) > 0) else None
+            # Explicit week request (Matchups week picker): prefer the
+            # independent per-week row over the season-average/market blend
+            # below — that blend is itself not week-specific (comp comes
+            # from the latest market_consensus snapshot regardless of which
+            # week is being viewed) and would otherwise silently overwrite
+            # a real per-week number with the current week's.
+            wk_row = None
+            if wk_map or wk_by_name_pos:
+                wk_row = wk_map.get(str(gsis)) or wk_map.get(str(pid))
+                if wk_row is None:
+                    wk_row = wk_by_name_pos.get((_norm_n(p_name), pos))
 
-            # Always prefer Gridiron model projection first:
-            if m_pts is not None and float(m_pts) > 0:
-                gridiron_pts = float(m_pts)
-            elif raw_pts > 0:
-                gridiron_pts = raw_pts
-            elif mk_per_game and mk_per_game > 0:
-                gridiron_pts = mk_per_game
+            if wk_row is not None:
+                pts = float(wk_row["projected_points"] or 0)
+                width = float(wk_row["width"]) if wk_row["width"] is not None else 5.0
+                proj_lower = round(float(wk_row["projection_lower"]), 2) if wk_row["projection_lower"] is not None else round(max(0.0, pts - width), 2)
+                proj_upper = round(float(wk_row["projection_upper"]), 2) if wk_row["projection_upper"] is not None else round(pts + width, 2)
+                wk_opponent = wk_row["opponent_team"] or ""
             else:
-                gridiron_pts = 0.0
+                # Universal League-Wide Projection Engine for ALL 12 Teams:
+                raw_pts = float(st.get("projected_points") or st.get("fantasy_points") or 0)
+                m_pts = comp.get("model_points")
+                mk_s = comp.get("market_season_points")
+                mk_per_game = round(float(mk_s) / 17.0, 2) if (mk_s is not None and float(mk_s) > 0) else None
 
-            pts = gridiron_pts
+                # Always prefer Gridiron model projection first:
+                if m_pts is not None and float(m_pts) > 0:
+                    gridiron_pts = float(m_pts)
+                elif raw_pts > 0:
+                    gridiron_pts = raw_pts
+                elif mk_per_game and mk_per_game > 0:
+                    gridiron_pts = mk_per_game
+                else:
+                    gridiron_pts = 0.0
 
-            # Conformal interval logic — width is HALF-width (unified 2026-09-09;
-            # src/comparison carry qhat scale, as does the 5.0 fallback which
-            # mirrors decision.py's 5.0-factor path). Floor matches src max(0,…).
-            width = float(comp.get("interval_width") or comp.get("width") or 5.0)
-            proj_lower = round(max(0.0, pts - width), 2)
-            proj_upper = round(pts + width, 2)
+                pts = gridiron_pts
+
+                # Conformal interval logic — width is HALF-width (unified 2026-09-09;
+                # src/comparison carry qhat scale, as does the 5.0 fallback which
+                # mirrors decision.py's 5.0-factor path). Floor matches src max(0,…).
+                width = float(comp.get("interval_width") or comp.get("width") or 5.0)
+                proj_lower = round(max(0.0, pts - width), 2)
+                proj_upper = round(pts + width, 2)
+                wk_opponent = None
 
             # Full season projected stats
             m_season = comp.get("model_season_stats") or {}
@@ -986,7 +1036,7 @@ def build_league_analytics(conn, league_id: str | None = None):
                 "projection_upper": proj_upper,
                 "width": round(width, 2),
                 "injury_status": injuries.get(str(pid)) or sp.get("injury_status"),
-                "opponent_team": _opponent_map.get(team) or st.get("opponent_team") or "",
+                "opponent_team": wk_opponent or _opponent_map.get(team) or st.get("opponent_team") or "",
                 "slot": slot_label,
                 "pass_yds": pass_yds,
                 "pass_tds": pass_tds,
@@ -1274,7 +1324,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/hub-api/roster":
                 self.handle_roster(conn, qs)
             elif path == "/hub-api/rosters-full":
-                self.handle_rosters_full(conn)
+                self.handle_rosters_full(conn, qs)
             elif path == "/hub-api/news":
                 self.handle_news(conn)
             elif path == "/hub-api/refresh-log":
@@ -1502,7 +1552,112 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             self.json({"error": str(e)}, status=500)
 
+    def handle_weekly_projection(self, conn, qs, week: int):
+        # Independent per-week projection (own opponent/vegas/weather) for
+        # a week other than "current" — reads weekly_projections, populated
+        # during refresh from compute_ros_projections' per-week breakdown.
+        # Sibling to handle_projections but never falls back to the
+        # season-average aggregation: a week with no stored rows yet
+        # (beyond the precomputed current..18 horizon, or before the first
+        # refresh after this feature shipped) returns an empty list rather
+        # than silently substituting the wrong week's snapshot.
+        try:
+            season_row = try_fetch_one(
+                conn, "SELECT season FROM weekly_projections ORDER BY season DESC LIMIT 1"
+            )
+            if not season_row:
+                self.json({"players": [], "count": 0, "meta": {"source": "none", "week": week}})
+                return
+            season = season_row[0]
+            rows = conn.execute(
+                "SELECT player_id, player_name, position, team, opponent_team, "
+                "projected_points, projection_lower, projection_upper, width, wind_mph "
+                "FROM weekly_projections WHERE season = ? AND week = ? "
+                "ORDER BY projected_points DESC",
+                (season, week),
+            ).fetchall()
+        except Exception as e:
+            self.json({"error": str(e)}, status=500)
+            return
+
+        injuries_row = try_fetch_one(conn, "SELECT data FROM injury_status ORDER BY season DESC LIMIT 1")
+        injuries = load_json_blob(injuries_row) or {}
+        _sleeper_players = get_sleeper_players_cached()
+        gsis_to_sleeper, gsis_to_espn = {}, {}
+        for sid, sp in (_sleeper_players.items() if isinstance(_sleeper_players, dict) else []):
+            if not isinstance(sp, dict):
+                continue
+            g = sp.get("gsis_id")
+            gs = str(g).strip() if g else ""
+            if not gs:
+                continue
+            gsis_to_sleeper[gs] = str(sid)
+            e = sp.get("espn_id")
+            es = str(e).strip() if e else ""
+            if es:
+                gsis_to_espn[gs] = es
+
+        limit = 800
+        try:
+            if qs.get("limit", [None])[0]:
+                limit = max(10, min(2000, int(qs.get("limit")[0])))
+        except Exception:
+            pass
+
+        players = []
+        for r in rows:
+            pid = str(r["player_id"])
+            pts = float(r["projected_points"] or 0)
+            width = float(r["width"]) if r["width"] is not None else 5.0
+            low = float(r["projection_lower"]) if r["projection_lower"] is not None else max(0.0, pts - width)
+            high = float(r["projection_upper"]) if r["projection_upper"] is not None else pts + width
+            sleeper_id = gsis_to_sleeper.get(pid) or (pid if pid.isdigit() else None)
+            players.append({
+                "player_id": pid,
+                "sleeper_id": sleeper_id,
+                "espn_id": gsis_to_espn.get(pid),
+                "player_name": r["player_name"],
+                "position": r["position"],
+                "position_group": r["position"],
+                "team": r["team"],
+                "opponent_team": r["opponent_team"] or "",
+                "projected_points": round(pts, 2),
+                "point_estimate": round(pts, 2),
+                "projection_lower": round(low, 2),
+                "projection_upper": round(high, 2),
+                "lower_bound": round(low, 2),
+                "upper_bound": round(high, 2),
+                "width": round(width, 2),
+                "projection_width": round(width, 2),
+                "injury_status": injuries.get(pid),
+                "trending": False,
+                "wind_mph": r["wind_mph"],
+                "weather_delta": 0,
+                "games": 1,
+            })
+        sliced = players[:limit]
+        self.json({
+            "players": sliced,
+            "count": len(sliced),
+            "meta": {"source": "db:weekly_projections", "week": week, "season": season},
+        })
+
     def handle_projections(self, conn, qs):
+        # Explicit ?week=N for a week other than "current" reads the
+        # weekly_projections table (independent per-week model output —
+        # own opponent/vegas/weather, see stat_projector.build_weekly_
+        # projections) instead of the season-average snapshot below.
+        # Bypasses the 60s cache (keyed for the no-week default case only)
+        # since a per-week DB read is a cheap indexed (season, week) lookup.
+        _cw_for_week = compute_nfl_week()
+        _req_week_raw = qs.get("week", [None])[0]
+        try:
+            _req_week = int(_req_week_raw) if _req_week_raw not in (None, "") else None
+        except Exception:
+            _req_week = None
+        if _req_week is not None and _req_week != _cw_for_week:
+            self.handle_weekly_projection(conn, qs, _req_week)
+            return
         # 60s server-side cache + Last-Modified/304 mirroring rosters-full.
         global _PROJECTIONS_CACHE
         _now = time.time()
@@ -1527,7 +1682,7 @@ class Handler(BaseHTTPRequestHandler):
                 _full0 = _pcached.get("players_full") or []
                 _nf0 = _pcached.get("num_flex", 2)
                 _sliced0 = _full0[:_limit0]
-                self.json({"players": _sliced0, "count": len(_sliced0), "meta": {"source": "db:player_stats:averaged", "num_flex": _nf0}}, headers={"Cache-Control": "private, max-age=60", "Last-Modified": _plm})
+                self.json({"players": _sliced0, "count": len(_sliced0), "meta": {"source": "db:player_stats:averaged", "num_flex": _nf0, "week": _cw_for_week}}, headers={"Cache-Control": "private, max-age=60", "Last-Modified": _plm})
                 return
         # Load player_stats blob (latest non-empty — preseason week 0 is often "[]"; also handle invalid JSON with NaN)
         # Prefer SQL json_array_length>0 but fall back to Python scan if SQLite JSON is invalid (NaN)
@@ -1785,7 +1940,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             pass
         sliced = out[:limit]
-        self.json({"players": sliced, "count": len(sliced), "meta": {"source": "db:player_stats:averaged", "num_flex": num_flex}}, headers={"Cache-Control": "private, max-age=60", "Last-Modified": _last_modified})
+        self.json({"players": sliced, "count": len(sliced), "meta": {"source": "db:player_stats:averaged", "num_flex": num_flex, "week": _cw_for_week}}, headers={"Cache-Control": "private, max-age=60", "Last-Modified": _last_modified})
 
     def handle_matchups(self, conn, qs):
         week_vals = qs.get("week", [None])[0]
@@ -1963,26 +2118,33 @@ class Handler(BaseHTTPRequestHandler):
         data = load_json_blob(row) or []
         self.json({"rosters": data})
 
-    def handle_rosters_full(self, conn):
+    def handle_rosters_full(self, conn, qs):
         # ONE build_league_analytics pass for all 12 enriched rosters (fixes N+1).
         # 60s server-side cache + Last-Modified; clients may use If-Modified-Since.
+        # Cache is keyed for the default "current week" case only — an
+        # explicit ?week=N for a different week (Matchups week picker)
+        # bypasses it so per-week starter points aren't served stale from
+        # whatever week last populated the cache.
+        week_vals = qs.get("week", [None])[0]
+        req_week = int(week_vals) if week_vals and week_vals.isdigit() else None
         global _ROSTERS_FULL_CACHE
         now = time.time()
-        with _CACHE_LOCK:
-            cached = _ROSTERS_FULL_CACHE.get("payload")
-            at = _ROSTERS_FULL_CACHE.get("at", 0.0)
-            lm = _ROSTERS_FULL_CACHE.get("last_modified", "")
-            if cached is not None and (now - at < _ROSTERS_FULL_TTL):
-                ims = self.headers.get("If-Modified-Since")
-                if ims and lm and ims == lm:
-                    self.send_response(304)
-                    self.send_header("Cache-Control", "private, max-age=60")
-                    self.send_header("Last-Modified", lm)
-                    self.end_headers()
+        if req_week is None:
+            with _CACHE_LOCK:
+                cached = _ROSTERS_FULL_CACHE.get("payload")
+                at = _ROSTERS_FULL_CACHE.get("at", 0.0)
+                lm = _ROSTERS_FULL_CACHE.get("last_modified", "")
+                if cached is not None and (now - at < _ROSTERS_FULL_TTL):
+                    ims = self.headers.get("If-Modified-Since")
+                    if ims and lm and ims == lm:
+                        self.send_response(304)
+                        self.send_header("Cache-Control", "private, max-age=60")
+                        self.send_header("Last-Modified", lm)
+                        self.end_headers()
+                        return
+                    self.json(cached, headers={"Cache-Control": "private, max-age=60", "Last-Modified": lm})
                     return
-                self.json(cached, headers={"Cache-Control": "private, max-age=60", "Last-Modified": lm})
-                return
-        teams_data_map, league_leaderboard, rosters, players = build_league_analytics(conn, self._league_id)
+        teams_data_map, league_leaderboard, rosters, players = build_league_analytics(conn, self._league_id, week=req_week)
         users_map = get_sleeper_users(conn, self._league_id)
         all_teams = []
         for r in (rosters if isinstance(rosters, list) else []):
@@ -2010,11 +2172,12 @@ class Handler(BaseHTTPRequestHandler):
             "team_leaderboard": league_leaderboard,
             "leagueRosters": all_teams,
             "allTeams": all_teams,
-            "meta": {"rosters": len(rosters) if isinstance(rosters, list) else 0, "players": len(players) if isinstance(players, list) else 0},
+            "meta": {"rosters": len(rosters) if isinstance(rosters, list) else 0, "players": len(players) if isinstance(players, list) else 0, "week": req_week},
         }
         last_modified = formatdate(timeval=now, localtime=False, usegmt=True)
-        with _CACHE_LOCK:
-            _ROSTERS_FULL_CACHE = {"at": now, "payload": payload, "last_modified": last_modified}
+        if req_week is None:
+            with _CACHE_LOCK:
+                _ROSTERS_FULL_CACHE = {"at": now, "payload": payload, "last_modified": last_modified}
         self.json(payload, headers={"Cache-Control": "private, max-age=60", "Last-Modified": last_modified})
 
     def handle_comparison(self, conn, qs):

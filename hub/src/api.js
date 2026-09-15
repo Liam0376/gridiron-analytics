@@ -220,10 +220,13 @@ export async function fetchRoster(args = {}) {
   });
 }
 
-export async function fetchRostersFull() {
-  return withCache('fetchRostersFull', {}, async () => {
+export async function fetchRostersFull(args = {}) {
+  const { week } = args;
+  return withCache('fetchRostersFull', { week: week ?? '' }, async () => {
     // Single bulk fetch: all 12 enriched rosters in ONE server pass (fixes N+1).
-    const hub = await tryHub('/rosters-full');
+    // why week: Matchups week picker — without it every week showed the
+    // same (current-week) starter points (live bug, 2026-09-15).
+    const hub = await tryHub(`/rosters-full${week != null && week !== '' ? `?week=${encodeURIComponent(week)}` : ''}`);
     if (hub && (hub.rosters || hub.teams)) return hub;
     return null;
   });
@@ -305,6 +308,18 @@ export async function fetchPropsBoard(args = {}) {
     } catch (_) {
       return { players: [], meta: { cold: true } };
     }
+  });
+}
+
+export async function fetchRosProjections(args = {}) {
+  return withCache('fetchRosProjections', args, async () => {
+    const { limit } = args;
+    const qs = new URLSearchParams();
+    if (limit != null) qs.set('limit', String(limit));
+    const suffix = qs.toString() ? `?${qs}` : '';
+    const hub = await tryHub(`/projections/ros${suffix}`);
+    if (hub && Array.isArray(hub.players)) return hub;
+    return { players: [], count: 0, meta: { source: 'none' } };
   });
 }
 

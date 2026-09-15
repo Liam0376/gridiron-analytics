@@ -46,7 +46,7 @@ export async function renderMatchups(root) {
   let compMap = new Map();
 
   if (matchupPairs.size > 0) {
-    const bulkData = await fetchRostersFull().catch(() => null);
+    const bulkData = await fetchRostersFull({ week }).catch(() => null);
     const bulkRosters = bulkData?.rosters || bulkData?.teams || null;
     const baseData = bulkData || await fetchRoster({ roster_id: '1' });
     allTeamMetas = baseData.leagueRosters || baseData.allTeams || [];

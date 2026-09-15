@@ -264,3 +264,33 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             )"""
         )
         conn.execute("PRAGMA user_version=11")
+
+    if cur_version < 12:
+        # Weekly projections v12 — independent per-week projections (not
+        # summed) for every remaining week, keyed by (season, week,
+        # player_id). Populated during refresh from the same
+        # build_weekly_projections() calls compute_ros_projections already
+        # makes per remaining week — no new model computation, just
+        # persisting what was previously discarded after summing into
+        # ros_points. Fixes: hub Matchups/Projections week pickers showed
+        # identical points for every week because nothing stored a
+        # per-week breakdown to read from. Additive only.
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS weekly_projections (
+                season INTEGER NOT NULL,
+                week INTEGER NOT NULL,
+                player_id TEXT NOT NULL,
+                player_name TEXT NOT NULL,
+                position TEXT NOT NULL,
+                team TEXT NOT NULL,
+                opponent_team TEXT,
+                projected_points REAL NOT NULL,
+                projection_lower REAL,
+                projection_upper REAL,
+                width REAL,
+                wind_mph REAL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (season, week, player_id)
+            )"""
+        )
+        conn.execute("PRAGMA user_version=12")

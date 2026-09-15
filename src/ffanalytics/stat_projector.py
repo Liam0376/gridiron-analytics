@@ -785,7 +785,12 @@ def compute_ros_projections(
     Returns:
         list of dicts sorted by ros_points descending, each with:
         player_id, player_display_name, position, team,
-        ros_points, per_week breakdown, remaining_games
+        ros_points, remaining_games, and per_week: {week: {points, lower,
+        upper, width, opponent, wind_mph}} — the independent per-week
+        breakdown this function sums into ros_points. Persisted verbatim
+        into the weekly_projections table by refresh.py so hub week
+        pickers (Matchups, Projections) can read a real per-week number
+        instead of a season-average snapshot.
     """
     # Accumulate per-player: {pid: {info, total_pts, weeks_played}}
     totals: Dict[str, dict] = {}
@@ -815,7 +820,14 @@ def compute_ros_projections(
                     "remaining_games": 0,
                 }
             totals[pid]["ros_points"] += pts
-            totals[pid]["per_week"][wk] = round(pts, 2)
+            totals[pid]["per_week"][wk] = {
+                "points": round(pts, 2),
+                "lower": p.get("lower_bound"),
+                "upper": p.get("upper_bound"),
+                "width": p.get("width"),
+                "opponent": p.get("opponent_team", ""),
+                "wind_mph": p.get("wind_mph", 0),
+            }
             totals[pid]["remaining_games"] += 1
 
     result = sorted(totals.values(), key=lambda x: x["ros_points"], reverse=True)

@@ -19,6 +19,7 @@ let compareEnabled = true;
 let edgeFilter = 'ALL'; // ALL | BUY | SELL
 let rosterPlayerIds = new Set(); // Audit 22.0: "My Roster" filter
 let rosMode = false; // RoS toggle: weekly ↔ rest-of-season
+let selectedWeek = null; // null = current week (server default); weekly mode only
 const PAGE_SIZE = 50;
 
 // Interval fallback mirrors src/ffanalytics/projection.py v1
@@ -95,18 +96,33 @@ export async function renderProjections(root) {
 
   const data = rosMode
     ? await fetchRosProjections({ limit: projLimit })
-    : await fetchProjections({ limit: projLimit });
-  // Map RoS shape to weekly shape so the table renders uniformly
+    : await fetchProjections({ week: selectedWeek, limit: projLimit });
+  // Map RoS shape to weekly shape so the table renders uniformly. RoS points
+  // are a season-scaled sum (see stat_projector.compute_ros_projections) —
+  // no per-game interval data comes back, so approximate a wider band by
+  // compounding the single-week fallback width over remaining_games
+  // (independent-week variance sums, so SD scales with sqrt(n)).
   allPlayers = rosMode
-    ? (data.players || []).map(p => ({
-        ...p,
-        projected_points: p.ros_points,
-        point_estimate: p.ros_points,
-        player_name: p.player_name || p.player_display_name,
-        position_group: p.position,
-      }))
+    ? (data.players || []).map(p => {
+        const remaining = Math.max(1, Number(p.remaining_games) || 1);
+        const wkWidth = scaledFallbackWidth(p.position, Number(p.per_game_neutral) || 0);
+        const width = Number((wkWidth * Math.sqrt(remaining)).toFixed(2));
+        return {
+          ...p,
+          projected_points: p.ros_points,
+          point_estimate: p.ros_points,
+          player_name: p.player_name || p.player_display_name,
+          position_group: p.position,
+          width,
+          projection_lower: Math.max(0, Number((p.ros_points - width).toFixed(2))),
+          projection_upper: Number((p.ros_points + width).toFixed(2)),
+        };
+      })
     : (data.players || []);
   const meta = data.meta || {};
+  // Server default (no ?week=) reports the current NFL week — anchors the
+  // week-picker's "current" highlight and label even before a user pick.
+  if (!rosMode && selectedWeek == null && meta.week != null) selectedWeek = meta.week;
 
   // Fetch market comparison in parallel (free, $0; graceful degrade if no DB table yet)
   let compRaw = { players: [], count: 0, meta: {}, fetched_at: null };
@@ -192,24 +208,44 @@ export async function renderProjections(root) {
     } else {
       p.market_points = null; p.delta_points = null; p.edge = 'NEUTRAL'; p.stat_deltas = [];
     }
-    const m_pts = c && c.model_points != null && Number(c.model_points) > 0 ? Number(c.model_points) : null;
-    const raw_pts = p.projected_points != null && Number(p.projected_points) > 0 ? Number(p.projected_points) : null;
-    const mk_s = (c && c.market_season_points != null && Number(c.market_season_points) > 0) ? Number(c.market_season_points) / 17.0 : null;
-    const weekly = m_pts ?? raw_pts ?? mk_s ?? 0;
+    if (!rosMode) {
+      // why (live bug 2026-09-15): this weekly model/market blend used to
+      // run unconditionally and clobbered RoS mode's season total (443 pts)
+      // with a single week's number (28 pts) whenever comparison data
+      // existed — defeating "independent per-week projections summed",
+      // the whole point of the RoS toggle. Weekly mode only past this gate.
+      const m_pts = c && c.model_points != null && Number(c.model_points) > 0 ? Number(c.model_points) : null;
+      const raw_pts = p.projected_points != null && Number(p.projected_points) > 0 ? Number(p.projected_points) : null;
+      const mk_s = (c && c.market_season_points != null && Number(c.market_season_points) > 0) ? Number(c.market_season_points) / 17.0 : null;
+      const weekly = m_pts ?? raw_pts ?? mk_s ?? 0;
 
-    p.projected_points = Number(weekly.toFixed(2));
-    p.point_estimate = Number(weekly.toFixed(2));
-    p.weekly = Number(weekly.toFixed(2));
+      p.projected_points = Number(weekly.toFixed(2));
+      p.point_estimate = Number(weekly.toFixed(2));
+      p.weekly = Number(weekly.toFixed(2));
 
-    const rawWidth = c?.interval_width ?? c?.width ?? p.width;
-    const width = Number(rawWidth ?? scaledFallbackWidth(p.position, weekly));
-    p.width = Number(width.toFixed(2));
-    // why no /2: width is HALF-width (unified 2026-09-09). Floor restores
-    // src's max(0,…) that the old symmetric rebuild discarded.
-    p.projection_lower = Number(Math.max(0, weekly - width).toFixed(2));
-    p.projection_upper = Number((weekly + width).toFixed(2));
-    p.lower = p.projection_lower;
-    p.upper = p.projection_upper;
+      const rawWidth = c?.interval_width ?? c?.width ?? p.width;
+      const width = Number(rawWidth ?? scaledFallbackWidth(p.position, weekly));
+      p.width = Number(width.toFixed(2));
+      // why no /2: width is HALF-width (unified 2026-09-09). Floor restores
+      // src's max(0,…) that the old symmetric rebuild discarded.
+      p.projection_lower = Number(Math.max(0, weekly - width).toFixed(2));
+      p.projection_upper = Number((weekly + width).toFixed(2));
+      p.lower = p.projection_lower;
+      p.upper = p.projection_upper;
+    } else {
+      // p.projected_points/width/projection_lower/upper are already the
+      // season-scaled RoS values set when mapping data.players above.
+      p.weekly = Number(p.per_game_neutral) || 0;
+      p.lower = p.projection_lower;
+      p.upper = p.projection_upper;
+      // Market comparison is weekly-only (c.market_points) — pairing it
+      // with a season total is apples-to-oranges, so compare season sums
+      // (c.market_season_points) instead of falling through to the
+      // per-week market figure the block above uses.
+      const mkSeason = c && c.market_season_points != null && Number(c.market_season_points) > 0 ? Number(c.market_season_points) : null;
+      p.market_points = mkSeason;
+      p.delta_points = mkSeason != null ? Number((p.projected_points - mkSeason).toFixed(2)) : null;
+    }
     p.ecr = p.fp_ecr;
     p.adp = p.fp_adp;
     p.tier = p.fp_tier;
@@ -279,6 +315,14 @@ export async function renderProjections(root) {
 
     <div class="card reveal in" style="margin-top:12px">
       <div class="card-body" style="display:flex; flex-direction:column; gap:12px">
+        ${!rosMode ? `
+        <div class="row" style="gap:8px">
+          <span class="kicker">Week</span>
+          <div class="filters week-picker-scroll" style="overflow-x:auto; flex-wrap:nowrap; max-width:100%; padding-bottom:4px">
+            ${Array.from({length:18},(_,i)=>i+1).map(w=>`<button class="chip ${w===Number(selectedWeek)?'active':''}" data-proj-week="${w}" title="Show week ${w} projections" style="flex-shrink:0">${w}</button>`).join('')}
+          </div>
+        </div>
+        ` : ''}
         <div class="row">
           <label class="search-mini" style="flex:1; min-width:260px">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
@@ -328,7 +372,7 @@ export async function renderProjections(root) {
             <th data-sort="team" tabindex="0" role="button" aria-label="Sort by Team">Team</th>
             <th data-sort="projected_points" tabindex="0" role="button" aria-label="Sort by Model Points" style="${compareEnabled && hasComparison ? 'color:var(--amber); border-bottom:2px solid var(--amber)' : ''}">${rosMode ? 'RoS' : 'Model'}<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:${compareEnabled && hasComparison ? 'var(--amber)' : 'var(--text-faint)'}; opacity:0.7">${rosMode ? 'total' : 'proj'}</span></th>
             ${compareEnabled && hasComparison ? `
-            <th data-sort="market_points" tabindex="0" role="button" aria-label="Sort by Sleeper Market Points" style="color:var(--sky); border-bottom:2px solid var(--sky)">Market<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--sky); opacity:0.7">Sleeper</span></th>
+            <th data-sort="market_points" tabindex="0" role="button" aria-label="Sort by Sleeper Market Points" style="color:var(--sky); border-bottom:2px solid var(--sky)">Market<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--sky); opacity:0.7">${rosMode ? 'Sleeper season' : 'Sleeper'}</span></th>
             <th data-sort="delta_points" tabindex="0" role="button" aria-label="Sort by Points Delta" style="border-bottom:2px solid var(--border)">Δ<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-faint)">Grid−Mkt</span></th>
             <th data-sort="fp_ecr" tabindex="0" role="button" aria-label="Sort by FantasyPros ECR">ECR</th>
             <th data-sort="delta_rank" tabindex="0" role="button" aria-label="Sort by Rank Delta">Δ Rk</th>
@@ -357,6 +401,17 @@ export async function renderProjections(root) {
   // Toggle RoS / Weekly
   const rosTgl = root.querySelector('#toggleRos');
   if (rosTgl) rosTgl.addEventListener('click', ()=>{ rosMode = !rosMode; renderProjections(root); });
+
+  // Week picker (weekly mode only) — independent per-week model output,
+  // not the same season-average snapshot repeated across every week.
+  root.querySelectorAll('[data-proj-week]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const w = Number(btn.getAttribute('data-proj-week'));
+      selectedWeek = w === selectedWeek ? null : w;
+      currentPage = 1;
+      renderProjections(root);
+    });
+  });
 
   // Edge filter
   root.querySelectorAll('[data-edge]').forEach(btn=>{

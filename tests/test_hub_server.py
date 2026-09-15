@@ -495,3 +495,69 @@ def test_hub_waiver_falls_back_to_display_name_when_short_name_none(tmp_path):
         except Exception:
             pass
         hubserver.Handler.db_path = orig_db
+
+
+def test_rosters_full_week_override_matches_by_name_when_gsis_id_missing(tmp_path, monkeypatch):
+    # why (live bug 2026-09-15): Matchups week picker showed the same points
+    # for every week because build_league_analytics ignored `week` entirely.
+    # First fix keyed the weekly_projections override by gsis_id, but
+    # Sleeper's /players/nfl only backfills gsis_id for ~1/3 of entries
+    # (confirmed live: Jalen Hurts' Sleeper entry has gsis_id=None) — the
+    # gsis-only lookup silently no-op'd for exactly those players, so the
+    # override never had a visible effect for a majority-plausible roster.
+    # name+position fallback (mirrors comp_by_name_pos elsewhere in this
+    # function) closes that gap.
+    import sqlite3
+    from http.server import HTTPServer
+    db_path = tmp_path / "week_override.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE rosters (season INT, week INT, data TEXT)")
+    conn.execute(
+        "INSERT INTO rosters VALUES (2026, 1, ?)",
+        (json.dumps([{"roster_id": 1, "owner_id": "owner1",
+                      "players": ["6904"], "starters": ["6904"]}]),),
+    )
+    conn.execute("CREATE TABLE player_stats (season INT, week INT, data TEXT)")
+    conn.execute("INSERT INTO player_stats VALUES (2026, 1, '[]')")
+    conn.execute(
+        "CREATE TABLE weekly_projections (season INT, week INT, player_id TEXT, "
+        "player_name TEXT, position TEXT, team TEXT, opponent_team TEXT, "
+        "projected_points REAL, projection_lower REAL, projection_upper REAL, "
+        "width REAL, wind_mph REAL, updated_at TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO weekly_projections VALUES "
+        "(2026, 8, '00-0036389', 'Jalen Hurts', 'QB', 'PHI', 'WAS', "
+        "20.85, 10.35, 31.35, 10.5, 0, '2026-09-15T00:00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+    # Sleeper's own player identity cache — gsis_id=None mirrors the live
+    # entry (roster's "6904" is Sleeper's own id for Jalen Hurts, PHI QB).
+    monkeypatch.setattr(hubserver, "get_sleeper_players_cached", lambda: {
+        "6904": {"full_name": "Jalen Hurts", "position": "QB", "team": "PHI", "gsis_id": None},
+    })
+
+    orig_db = hubserver.Handler.db_path
+    hubserver.Handler.db_path = db_path
+    port = get_free_port()
+    httpd = HTTPServer(('127.0.0.1', port), hubserver.Handler)
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/hub-api/rosters-full?week=8", timeout=10) as r:
+            assert r.status == 200
+            body = json.loads(r.read().decode("utf-8"))
+        assert body["meta"]["week"] == 8
+        starters = next(iter(body["rosters"].values()))["starters"]
+        hurts = next(p for p in starters if p["player_id"] == "6904")
+        assert hurts["projected_points"] == pytest.approx(20.85)
+        assert hurts["opponent_team"] == "WAS"
+    finally:
+        httpd.shutdown()
+        try:
+            httpd.server_close()
+        except Exception:
+            pass
+        hubserver.Handler.db_path = orig_db
