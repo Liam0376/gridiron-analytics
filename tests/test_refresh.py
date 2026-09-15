@@ -450,6 +450,72 @@ def test_preseason_refresh_patches_teams_and_adds_rookies():
     conn.close()
 
 
+def test_refresh_writes_independent_weekly_projections_not_one_snapshot():
+    # why (live bug 2026-09-15): hub Matchups/Projections week pickers
+    # showed the identical number for every week — nothing persisted the
+    # per-week breakdown compute_ros_projections already computes (it built
+    # one via build_weekly_projections(target_week=wk) per remaining week,
+    # then discarded everything but the ros_points sum). refresh.py must
+    # write each week's own row to weekly_projections, keyed by its own
+    # week — not the outer current-week variable (same clobber class as
+    # test_matchups_stored_per_week_not_clobbered).
+    conn, tmp = _fresh_conn()
+    players_map = {
+        "99": {"full_name": "Test Veteran", "position": "WR", "team": "KC",
+               "years_exp": 5, "active": True, "gsis_id": "gsis-vet1"},
+    }
+    fake_nfl = Mock()
+
+    class _Frame:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def to_dicts(self):
+            return self._rows
+
+    fake_nfl.load_player_stats.return_value = _Frame(_vet_rows())
+    # Two different opponents in consecutive weeks — proves per-week rows
+    # carry their own matchup, not one team-schedule snapshot repeated.
+    fake_nfl.load_schedules.return_value = _Frame([
+        {"week": 2, "game_type": "REG", "season": 2026,
+         "home_team": "KC", "away_team": "LV",
+         "total_line": 30.0, "spread_line": -3.0},
+        {"week": 3, "game_type": "REG", "season": 2026,
+         "home_team": "DEN", "away_team": "KC",
+         "total_line": 50.0, "spread_line": -10.0},
+    ])
+    sched_cache_path = (
+        Path(__file__).resolve().parent.parent / "data" / "nfl_cache" / "schedule_2026.json"
+    )
+    sched_backup = sched_cache_path.read_text() if sched_cache_path.exists() else None
+    try:
+        refresh.run_refresh_with_data(
+            conn, season=2026, sleeper_session=_mock_sleeper_session(players_map),
+            nfl_module=fake_nfl, ran_at_iso="2026-09-09T12:00:00",
+            stats_season=2025, league_id="123",
+        )
+    finally:
+        if sched_backup is not None:
+            sched_cache_path.write_text(sched_backup)
+        elif sched_cache_path.exists():
+            sched_cache_path.unlink()
+
+    rows = {
+        r["week"]: dict(r)
+        for r in conn.execute(
+            "SELECT * FROM weekly_projections WHERE player_id='gsis-vet1' "
+            "AND week IN (2, 3)"
+        ).fetchall()
+    }
+    assert set(rows.keys()) == {2, 3}
+    assert rows[2]["opponent_team"] == "LV"
+    assert rows[3]["opponent_team"] == "DEN"
+    assert rows[2]["projected_points"] != rows[3]["projected_points"]
+    for wk in (2, 3):
+        assert rows[wk]["projection_lower"] <= rows[wk]["projected_points"] <= rows[wk]["projection_upper"]
+    conn.close()
+
+
 def test_xwalk_resolves_player_absent_from_this_weeks_stats():
     # why (user-caught live bug, 2026-09-10): the name+pos xwalk fallback
     # only matched players with a row in THIS week's player_stats — a real

@@ -3,6 +3,10 @@
 Date: 2026-09-15
 Branch: reliability-audit-2026
 
+See ADDENDUM-continuation.md for what changed and two new findings surfaced
+in a later same-day session (git-objects permission issue, wall-clock test
+drift) — this audit itself is unchanged and complete as of 11:35 AM.
+
 ## Ranked Findings
 
 ### Critical
