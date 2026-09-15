@@ -174,3 +174,17 @@ CREATE INDEX IF NOT EXISTS idx_team_ratings_season ON team_ratings(season);
 -- in the (season, week, roster_id) PK; a dedicated week index avoids
 -- scanning all-season rows for a single-week query.
 CREATE INDEX IF NOT EXISTS idx_matchups_week ON sleeper_matchups(week);
+
+-- Reliability audit v10: per-player per-week projection snapshots for
+-- accuracy grading (DB1). Frozen at refresh time before games resolve.
+CREATE TABLE IF NOT EXISTS projection_snapshots (
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    player_id TEXT NOT NULL,
+    position TEXT NOT NULL,
+    projected_points REAL NOT NULL,
+    projection_low REAL,
+    projection_high REAL,
+    snapped_at TEXT NOT NULL,
+    PRIMARY KEY (season, week, player_id)
+);

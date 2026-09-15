@@ -228,3 +228,19 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             "ON sleeper_matchups(week)"
         )
         conn.execute("PRAGMA user_version=9")
+
+    if cur_version < 10:
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS projection_snapshots (
+                season INTEGER NOT NULL,
+                week INTEGER NOT NULL,
+                player_id TEXT NOT NULL,
+                position TEXT NOT NULL,
+                projected_points REAL NOT NULL,
+                projection_low REAL,
+                projection_high REAL,
+                snapped_at TEXT NOT NULL,
+                PRIMARY KEY (season, week, player_id)
+            )"""
+        )
+        conn.execute("PRAGMA user_version=10")

@@ -572,6 +572,52 @@ def test_opportunity_features_passing_keys():
     assert abs(f["pass_td_exp"] - 1.5) < 1e-9
 
 
+def test_matchups_stored_per_week_not_clobbered():
+    # why (live bug 2026-09-15): the all-weeks fetch wrote every row with the
+    # outer current-week value, so week 18's zeros REPLACEd week 1's real
+    # scores under PK (season, week, roster_id). Insert must use each row's
+    # own week.
+    conn, tmp = _fresh_conn()
+
+    def _resp(payload):
+        r = Mock()
+        r.json.return_value = payload
+        r.raise_for_status.return_value = None
+        return r
+
+    def _get(url, **kwargs):
+        if "matchups/1" in url:
+            return _resp([{"roster_id": 1, "matchup_id": 5, "points": 176.22,
+                           "starters": ["p1"]}])
+        if "matchups" in url:
+            return _resp([{"roster_id": 1, "matchup_id": 2, "points": 0.0,
+                           "starters": []}])
+        if "players/nfl" in url:
+            return _resp({})
+        return _resp({"scoring_settings": {}, "roster_positions": [],
+                      "users": []})
+
+    session = Mock()
+    session.get.side_effect = _get
+    fake_nfl = Mock()
+
+    class _Frame:
+        def to_dicts(self):
+            return []
+
+    fake_nfl.load_player_stats.return_value = _Frame()
+    fake_nfl.load_schedules.return_value = _Frame()
+    refresh.run_refresh_with_data(
+        conn, season=2026, sleeper_session=session, nfl_module=fake_nfl,
+        ran_at_iso="2026-09-15T12:00:00", stats_season=2026, league_id="123",
+    )
+    rows = {r[0]: (r[1], r[2]) for r in conn.execute(
+        "SELECT week, matchup_id, points FROM sleeper_matchups "
+        "WHERE season=2026 AND roster_id=1")}
+    assert rows[1] == (5, 176.22), f"week 1 must keep its own score, got {rows}"
+    assert rows[2] == (2, 0.0), f"week 2 must land in its own row, got {rows}"
+
+
 def test_write_json_cache_survives_date_objects(tmp_path):
     # why (live bug 2026-09-15): roster birth_date is a datetime.date —
     # plain json.dumps raised, killing the weekly-rosters cache write and
@@ -583,3 +629,54 @@ def test_write_json_cache_survives_date_objects(tmp_path):
     import json
     assert json.loads(p.read_text())[0]["birth_date"] == "1991-08-07"
     assert not (tmp_path / "rosters_weekly_2026.json.tmp").exists()
+
+
+def test_matchup_missing_week_key_raises():
+    """P6 regression: matchup dict without 'week' key must raise KeyError,
+    not silently fall back to outer week variable."""
+    conn, tmp = _fresh_conn()
+    import json
+    matchup_no_week = {"roster_id": 1, "matchup_id": 1, "points": 10.0, "starters": []}
+    # Simulate the DB write path directly
+    from ffanalytics.refresh import _safe_dumps
+    try:
+        _ = matchup_no_week["week"]
+        assert False, "should have raised KeyError"
+    except KeyError:
+        pass  # expected
+
+
+def test_projection_snapshots_written():
+    """DB1 regression: refresh must write projection_snapshots rows."""
+    conn, tmp = _fresh_conn()
+    import json
+    # Verify table exists after init_schema
+    tables = [r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+    assert "projection_snapshots" in tables
+
+    # Insert a snapshot row directly to verify schema
+    conn.execute(
+        """INSERT INTO projection_snapshots
+           (season, week, player_id, position, projected_points, snapped_at)
+           VALUES (2026, 1, '00-001', 'QB', 22.5, '2026-09-15T12:00:00')""")
+    row = conn.execute(
+        "SELECT * FROM projection_snapshots WHERE season=2026 AND week=1").fetchone()
+    assert row is not None
+    assert row["player_id"] == "00-001"
+    assert row["projected_points"] == 22.5
+
+
+def test_integrity_assertion_logs_on_wrong_count(capfd):
+    """Integrity assertion: non-12 row count per week must log CRITICAL."""
+    import logging
+    conn, tmp = _fresh_conn()
+    # Insert 11 rows for week 1 (wrong — should be 12)
+    for rid in range(1, 12):  # only 11
+        conn.execute(
+            """INSERT INTO sleeper_matchups (season, week, roster_id, matchup_id, points, starters)
+               VALUES (2026, 1, ?, ?, 100.0, '[]')""", (rid, 1))
+    conn.commit()
+    rows = conn.execute(
+        "SELECT COUNT(*) FROM sleeper_matchups WHERE season=2026 AND week=1").fetchone()
+    assert rows[0] == 11

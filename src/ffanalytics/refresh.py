@@ -1075,6 +1075,22 @@ def run_refresh_with_data(
                    VALUES (?, ?, ?)""",
                 (season, 0, _safe_dumps(data["player_stats"])),
             )
+            # Snapshot per-player projections for accuracy grading (DB1 fix).
+            snap_at = now.isoformat()
+            for ps in data["player_stats"]:
+                pp = ps.get("projected_points")
+                pid = ps.get("player_id") or ps.get("id") or ""
+                pos = (ps.get("position") or "").upper()
+                if pp is not None and pid and pos:
+                    conn.execute(
+                        """INSERT OR REPLACE INTO projection_snapshots
+                           (season, week, player_id, position, projected_points,
+                            projection_low, projection_high, snapped_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (season, market_week, str(pid), pos, pp,
+                         ps.get("projection_low"), ps.get("projection_high"),
+                         snap_at),
+                    )
         else:
             logger.warning("refresh: nflverse status=false — skipping player_stats INSERT (preserve last-good)")
 
@@ -1085,7 +1101,7 @@ def run_refresh_with_data(
                        (season, week, roster_id, matchup_id, points, starters)
                        VALUES (?, ?, ?, ?, ?, ?)""",
                     (
-                        season, week,
+                        season, m["week"],
                         m.get("roster_id"),
                         m.get("matchup_id"),
                         m.get("points"),
@@ -1307,6 +1323,31 @@ def run_refresh_with_data(
                     logger.warning(f"weather retention prune failed: {_w_prune_exc}")
             except Exception:
                 logger.exception("Weather fetch/store failed, continuing with other data")
+
+        # Integrity assertion: every (season, week) must have exactly 12 rows
+        # in sleeper_matchups (12-team league). Catches clobber regressions.
+        if status.get("sleeper") and data.get("matchups"):
+            integrity_rows = conn.execute(
+                """SELECT week, COUNT(*) as cnt, SUM(COALESCE(points, 0)) as pts
+                   FROM sleeper_matchups WHERE season = ?
+                   GROUP BY week ORDER BY week""",
+                (season,),
+            ).fetchall()
+            for row in integrity_rows:
+                wk, cnt, pts = row[0], row[1], row[2]
+                if cnt != 12:
+                    logger.critical(
+                        f"INTEGRITY: sleeper_matchups season={season} week={wk} "
+                        f"has {cnt} rows (expected 12)"
+                    )
+                # Past weeks with real scores must retain non-zero points
+                if wk < week and pts is not None and pts > 0:
+                    pass  # healthy
+                elif wk < week and (pts is None or pts == 0):
+                    logger.warning(
+                        f"INTEGRITY: sleeper_matchups season={season} week={wk} "
+                        f"has pts_sum={pts} (past week, expected >0)"
+                    )
 
         conn.commit()
     except Exception:
