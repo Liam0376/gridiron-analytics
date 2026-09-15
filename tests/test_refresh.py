@@ -570,3 +570,16 @@ def test_opportunity_features_passing_keys():
     assert abs(f["pass_td_gap"] - 0.5) < 1e-9
     assert abs(f["pass_yd_exp"] - 260.0) < 1e-9
     assert abs(f["pass_td_exp"] - 1.5) < 1e-9
+
+
+def test_write_json_cache_survives_date_objects(tmp_path):
+    # why (live bug 2026-09-15): roster birth_date is a datetime.date —
+    # plain json.dumps raised, killing the weekly-rosters cache write and
+    # silently disabling the gsis team patch (name-map fallback only).
+    import datetime
+    p = tmp_path / "rosters_weekly_2026.json"
+    refresh.write_json_cache(
+        p, [{"gsis_id": "00-0036212", "birth_date": datetime.date(1991, 8, 7)}])
+    import json
+    assert json.loads(p.read_text())[0]["birth_date"] == "1991-08-07"
+    assert not (tmp_path / "rosters_weekly_2026.json.tmp").exists()

@@ -106,6 +106,19 @@ def build_sleeper_team_map(sleeper_players: dict) -> dict:
     return out
 
 
+def write_json_cache(path, rows: list) -> None:
+    """Best-effort atomic cache write. default=str because nflverse rows
+    carry non-JSON natives (roster birth_date is a datetime.date — caught
+    live 2026-09-15: it killed the weekly-rosters cache write and silently
+    disabled the gsis team patch). Never raises."""
+    try:
+        tmp = Path(str(path) + ".tmp")
+        tmp.write_text(json.dumps(rows, default=str))
+        tmp.replace(path)
+    except Exception as exc:
+        logger.warning("refresh: cache write failed for %s: %s", path, exc)
+
+
 def build_gsis_team_map(weekly_rosters: list) -> dict:
     """gsis_id -> current canonical team from nflverse weekly rosters.
 
@@ -690,7 +703,7 @@ def run_refresh_with_data(
                 _depth_path = _cache_dir / f"depth_{season}.json"
                 try:
                     _rosters = nflverse.get_weekly_rosters(season, nfl_module=nfl_module)
-                    _rosters_path.write_text(json.dumps(_rosters))
+                    write_json_cache(_rosters_path, _rosters)
                 except Exception as _rf_exc:
                     logger.warning(f"refresh: weekly-rosters fetch failed, last-good cache: {_rf_exc}")
                     try:
@@ -699,7 +712,7 @@ def run_refresh_with_data(
                         _rosters = []
                 try:
                     _depth = nflverse.get_depth_charts(season, nfl_module=nfl_module)
-                    _depth_path.write_text(json.dumps(_depth))
+                    write_json_cache(_depth_path, _depth)
                 except Exception as _df_exc:
                     logger.warning(f"refresh: depth fetch failed, last-good cache: {_df_exc}")
                 _gsis_map = build_gsis_team_map(_rosters or [])
@@ -715,12 +728,12 @@ def run_refresh_with_data(
                 _ngs_path = _cache_dir / f"ngs_receiving_{season}.json"
                 try:
                     _opp_rows = nflverse.get_opportunity(season, nfl_module=nfl_module)
-                    _opp_path.write_text(json.dumps(_opp_rows))
+                    write_json_cache(_opp_path, _opp_rows)
                 except Exception as _o_exc:
                     logger.warning(f"refresh: opportunity fetch failed, last-good cache: {_o_exc}")
                 try:
                     _ngs_rows = nflverse.get_ngs_receiving(season, nfl_module=nfl_module)
-                    _ngs_path.write_text(json.dumps(_ngs_rows))
+                    write_json_cache(_ngs_path, _ngs_rows)
                 except Exception as _n_exc:
                     logger.warning(f"refresh: NGS fetch failed, last-good cache: {_n_exc}")
                 _log(conn, "opportunity", True, None, ran_at_iso)
@@ -806,7 +819,7 @@ def run_refresh_with_data(
             _pid_path = _er_cache / "ff_playerids.json"
             try:
                 _ecr_rows = nflverse.get_ecr_weekly(nfl_module=nfl_module)
-                _ecr_path.write_text(json.dumps(_ecr_rows))
+                write_json_cache(_ecr_path, _ecr_rows)
             except Exception as _e_exc:
                 logger.warning(f"refresh: free ECR fetch failed, last-good cache: {_e_exc}")
                 try:
@@ -815,7 +828,7 @@ def run_refresh_with_data(
                     _ecr_rows = []
             try:
                 _pids = nflverse.get_ff_playerids(nfl_module=nfl_module)
-                _pid_path.write_text(json.dumps(_pids))
+                write_json_cache(_pid_path, _pids)
             except Exception as _p_exc:
                 logger.warning(f"refresh: playerids fetch failed, last-good cache: {_p_exc}")
                 try:
