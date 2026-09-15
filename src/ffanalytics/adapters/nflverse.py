@@ -38,3 +38,23 @@ def get_player_ids(nfl_module=None) -> list[dict]:
     nfl = _nfl_module(nfl_module)
     frame = _call_with_retry(lambda: nfl.load_players(), name="nflverse")
     return frame.to_dicts()
+
+
+def get_ecr_weekly(nfl_module=None) -> list[dict]:
+    """Free weekly expert-consensus ranks (DynastyProcess via nflverse):
+    player_name, pos, team, ecr, sd, best, worst, pos_rank, fantasypros_id,
+    opponent, bye, start-sit grade. Current week only — scrape_date tells
+    which. $0, no key, no scraping (cf. paid adapters/fantasypros.py).
+    """
+    nfl = _nfl_module(nfl_module)
+    frame = _call_with_retry(lambda: nfl.load_ff_rankings(type="week"), name="nflverse")
+    return frame.to_dicts()
+
+
+def get_ff_playerids(nfl_module=None) -> list[dict]:
+    """Cross-ID spine (fantasypros_id, gsis_id, sleeper_id, pfr/pff/espn/
+    yahoo...). The exact ECR join key source — refreshes rarely, cache it.
+    """
+    nfl = _nfl_module(nfl_module)
+    frame = _call_with_retry(lambda: nfl.load_ff_playerids(), name="nflverse")
+    return frame.to_dicts()

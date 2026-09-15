@@ -414,6 +414,8 @@ def build_model_rows(
     draft_prices: dict[str, float] | None,
     sleeper_to_gsis: dict[str, str] | None = None,
     gsis_to_sleeper: dict[str, str] | None = None,
+    fpros_by_id: dict[str, dict] | None = None,
+    gsis_to_fpid: dict[str, str] | None = None,
 ) -> tuple[list[dict], set[tuple[str, str]]]:
     rows: list[dict] = []
     seen_keys: set[tuple[str, str]] = set()
@@ -437,12 +439,26 @@ def build_model_rows(
         actual = actual_by_gsis.get(pid) if actual_by_gsis else None
         actual_pts, actual_stats = _actual_points_and_stats(actual)
 
-        fpros = _best_fpros_match(
-            p.get("player_display_name") or p.get("player_name") or "",
-            team,
-            pos,
-            fpros_lut,
-        )
+        fpros = None
+        fpid = (gsis_to_fpid or {}).get(pid)
+        if fpid is not None:
+            fpros = (fpros_by_id or {}).get(str(fpid))
+        if fpros is None:
+            fpros = _best_fpros_match(
+                p.get("player_display_name") or p.get("player_name") or "",
+                team,
+                pos,
+                fpros_lut,
+            )
+        else:
+            # why: exact-matched ECR rows must not resurrect as fallback
+            # phantom rows — mark their (name, pos) seen (caught by the
+            # exact-join unit test: Josh Allen ECR attached by id to a
+            # model row, then re-added as fp_2_josh_allen).
+            _fn = _normalize_name(
+                fpros.get("player_name") or fpros.get("short_name") or "")
+            if _fn and pos and pos != "UNK":
+                seen_keys.add((_fn, pos))
         fp_ecr, fp_ecr_pos, fp_adp, fp_adp_pos, fp_tier = _fpros_fields(fpros)
         fp_adp, fp_adp_pos = _sleeper_adp_fallback(market, fp_adp, fp_adp_pos)
 

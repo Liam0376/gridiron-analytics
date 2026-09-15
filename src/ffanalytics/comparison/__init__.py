@@ -29,8 +29,17 @@ def build_comparison(
     actual_by_gsis: dict[str, dict] | None = None,
     draft_prices: dict[str, float] | None = None,
     league_econ: dict | None = None,
+    gsis_to_fpid: dict[str, str] | None = None,
 ) -> list[dict]:
     fpros_lut, statsguy_lut = build_lookups(fpros_players, statsguy_rows)
+    # why exact-first (ecr-baseline spec): fuzzy name matching mis-joins
+    # movers and suffix variants; fantasypros_id->gsis is exact. Fallback
+    # preserved for rows without ids (CSV legacy, rookies).
+    fpros_by_id = {}
+    for row in fpros_players or []:
+        fid = str((row or {}).get("fantasypros_id") or "").strip()
+        if fid and fid not in fpros_by_id:
+            fpros_by_id[fid] = row
 
     sleeper_to_gsis = build_gsis_map(sleeper_players or {})
     gsis_to_sleeper = {gsis: sid for sid, gsis in sleeper_to_gsis.items()}
@@ -53,6 +62,8 @@ def build_comparison(
         draft_prices,
         sleeper_to_gsis=sleeper_to_gsis,
         gsis_to_sleeper=gsis_to_sleeper,
+        fpros_by_id=fpros_by_id,
+        gsis_to_fpid=gsis_to_fpid,
     )
 
     starting_len = len(rows)

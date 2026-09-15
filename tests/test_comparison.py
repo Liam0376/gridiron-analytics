@@ -199,3 +199,46 @@ def test_streamer_vor_weight_zero_for_k_def_dst():
     assert _weighted_vor(300.0, "K", {"K": 100.0}, {}) == 0.0
     assert _weighted_vor(300.0, "DEF", {"DEF": 100.0}, {}) == 0.0
     assert _weighted_vor(300.0, "RB", {"RB": 100.0}, {"RB": 1.1}) > 0
+
+
+def test_exact_fpid_join_beats_fuzzy_mismatch():
+    # why (ecr-baseline spec): fuzzy name matching mis-joins movers and
+    # suffix variants; fantasypros_id->gsis is exact. The model name here
+    # ("Nobody Knows") matches NOTHING fuzzy, yet ECR attaches by id.
+    from ffanalytics.comparison import build_comparison
+    model_projs = [{
+        "player_id": "00-0034857",
+        "player_display_name": "Nobody Knows",
+        "position": "QB",
+        "team": "BUF",
+        "projected_points": 20.0,
+    }]
+    fpros = [{
+        "player_name": "Josh Allen", "team_id": "BUF", "position_id": "QB",
+        "rank_ecr_ppr": 1.0, "rank_ecr_pos": 1, "fantasypros_id": "12345",
+    }]
+    res = build_comparison(model_projs, {}, fpros,
+                           gsis_to_fpid={"00-0034857": "12345"})
+    assert len(res) == 1
+    assert res[0]["fp_ecr"] == 1
+    assert res[0]["fp_ecr_pos"] == 1
+
+
+def test_fuzzy_fallback_survives_without_ids():
+    # why: CSV legacy rows and rookies carry no fantasypros_id — the old
+    # path must keep working when the id maps are absent.
+    from ffanalytics.comparison import build_comparison
+    model_projs = [{
+        "player_id": "00-0034857",
+        "player_display_name": "Josh Allen",
+        "position": "QB",
+        "team": "BUF",
+        "projected_points": 20.0,
+    }]
+    fpros = [{
+        "player_name": "Josh Allen", "team_id": "BUF", "position_id": "QB",
+        "rank_ecr_ppr": 2.0, "rank_ecr_pos": 2,
+    }]
+    res = build_comparison(model_projs, {}, fpros)
+    assert len(res) == 1
+    assert res[0]["fp_ecr"] == 2

@@ -106,6 +106,61 @@ def build_sleeper_team_map(sleeper_players: dict) -> dict:
     return out
 
 
+def map_fpros_id_to_gsis(playerids_rows: list) -> dict:
+    """fantasypros_id -> gsis_id from the nflverse cross-ID spine.
+
+    Exact ECR join key (ecr-baseline spec) — no names involved. Strips
+    whitespace (cf. the Sleeper gsis_id leading-space bug), skips rows
+    missing either id, first-seen wins. Never raises.
+    """
+    out = {}
+    try:
+        for r in playerids_rows or []:
+            r = r or {}
+            fpid = str(r.get("fantasypros_id") or "").strip()
+            gsis = str(r.get("gsis_id") or "").strip()
+            if fpid and gsis and fpid not in out:
+                out[fpid] = gsis
+    except Exception:
+        pass
+    return out
+
+
+def nflverse_ecr_to_fpros(ecr_row: dict) -> dict:
+    """Map a free-ECR row to the fpros shape comparison reads.
+
+    Emits exactly the keys `comparison/_model._fpros_fields` and
+    `build_fpros_lookup` consume: rank_ecr_ppr (overall ecr), rank_ecr_pos
+    (pos_rank), player_name, team_id, position_id, plus fantasypros_id
+    passthrough for the exact join. Weekly ECR has no ADP/tier — None
+    (Sleeper ADP fallback downstream still applies). Never raises.
+    """
+    try:
+        r = ecr_row or {}
+        pos = str(r.get("pos") or "").upper()
+        try:
+            ecr = float(r.get("ecr")) if r.get("ecr") is not None else None
+        except Exception:
+            ecr = None
+        try:
+            ecr_pos = int(float(r.get("pos_rank"))) if r.get("pos_rank") is not None else None
+        except Exception:
+            ecr_pos = None
+        return {
+            "player_name": r.get("player_name") or "",
+            "team_id": str(r.get("team") or "").upper(),
+            "position_id": pos,
+            "rank_ecr_ppr": ecr,
+            "rank_ecr_pos": ecr_pos,
+            "rank_adp_ppr": None,
+            "rank_adp_pos": None,
+            "tier": None,
+            "fantasypros_id": str(r.get("fantasypros_id") or "").strip() or None,
+        }
+    except Exception:
+        return {}
+
+
 def patch_proj_teams(projs: list, team_by_np: dict, opp_map: dict) -> int:
     """Overwrite stale nflverse teams on projection rows with current Sleeper
     teams; remap opponent from the target-week schedule. Mutates rows.
@@ -554,9 +609,45 @@ def run_refresh_with_data(
         except Exception:
             logger.exception("refresh: map_market_to_gsis failed")
             market_by_gsis = {}
-        # FantasyPros ECR/ADP ranks — prefer local CSV exports (full 519 ECR + 695 ADP)
-        # over free API tier (10 DST limit). CSVs are checked at repo root / data.
+        # FantasyPros ECR ranks — free weekly ECR first (fresh through the
+        # season), local CSV exports second (preseason-frozen fallback),
+        # paid API last (returns [] under $0 anyway). fpros_id->gsis map
+        # rides along for the comparison's exact join.
+        fpros_players_list = []
+        data["fpros_id_to_gsis"] = {}
         try:
+            _er_root = Path(__file__).resolve().parents[2]
+            _er_cache = _er_root / "data" / "nfl_cache"
+            _er_cache.mkdir(parents=True, exist_ok=True)
+            _ecr_path = _er_cache / f"ecr_weekly_{season}.json"
+            _pid_path = _er_cache / "ff_playerids.json"
+            try:
+                _ecr_rows = nflverse.get_ecr_weekly(nfl_module=nfl_module)
+                _ecr_path.write_text(json.dumps(_ecr_rows))
+            except Exception as _e_exc:
+                logger.warning(f"refresh: free ECR fetch failed, last-good cache: {_e_exc}")
+                try:
+                    _ecr_rows = json.loads(_ecr_path.read_text())
+                except Exception:
+                    _ecr_rows = []
+            try:
+                _pids = nflverse.get_ff_playerids(nfl_module=nfl_module)
+                _pid_path.write_text(json.dumps(_pids))
+            except Exception as _p_exc:
+                logger.warning(f"refresh: playerids fetch failed, last-good cache: {_p_exc}")
+                try:
+                    _pids = json.loads(_pid_path.read_text())
+                except Exception:
+                    _pids = []
+            data["fpros_id_to_gsis"] = map_fpros_id_to_gsis(_pids or [])
+            if _ecr_rows:
+                fpros_players_list = [nflverse_ecr_to_fpros(r) for r in _ecr_rows]
+                logger.info(f"refresh: free weekly ECR loaded: {len(fpros_players_list)} players")
+            _log(conn, "ecr", True, None, ran_at_iso)
+        except Exception as _ecr_outer:
+            _log(conn, "ecr", False, str(_ecr_outer), ran_at_iso)
+            logger.warning(f"refresh: free ECR step skipped: {_ecr_outer}")
+        if not fpros_players_list:
             try:
                 from ffanalytics.adapters.fantasypros_csv import get_fantasypros_csv_players
                 csv_players = get_fantasypros_csv_players()
@@ -567,10 +658,11 @@ def run_refresh_with_data(
                 fpros_players_list = csv_players
                 logger.info(f"FantasyPros CSV loaded: {len(csv_players)} players (ECR+ADP full)")
             else:
-                fpros_players_list = fp_adapter.get_fantasypros_players()
-        except Exception:
-            logger.exception("refresh: fantasypros_players fetch failed")
-            fpros_players_list = []
+                try:
+                    fpros_players_list = fp_adapter.get_fantasypros_players()
+                except Exception:
+                    logger.exception("refresh: fantasypros_players fetch failed")
+                    fpros_players_list = []
         # FantasyPros season projections CSVs — 596 players season totals (YDS/TDS etc) + FPTS
         # Provides full stat season market for Auction vs Sleeper weekly-only (98 starters).
         fp_projections_map = {}
@@ -611,7 +703,8 @@ def run_refresh_with_data(
                 roster_positions=_ls.get("roster_positions"),
                 auction_budget=_draft.get("auction_budget") or 200,
             )
-            data["comparison"] = _build_comp(_model_projs, market_by_gsis, fpros_players_list, sleeper_players_map, fp_projections_map, statsguy_rows, league_econ=_econ)
+            data["comparison"] = _build_comp(_model_projs, market_by_gsis, fpros_players_list, sleeper_players_map, fp_projections_map, statsguy_rows, league_econ=_econ,
+                                             gsis_to_fpid={g: f for f, g in (data.get("fpros_id_to_gsis") or {}).items()})
         except Exception as cmp_exc:
             logger.warning(f"Comparison build failed: {cmp_exc}")
             data["comparison"] = []
