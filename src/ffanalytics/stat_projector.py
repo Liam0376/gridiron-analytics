@@ -76,10 +76,9 @@ included, no longer K-zeroed as in early scratch backtest_final.py):
     favoring POP). Trailing individual xFP TD rates are too noisy to beat
     their own mean: shrink all the way. The td_prior pipeline param stays
     (tested, default-off) as the instrument, not a win.
-  - Population xFP TD priors (POP/FROZEN, 2026-09-15): VERDICT PROMOTE,
-    implementation pending user confirm (opportunity-td-priors spec).
-    Proposed POS_TD_MEANS: RB rush 0.20/rec 0.04, WR rec 0.18/rush 0.005,
-    TE rec 0.14; QB/K untouched — X2/POP never applied there, no evidence.
+  - Population xFP TD priors (POP/FROZEN, 2026-09-15): SHIPPED to
+    POS_TD_MEANS (RB rush 0.20/rec 0.04, WR rec 0.18/rush 0.005, TE rec
+    0.14; QB/K untouched — X2/POP never applied there, no evidence).
     Evidence: data/ml/backtest_opportunity_results.json — BASE-FROZEN
     paired-t t=42.4 (diff +0.099) on 2025 holdout n=8049 and t=16.1
     (diff +0.124) on 2026wk1 n=652, corr neutral both, bias improved;
@@ -233,11 +232,17 @@ def compute_conformal_bounds(
         "projection_width": round(width, 2),
         "confidence": conf,
     }
+# Position TD priors (per-game rates). RB/WR/TE recalibrated 2026-09-15
+# to 2024-2025 trailing-xFP means (opportunity follow-up: the POP control
+# beat both the old flat means and individualized priors on the 2025
+# holdout and 2026 Week 1; FROZEN constants reproduced POP within noise).
+# Weight unchanged (30%) — only the prior LEVEL was stale. QB/K untouched
+# (the arms never applied there: no evidence either way).
 POS_TD_MEANS = {
     "QB": {"passing_tds": 1.7, "rushing_tds": 0.15},
-    "RB": {"rushing_tds": 0.35, "receiving_tds": 0.08},
-    "WR": {"receiving_tds": 0.30, "rushing_tds": 0.02},
-    "TE": {"receiving_tds": 0.22},
+    "RB": {"rushing_tds": 0.20, "receiving_tds": 0.04},
+    "WR": {"receiving_tds": 0.18, "rushing_tds": 0.005},
+    "TE": {"receiving_tds": 0.14},
     "K": {},
 }
 
