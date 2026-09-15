@@ -19,6 +19,6 @@ Read before running tests or dev servers. Backpressure: run checks, fix self —
 ## Gotchas
 
 - `git status` before `commit -a` — large uncommitted sets across sessions
-- `data/ml/full_2023_2025.jsonl` ~74MB committed — >50MB warning, consider LFS
-- Branch `implement-fantasy-football-analytics` (not `master`), remote `Liam0376/gridiron-analytics`
+- Large training data stays untracked (`855a632` untracked 215MB rejected ML data; no `*.jsonl` in git)
+- Branch `master`, remote `Liam0376/gridiron-analytics`
 - Sleeper IDs opaque — resolve via `api.sleeper.app/v1/players/nfl` (`hub/server.py:get_sleeper_player_name()` cached)
