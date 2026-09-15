@@ -103,3 +103,27 @@ def test_get_ngs_receiving_converts_to_plain_dicts():
     assert result[0]["percent_share_of_intended_air_yards"] == 0.31
     fake_nfl.load_nextgen_stats.assert_called_once_with(
         seasons=[2026], stat_type="receiving")
+
+def test_get_ecr_weekly_converts_to_plain_dicts():
+    from ffanalytics.adapters import nflverse
+    fake_nfl = Mock()
+    fake_nfl.load_ff_rankings.return_value = _FakePolarsFrame(
+        [{"player_name": "Josh Allen", "pos": "QB", "team": "BUF",
+          "ecr": 1.0, "pos_rank": 1, "fantasypros_id": "12345"}]
+    )
+    result = nflverse.get_ecr_weekly(nfl_module=fake_nfl)
+    assert result[0]["ecr"] == 1.0
+    assert isinstance(result[0], dict)
+    fake_nfl.load_ff_rankings.assert_called_once_with(type="week")
+
+def test_get_ff_playerids_converts_to_plain_dicts():
+    from ffanalytics.adapters import nflverse
+    fake_nfl = Mock()
+    fake_nfl.load_ff_playerids.return_value = _FakePolarsFrame(
+        [{"fantasypros_id": "12345", "gsis_id": "00-0034857",
+          "sleeper_id": "4046"}]
+    )
+    result = nflverse.get_ff_playerids(nfl_module=fake_nfl)
+    assert result == [{"fantasypros_id": "12345", "gsis_id": "00-0034857",
+                       "sleeper_id": "4046"}]
+    fake_nfl.load_ff_playerids.assert_called_once_with()

@@ -1,0 +1,115 @@
+{
+ "edge_threshold": 12,
+ "cal_2026": {
+  "weeks": {
+   "1": {
+    "scrape": "2026-09-11",
+    "early_teams": [
+     "LA",
+     "NE",
+     "SEA",
+     "SF"
+    ],
+    "pos": {
+     "QB": {
+      "n": 61,
+      "spearman_model": 0.7189317821258593,
+      "spearman_ecr": 0.7690639873083024,
+      "disagree_n": 23,
+      "model_wins": 14,
+      "ecr_wins": 9,
+      "ties": 0
+     },
+     "K": {
+      "n": 21,
+      "spearman_model": 0.04545454545454545,
+      "spearman_ecr": 0.10129870129870129,
+      "disagree_n": 5,
+      "model_wins": 5,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "WR": {
+      "n": 165,
+      "spearman_model": 0.651248898031149,
+      "spearman_ecr": 0.6791173563433335,
+      "disagree_n": 113,
+      "model_wins": 75,
+      "ecr_wins": 37,
+      "ties": 1
+     },
+     "TE": {
+      "n": 91,
+      "spearman_model": 0.7056059882146837,
+      "spearman_ecr": 0.747045707915273,
+      "disagree_n": 53,
+      "model_wins": 40,
+      "ecr_wins": 13,
+      "ties": 0
+     },
+     "RB": {
+      "n": 104,
+      "spearman_model": 0.6110636935879654,
+      "spearman_ecr": 0.7080337138589566,
+      "disagree_n": 51,
+      "model_wins": 32,
+      "ecr_wins": 19,
+      "ties": 0
+     }
+    }
+   }
+  },
+  "summary": {
+   "K": {
+    "weeks": 1,
+    "n": 21,
+    "spearman_model_mean": 0.0455,
+    "spearman_ecr_mean": 0.1013,
+    "disagree_n": 5,
+    "model_wins": 5,
+    "ecr_wins": 0,
+    "ties": 0
+   },
+   "QB": {
+    "weeks": 1,
+    "n": 61,
+    "spearman_model_mean": 0.7189,
+    "spearman_ecr_mean": 0.7691,
+    "disagree_n": 23,
+    "model_wins": 14,
+    "ecr_wins": 9,
+    "ties": 0
+   },
+   "RB": {
+    "weeks": 1,
+    "n": 104,
+    "spearman_model_mean": 0.6111,
+    "spearman_ecr_mean": 0.708,
+    "disagree_n": 51,
+    "model_wins": 32,
+    "ecr_wins": 19,
+    "ties": 0
+   },
+   "TE": {
+    "weeks": 1,
+    "n": 91,
+    "spearman_model_mean": 0.7056,
+    "spearman_ecr_mean": 0.747,
+    "disagree_n": 53,
+    "model_wins": 40,
+    "ecr_wins": 13,
+    "ties": 0
+   },
+   "WR": {
+    "weeks": 1,
+    "n": 165,
+    "spearman_model_mean": 0.6512,
+    "spearman_ecr_mean": 0.6791,
+    "disagree_n": 113,
+    "model_wins": 75,
+    "ecr_wins": 37,
+    "ties": 1
+   }
+  }
+ }
+}

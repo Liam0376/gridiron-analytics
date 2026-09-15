@@ -120,7 +120,8 @@ def test_patch_proj_teams_mover_stayer_unknown():
     assert projs[2]["team"] == "KC"
 
 
-def test_build_gsis_team_map_current_team_no_names():    # why (gsis-identity spec): history rows carry last season's team; the
+def test_build_gsis_team_map_current_team_no_names():
+    # why (gsis-identity spec): history rows carry last season's team; the
     # weekly roster is the gsis-keyed current truth. Movers resolve with
     # zero name matching.
     m = refresh.build_gsis_team_map([
@@ -530,3 +531,29 @@ def test_prune_props_tables_keeps_pending():
         assert old_unres in remaining_shadow and old_res not in remaining_shadow
     finally:
         conn.close()
+
+def test_map_fpros_id_to_gsis_strips_and_skips():
+    # why (ecr-baseline spec): exact ECR join key — cf. the Sleeper gsis_id
+    # leading-space bug, same strip discipline.
+    m = refresh.map_fpros_id_to_gsis([
+        {"fantasypros_id": " 12345 ", "gsis_id": "00-0034857"},
+        {"fantasypros_id": "12345", "gsis_id": "00-0000000"},
+        {"fantasypros_id": "", "gsis_id": "00-0000001"},
+        {"fantasypros_id": "999", "gsis_id": None},
+        None,
+    ])
+    assert m == {"12345": "00-0034857"}
+
+
+def test_nflverse_ecr_to_fpros_shape():
+    row = {"player_name": "Josh Allen", "pos": "QB", "team": "buf",
+           "ecr": 1.0, "pos_rank": 1, "fantasypros_id": 12345,
+           "sd": 0.5, "opponent": "MIA"}
+    out = refresh.nflverse_ecr_to_fpros(row)
+    assert out["rank_ecr_ppr"] == 1.0
+    assert out["rank_ecr_pos"] == 1
+    assert out["player_name"] == "Josh Allen"
+    assert out["team_id"] == "BUF"
+    assert out["position_id"] == "QB"
+    assert out["fantasypros_id"] == "12345"
+    assert out["tier"] is None and out["rank_adp_ppr"] is None
