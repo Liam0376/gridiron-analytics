@@ -202,18 +202,6 @@ export async function fetchProjections(args = {}) {
   });
 }
 
-export async function fetchRosProjections(args = {}) {
-  return withCache('fetchRosProjections', args, async () => {
-    const { limit = 300 } = args;
-    const qs = new URLSearchParams();
-    if (limit != null) qs.set('limit', String(limit));
-    const suffix = qs.toString() ? `?${qs}` : '';
-    const hub = await tryHub(`/projections/ros${suffix}`);
-    if (hub && Array.isArray(hub.players) && hub.players.length) return hub;
-    return { players: [], count: 0 };
-  });
-}
-
 export async function fetchMatchups({ week } = {}) {
   return withCache('fetchMatchups', { week: week ?? '' }, async () => {
     const hub = await tryHub(`/matchups?week=${week ?? ''}`);

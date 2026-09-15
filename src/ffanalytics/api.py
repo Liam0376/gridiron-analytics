@@ -919,35 +919,6 @@ def get_projections(
     return {"players": page, "count": len(page), "meta": meta}
 
 
-@app.get("/projections/ros")
-@app.get("/v1/projections/ros")
-def get_ros_projections(
-    limit: int = Query(200, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
-    league_id: str | None = _league_query(),
-) -> dict:
-    """Rest-of-season projections: neutral per-game * remaining games."""
-    cache = _cache_for(league_id)
-    with _league_conn(league_id) as conn:
-        if conn is None:
-            return {"players": [], "count": 0, "meta": {"cached": False}}
-        row = conn.execute(
-            "SELECT season FROM ros_projections ORDER BY rowid DESC LIMIT 1"
-        ).fetchone()
-        if not row:
-            return {"players": [], "count": 0, "meta": {"cached": False}}
-        season = row[0]
-        rows = conn.execute(
-            "SELECT player_id, player_name, position, team, ros_points, "
-            "remaining_games, per_game_neutral FROM ros_projections "
-            "WHERE season = ? ORDER BY ros_points DESC",
-            (season,),
-        ).fetchall()
-    out = [dict(r) for r in rows]
-    page = out[offset:offset + limit]
-    return {"players": page, "count": len(page), "meta": {"total": len(out)}}
-
-
 @app.get("/league/draft")
 @app.get("/v1/league/draft")
 def get_league_draft(league_id: str | None = _league_query()) -> dict:
