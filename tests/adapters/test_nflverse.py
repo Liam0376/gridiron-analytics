@@ -42,3 +42,40 @@ def test_get_player_ids_converts_to_plain_dicts():
     result = nflverse.get_player_ids(nfl_module=fake_nfl)
     assert result == [{"gsis_id": "00-0037834", "display_name": "Brock Purdy", "position": "QB"}]
     fake_nfl.load_players.assert_called_once_with()
+
+def test_get_weekly_rosters_converts_to_plain_dicts():
+    from ffanalytics.adapters import nflverse
+    fake_nfl = Mock()
+    fake_nfl.load_rosters_weekly.return_value = _FakePolarsFrame(
+        [{"gsis_id": "00-0036212", "team": "ATL", "week": 1, "status": "INA",
+          "sleeper_id": "4046"}]
+    )
+    result = nflverse.get_weekly_rosters(2026, nfl_module=fake_nfl)
+    assert result == [{"gsis_id": "00-0036212", "team": "ATL", "week": 1,
+                       "status": "INA", "sleeper_id": "4046"}]
+    assert isinstance(result[0], dict)
+    fake_nfl.load_rosters_weekly.assert_called_once_with(seasons=[2026])
+
+def test_get_depth_charts_returns_latest_snapshot_only():
+    # why: nflverse keeps every scrape (dt); refresh-time consumers want the
+    # current chart, not history. Backtests pin older snapshots via cache.
+    from ffanalytics.adapters import nflverse
+    fake_nfl = Mock()
+    fake_nfl.load_depth_charts.return_value = _FakePolarsFrame([
+        {"gsis_id": "AA", "team": "ATL", "pos_abb": "QB", "pos_rank": 1,
+         "dt": "2026-09-01T00:00:00Z"},
+        {"gsis_id": "BB", "team": "ATL", "pos_abb": "QB", "pos_rank": 1,
+         "dt": "2026-09-14T13:53:31Z"},
+        {"gsis_id": "CC", "team": "ATL", "pos_abb": "QB", "pos_rank": 2,
+         "dt": "2026-09-14T13:53:31Z"},
+    ])
+    result = nflverse.get_depth_charts(2026, nfl_module=fake_nfl)
+    assert [r["gsis_id"] for r in result] == ["BB", "CC"]
+    assert all(isinstance(r, dict) for r in result)
+    fake_nfl.load_depth_charts.assert_called_once_with(seasons=[2026])
+
+def test_get_depth_charts_empty_in_empty_out():
+    from ffanalytics.adapters import nflverse
+    fake_nfl = Mock()
+    fake_nfl.load_depth_charts.return_value = _FakePolarsFrame([])
+    assert nflverse.get_depth_charts(2026, nfl_module=fake_nfl) == []

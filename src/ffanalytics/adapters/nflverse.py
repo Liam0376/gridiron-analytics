@@ -21,6 +21,33 @@ def get_injury_history(season: int, nfl_module=None) -> list[dict]:
     frame = _call_with_retry(lambda: nfl.load_injuries(seasons=[season]), name="nflverse")
     return frame.to_dicts()
 
+def get_weekly_rosters(season: int, nfl_module=None) -> list[dict]:
+    """Weekly roster snapshots (gsis_id, team, week, status, sleeper_id,
+    pfr/pff/espn/yahoo ids, headshot_url) — the current-team source of
+    truth. History stat rows carry last season's team; this is what fixes
+    movers without name matching (gsis-identity spec).
+    """
+    nfl = _nfl_module(nfl_module)
+    frame = _call_with_retry(lambda: nfl.load_rosters_weekly(seasons=[season]), name="nflverse")
+    return frame.to_dicts()
+
+
+def get_depth_charts(season: int, nfl_module=None) -> list[dict]:
+    """Depth-chart snapshot (gsis_id, team, pos_abb, pos_rank, dt).
+
+    nflverse keeps every scrape (dt); refresh-time consumers want the
+    CURRENT chart, so this returns latest-dt rows only. Backtests pin an
+    older snapshot via the cached file, not via this function.
+    """
+    nfl = _nfl_module(nfl_module)
+    frame = _call_with_retry(lambda: nfl.load_depth_charts(seasons=[season]), name="nflverse")
+    rows = frame.to_dicts()
+    if not rows:
+        return []
+    latest = max(str(r.get("dt") or "") for r in rows)
+    return [r for r in rows if str(r.get("dt") or "") == latest]
+
+
 def get_player_ids(nfl_module=None) -> list[dict]:
     """Full player-identity master list (~25k rows: gsis_id, display_name,
     position, latest_team, ...) — NOT filtered to this week's box score.
