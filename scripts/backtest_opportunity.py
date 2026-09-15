@@ -37,6 +37,14 @@ the same direction, full suite green. One week never promotes.
 
 FOLLOW-UP PRE-REGISTRATION 2026-09-15 (X2 control — committed before running):
   X1 stays REJECTED (still run for record stability, never a candidate).
+
+  HIER PRE-REGISTRATION 2026-09-15 (hier-prior spec, committed before running):
+  Single arm HIER: prior = w*individual + (1-w)*POP with w = n/(n+m),
+  m=5 (one RECENT_N window of prior strength, principle pick, no grid),
+  n = games in the trailing window. Same weight/windows/scope as X2/POP.
+  Verdict: HIER promotes iff it beats POP with paired p<0.05 in BOTH
+  samples and corr neutral; else POP stands and HIER is REJECTED inline.
+  Failing BASE in both samples rejects outright. No other variants.
   New arm POP (single variant): same 30% weight, prior = the POSITION's
   mean trailing xFP-implied TD rate over that week's skill eval rows
   (pre-week data only). X2-vs-POP isolates individualization: same weight,
@@ -244,7 +252,7 @@ def _run_sample(tag, stats_cur, stats_prior, opp_cur, opp_prior, sched,
             eval_items.append((pid, w))
     print(f"[oppback:{tag}] eval player-weeks: {len(eval_items)}")
 
-    arms = ["BASE", "X1_015", "X1_030", "X2", "POP", "FROZEN"]
+    arms = ["BASE", "X1_015", "X1_030", "X2", "POP", "FROZEN", "HIER"]
     preds = {k: [] for k in arms}
     actual, meta, skill_mask = [], [], []
     # POP control priors (pre-week only): mean trailing xFP rate per
@@ -286,7 +294,7 @@ def _run_sample(tag, stats_cur, stats_prior, opp_cur, opp_prior, sched,
         skill_mask.append(pos in SKILL)
         preds["BASE"].append(base_pts)
         if pos not in SKILL:
-            for a in ("X1_015", "X1_030", "X2", "POP", "FROZEN"):
+            for a in ("X1_015", "X1_030", "X2", "POP", "FROZEN", "HIER"):
                 preds[a].append(base_pts)
             continue
         win = trail.window(pid, week)
@@ -333,6 +341,21 @@ def _run_sample(tag, stats_cur, stats_prior, opp_cur, opp_prior, sched,
             preds["FROZEN"].append(float(calculate_fantasy_points(p, DEFAULT_SCORING)))
         except Exception:
             preds["FROZEN"].append(0.0)
+        try:
+            # why w here (hier-prior spec): partial pooling — players with
+            # deep trailing windows earn near-individual priors, thin
+            # windows shrink to POP. m=5 pre-registered, no grid.
+            _n = len(win)
+            _w = _n / (_n + 5) if _n else 0.0
+            p = project_player_stats(
+                **kwargs,
+                td_prior={
+                    "receiving_tds": _w * xfp_rec_td + (1 - _w) * _pop_mean.get((week, pos, "receiving_tds"), 0.0),
+                    "rushing_tds": _w * xfp_rush_td + (1 - _w) * _pop_mean.get((week, pos, "rushing_tds"), 0.0),
+                })
+            preds["HIER"].append(float(calculate_fantasy_points(p, DEFAULT_SCORING)))
+        except Exception:
+            preds["HIER"].append(0.0)
 
     out = {"n": len(actual), "arms": {}}
     for name in arms:
@@ -353,7 +376,9 @@ def _run_sample(tag, stats_cur, stats_prior, opp_cur, opp_prior, sched,
                        ("BASE", "POP", "pop_control"),
                        ("X2", "POP", "indiv_vs_pop"),
                        ("BASE", "FROZEN", "frozen_ship"),
-                       ("POP", "FROZEN", "frozen_parity")]:
+                       ("POP", "FROZEN", "frozen_parity"),
+                       ("BASE", "HIER", "hier_ship"),
+                       ("POP", "HIER", "hier_vs_pop")]:
         st = _paired_stats(preds[a], preds[b], yt)
         st_s = _paired_stats([preds[a][i] for i in si],
                              [preds[b][i] for i in si], yt[si])
