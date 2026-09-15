@@ -83,8 +83,7 @@ def test_run_refresh_nflverse_failure_logs_and_continues():
     conn.close()
 
 
-def test_build_sleeper_team_map_canonicalizes_rams():
-    # why (user-caught live bug, 2026-09-10): Sleeper's LAR vs the
+def test_build_sleeper_team_map_canonicalizes_rams():    # why (user-caught live bug, 2026-09-10): Sleeper's LAR vs the
     # schedule/hub LA convention — the map must emit canonical codes or
     # every downstream team filter quietly drops Rams rows.
     m = refresh.build_sleeper_team_map({
@@ -118,6 +117,54 @@ def test_patch_proj_teams_mover_stayer_unknown():
     assert projs[0]["team"] == "BUF" and projs[0]["recent_team"] == "BUF"
     assert projs[0]["opponent_team"] == "MIA"
     assert projs[1]["team"] == "KC" and projs[1]["opponent_team"] == ""
+    assert projs[2]["team"] == "KC"
+
+
+def test_build_gsis_team_map_current_team_no_names():
+    # why (gsis-identity spec): history rows carry last season's team; the
+    # weekly roster is the gsis-keyed current truth. Movers resolve with
+    # zero name matching.
+    m = refresh.build_gsis_team_map([
+        {"gsis_id": "00-0030565", "team": "LV"},
+        {"gsis_id": "00-0035228", "team": "MIN"},
+        {"gsis_id": None, "team": "KC"},
+        {"gsis_id": "00-0000000", "team": None},
+        None,
+    ])
+    assert m == {"00-0030565": "LV", "00-0035228": "MIN"}
+
+
+def test_gsis_depth_rank_skill_only_first_seen_wins():
+    rows = [
+        {"gsis_id": "A", "team": "ATL", "pos_abb": "QB", "pos_rank": 1},
+        {"gsis_id": "A", "team": "ATL", "pos_abb": "QB", "pos_rank": 9},
+        {"gsis_id": "B", "team": "ATL", "pos_abb": "LDE", "pos_rank": 1},
+        {"gsis_id": "C", "team": "ATL", "pos_abb": "WR", "pos_rank": "not-a-rank"},
+        {"gsis_id": "", "team": "ATL", "pos_abb": "RB", "pos_rank": 1},
+    ]
+    assert refresh.gsis_depth_rank(rows) == {
+        "A": {"team": "ATL", "position": "QB", "rank": 1},
+    }
+
+
+def test_patch_proj_teams_gsis_first_name_fallback():
+    # gsis patches even when the name map is silent (mover with a name the
+    # map never saw); name map still covers gsis-less rookie rows; rows
+    # with neither stay untouched. No raises anywhere.
+    projs = [
+        {"player_id": "00-0030565", "player_display_name": "Nobody Knows",
+         "position": "QB", "team": "SEA", "recent_team": "SEA", "opponent_team": ""},
+        {"player_id": "9999", "player_display_name": "Rookie Unknown",
+         "position": "WR", "team": "KC", "recent_team": "KC", "opponent_team": ""},
+        {"player_id": "8888", "player_display_name": "Mystery Man",
+         "position": "WR", "team": "KC", "recent_team": "KC", "opponent_team": ""},
+    ]
+    team_map = {("rookie unknown", "WR"): "BUF"}
+    gsis_map = {"00-0030565": "LV"}
+    opp_map = {"LV": "DEN", "BUF": "MIA", "KC": "DEN"}
+    assert refresh.patch_proj_teams(projs, team_map, opp_map, team_by_gsis=gsis_map) == 2
+    assert projs[0]["team"] == "LV" and projs[0]["opponent_team"] == "DEN"
+    assert projs[1]["team"] == "BUF" and projs[1]["opponent_team"] == "MIA"
     assert projs[2]["team"] == "KC"
 
 

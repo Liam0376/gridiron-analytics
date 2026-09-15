@@ -106,18 +106,74 @@ def build_sleeper_team_map(sleeper_players: dict) -> dict:
     return out
 
 
-def patch_proj_teams(projs: list, team_by_np: dict, opp_map: dict) -> int:
-    """Overwrite stale nflverse teams on projection rows with current Sleeper
-    teams; remap opponent from the target-week schedule. Mutates rows.
-    Returns patched count. Never raises on weird rows (soft-fail per row)."""
+def build_gsis_team_map(weekly_rosters: list) -> dict:
+    """gsis_id -> current canonical team from nflverse weekly rosters.
+
+    History stat rows carry LAST season's team; this is current (trades,
+    free agency) and needs zero name matching. Skips rows without
+    gsis/team; latest-week wins on dupes (rosters are weekly snapshots).
+    Never raises.
+    """
+    out = {}
+    try:
+        for r in weekly_rosters or []:
+            r = r or {}
+            gsis = str(r.get("gsis_id") or "").strip()
+            team = r.get("team")
+            if gsis and team:
+                out[gsis] = config.canonical_team(team)
+    except Exception:
+        pass
+    return out
+
+
+def gsis_depth_rank(depth_charts: list,
+                    positions: tuple = ("QB", "RB", "WR", "TE")) -> dict:
+    """gsis_id -> {"team", "position", "rank"} from a depth snapshot.
+
+    Positions restricted to fantasy scope — line depth is not a signal.
+    First-seen wins per gsis (a snapshot should have one row per player;
+    dedupe is defensive). Never raises.
+    """
+    out = {}
+    try:
+        for r in depth_charts or []:
+            r = r or {}
+            gsis = str(r.get("gsis_id") or "").strip()
+            pos = str(r.get("pos_abb") or "").upper()
+            if not gsis or pos not in positions or gsis in out:
+                continue
+            try:
+                rank = int(r.get("pos_rank"))
+            except Exception:
+                continue
+            out[gsis] = {"team": config.canonical_team(r.get("team")),
+                         "position": pos, "rank": rank}
+    except Exception:
+        pass
+    return out
+
+
+def patch_proj_teams(projs: list, team_by_np: dict, opp_map: dict,
+                     team_by_gsis: dict | None = None) -> int:
+    """Overwrite stale nflverse teams on projection rows with current
+    Sleeper teams; remap opponent from the target-week schedule. Mutates rows.
+    Returns patched count. Never raises on weird rows (soft-fail per row).
+
+    gsis join first (exact, no name fragility), name map fallback for rows
+    without GSIS (Sleeper-id rookie rows). team_by_gsis=None preserves the
+    old 3-arg behavior exactly.
+    """
     patched = 0
     for pr in projs or []:
         try:
-            key = _norm_name_pos(
-                pr.get("player_display_name") or pr.get("player_name"),
-                pr.get("position") or pr.get("position_group"),
-            )
-            nt = (team_by_np or {}).get(key)
+            nt = (team_by_gsis or {}).get(str(pr.get("player_id") or ""))
+            if not nt:
+                key = _norm_name_pos(
+                    pr.get("player_display_name") or pr.get("player_name"),
+                    pr.get("position") or pr.get("position_group"),
+                )
+                nt = (team_by_np or {}).get(key)
             if nt and nt != (pr.get("team") or ""):
                 pr["team"] = nt
                 pr["recent_team"] = nt
@@ -490,11 +546,44 @@ def run_refresh_with_data(
             # why rookie rows: the incoming class must be identified (name,
             # team, pos), never invisible — zeros + is_empty flag, never
             # imputed. Soft-fail each step; projections stand without them.
+            # why gsis-first team patch (gsis-identity spec): weekly history
+            # rows carry last season's team; nflverse weekly rosters are the
+            # gsis-keyed current truth (trades/FA) with no name matching.
+            # Snapshots cached to data/nfl_cache (last-good fallback, never
+            # abort); the depth file is owned here for backtest consumers.
+            # Name map stays as fallback for rows without GSIS (rookie rows).
+            _gsis_map: dict = {}
+            try:
+                _repo_root = Path(__file__).resolve().parents[2]
+                _cache_dir = _repo_root / "data" / "nfl_cache"
+                _cache_dir.mkdir(parents=True, exist_ok=True)
+                _rosters_path = _cache_dir / f"rosters_weekly_{season}.json"
+                _depth_path = _cache_dir / f"depth_{season}.json"
+                try:
+                    _rosters = nflverse.get_weekly_rosters(season, nfl_module=nfl_module)
+                    _rosters_path.write_text(json.dumps(_rosters))
+                except Exception as _rf_exc:
+                    logger.warning(f"refresh: weekly-rosters fetch failed, last-good cache: {_rf_exc}")
+                    try:
+                        _rosters = json.loads(_rosters_path.read_text())
+                    except Exception:
+                        _rosters = []
+                try:
+                    _depth = nflverse.get_depth_charts(season, nfl_module=nfl_module)
+                    _depth_path.write_text(json.dumps(_depth))
+                except Exception as _df_exc:
+                    logger.warning(f"refresh: depth fetch failed, last-good cache: {_df_exc}")
+                _gsis_map = build_gsis_team_map(_rosters or [])
+                _log(conn, "identity", True, None, ran_at_iso)
+            except Exception as _id_exc:
+                _log(conn, "identity", False, str(_id_exc), ran_at_iso)
+                logger.warning(f"refresh: gsis identity step skipped: {_id_exc}")
             try:
                 from ffanalytics.adapters.schedule import get_nfl_team_matchups
                 _opp_map = get_nfl_team_matchups(sched, target_wk)
                 _team_map = build_sleeper_team_map(sleeper_players_map)
-                _n_patched = patch_proj_teams(projs, _team_map, _opp_map)
+                _n_patched = patch_proj_teams(projs, _team_map, _opp_map,
+                                              team_by_gsis=_gsis_map)
                 if _n_patched:
                     logger.info(f"refresh: Sleeper team patch applied to {_n_patched} rows")
                 _have = {
