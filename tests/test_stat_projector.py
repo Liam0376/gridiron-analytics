@@ -273,3 +273,55 @@ def test_build_weekly_projections_out_pids_zero_weekly_keep_neutral():
     assert projs[0]["_neutral_points"] > 0
     projs2 = build_weekly_projections(season_stats, schedule, target_week=4, scoring_settings=scoring)
     assert projs2[0]["projected_points"] > 0  # absent map = today's behavior
+
+
+def test_xfp_params_off_is_legacy_exact():
+    # why: the arms must measure the mechanism, not an approximation — and
+    # production callers (which never pass these) must see zero change.
+    history = [
+        {"receiving_yards": 80, "receptions": 6, "receiving_tds": 1},
+        {"receiving_yards": 100, "receptions": 7, "receiving_tds": 0},
+        {"receiving_yards": 90, "receptions": 5, "receiving_tds": 1},
+    ]
+    base = project_player_stats(history, "WR")
+    assert project_player_stats(history, "WR", xfp_adjust=None, td_prior=None) == base
+    assert project_player_stats(history, "WR", xfp_adjust={}, td_prior={}) == base
+
+
+def test_xfp_adjust_pulls_base_with_cap():
+    history = [
+        {"receiving_yards": 100, "receptions": 8, "receiving_tds": 0},
+        {"receiving_yards": 100, "receptions": 8, "receiving_tds": 0},
+        {"receiving_yards": 100, "receptions": 8, "receiving_tds": 0},
+    ]
+    # 3 games: no usage trend (>=4 needed), no Vegas/weather by default.
+    proj = project_player_stats(history, "WR", xfp_adjust={"receiving_yards": 20.0})
+    assert proj["receiving_yards"] == 120.0
+    # cap: +-50% of base.
+    proj = project_player_stats(history, "WR", xfp_adjust={"receiving_yards": 200.0})
+    assert proj["receiving_yards"] == 150.0
+    proj = project_player_stats(history, "WR", xfp_adjust={"receiving_yards": -200.0})
+    assert proj["receiving_yards"] == 50.0
+
+
+def test_xfp_adjust_no_pull_from_zero_base():
+    history = [
+        {"receiving_yards": 0, "receptions": 0, "receiving_tds": 0},
+        {"receiving_yards": 0, "receptions": 0, "receiving_tds": 0},
+        {"receiving_yards": 0, "receptions": 0, "receiving_tds": 0},
+    ]
+    proj = project_player_stats(history, "WR", xfp_adjust={"receiving_yards": 50.0})
+    assert proj["receiving_yards"] == 0.0
+
+
+def test_td_prior_replaces_position_mean_at_same_weight():
+    # TE receiving_tds mean 0.22: all-zero history -> 0*0.7 + 0.22*0.3.
+    history = [
+        {"receiving_yards": 40, "receptions": 4, "receiving_tds": 0},
+        {"receiving_yards": 40, "receptions": 4, "receiving_tds": 0},
+        {"receiving_yards": 40, "receptions": 4, "receiving_tds": 0},
+    ]
+    base = project_player_stats(history, "TE")
+    assert abs(base["receiving_tds"] - 0.22 * 0.30) < 1e-9
+    prior = project_player_stats(history, "TE", td_prior={"receiving_tds": 0.5})
+    assert abs(prior["receiving_tds"] - 0.5 * 0.30) < 1e-9

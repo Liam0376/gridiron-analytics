@@ -164,7 +164,8 @@ def opportunity_features(opp_rows: list) -> dict:
     """Per-(gsis, week) opportunity features from nflverse opportunity rows.
 
     Returns {(gsis, week_int): {target_share, air_share, wopr, rush_share,
-    rec_gap, rec_yd_gap, rec_td_gap, rush_yd_gap, rush_td_gap, rec_xfp}}.
+    rec_gap, rec_yd_gap, rec_td_gap, rush_yd_gap, rush_td_gap, rec_xfp,
+    rec_exp, rec_yd_exp, rec_td_exp, rush_yd_exp, rush_td_exp}}.
     Team denominators come from the row's own _team columns (exact, no PBP
     parsing, no name matching — player_id IS gsis). WOPR = 1.5*target_share
     + 0.7*air_share (Hermsmeyer). Gaps are actual-minus-expected on the
@@ -211,6 +212,11 @@ def opportunity_features(opp_rows: list) -> dict:
                 "rush_yd_gap": _f(r.get("rush_yards_gained")) - _f(r.get("rush_yards_gained_exp")),
                 "rush_td_gap": _f(r.get("rush_touchdown")) - _f(r.get("rush_touchdown_exp")),
                 "rec_xfp": _f(r.get("rec_fantasy_points_exp")),
+                "rec_exp": _f(r.get("receptions_exp")),
+                "rec_yd_exp": _f(r.get("rec_yards_gained_exp")),
+                "rec_td_exp": _f(r.get("rec_touchdown_exp")),
+                "rush_yd_exp": _f(r.get("rush_yards_gained_exp")),
+                "rush_td_exp": _f(r.get("rush_touchdown_exp")),
             }
     except Exception:
         pass

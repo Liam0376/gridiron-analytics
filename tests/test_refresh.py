@@ -254,6 +254,8 @@ def test_opportunity_features_shares_and_gaps():
     assert abs(f["rec_yd_gap"] - (-18.0)) < 1e-9
     assert abs(f["rec_td_gap"] - 0.6) < 1e-9
     assert abs(f["rec_xfp"] - 12.3) < 1e-9
+    assert abs(f["rec_yd_exp"] - 78.0) < 1e-9
+    assert abs(f["rec_td_exp"] - 0.4) < 1e-9
 
 
 def test_opportunity_features_zero_division_and_skips():
