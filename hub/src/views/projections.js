@@ -1,4 +1,4 @@
-import { fetchProjections, fetchComparison, fetchRoster } from '../api.js';
+import { fetchProjections, fetchComparison, fetchRoster, fetchRosProjections } from '../api.js';
 import { filterPlayers } from '../search.js';
 import { posBadge, injuryBadge, windBadge, confBadge } from '../components/badges.js';
 import { intervalBar } from '../components/intervalBar.js';
@@ -19,7 +19,6 @@ let compareEnabled = true;
 let edgeFilter = 'ALL'; // ALL | BUY | SELL
 let rosterPlayerIds = new Set(); // Audit 22.0: "My Roster" filter
 let rosMode = false; // RoS toggle: weekly ↔ rest-of-season
-const REMAINING_GAMES = 17; // 18-week season, updated per refresh when live
 const PAGE_SIZE = 50;
 
 // Interval fallback mirrors src/ffanalytics/projection.py v1
@@ -94,8 +93,19 @@ export async function renderProjections(root) {
     }
   } catch {}
 
-  const data = await fetchProjections({ limit: projLimit });
-  allPlayers = data.players || [];
+  const data = rosMode
+    ? await fetchRosProjections({ limit: projLimit })
+    : await fetchProjections({ limit: projLimit });
+  // Map RoS shape to weekly shape so the table renders uniformly
+  allPlayers = rosMode
+    ? (data.players || []).map(p => ({
+        ...p,
+        projected_points: p.ros_points,
+        point_estimate: p.ros_points,
+        player_name: p.player_name || p.player_display_name,
+        position_group: p.position,
+      }))
+    : (data.players || []);
   const meta = data.meta || {};
 
   // Fetch market comparison in parallel (free, $0; graceful degrade if no DB table yet)
@@ -316,7 +326,7 @@ export async function renderProjections(root) {
             <th data-sort="player_name" tabindex="0" role="button" aria-label="Sort by Player">Player</th>
             <th data-sort="position" tabindex="0" role="button" aria-label="Sort by Position">Pos</th>
             <th data-sort="team" tabindex="0" role="button" aria-label="Sort by Team">Team</th>
-            <th data-sort="projected_points" tabindex="0" role="button" aria-label="Sort by Model Points" style="${compareEnabled && hasComparison ? 'color:var(--amber); border-bottom:2px solid var(--amber)' : ''}">${rosMode ? 'RoS' : 'Model'}<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:${compareEnabled && hasComparison ? 'var(--amber)' : 'var(--text-faint)'}; opacity:0.7">${rosMode ? `×${REMAINING_GAMES}` : 'proj'}</span></th>
+            <th data-sort="projected_points" tabindex="0" role="button" aria-label="Sort by Model Points" style="${compareEnabled && hasComparison ? 'color:var(--amber); border-bottom:2px solid var(--amber)' : ''}">${rosMode ? 'RoS' : 'Model'}<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:${compareEnabled && hasComparison ? 'var(--amber)' : 'var(--text-faint)'}; opacity:0.7">${rosMode ? 'total' : 'proj'}</span></th>
             ${compareEnabled && hasComparison ? `
             <th data-sort="market_points" tabindex="0" role="button" aria-label="Sort by Sleeper Market Points" style="color:var(--sky); border-bottom:2px solid var(--sky)">Market<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--sky); opacity:0.7">Sleeper</span></th>
             <th data-sort="delta_points" tabindex="0" role="button" aria-label="Sort by Points Delta" style="border-bottom:2px solid var(--border)">Δ<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-faint)">Grid−Mkt</span></th>
@@ -425,8 +435,6 @@ export async function renderProjections(root) {
   function getSortVal(p, key) {
     let v = p[key];
     if ((v == null || v === '' || v === '—') && key === 'projected_points') v = p.point_estimate;
-    // RoS mode: multiply weekly projection for sorting
-    if (rosMode && key === 'projected_points' && typeof v === 'number') v = v * REMAINING_GAMES;
     if (v == null || v === '' || v === '—' || v === '–' || v === '-') return null;
     if (typeof v === 'number') return isNaN(v) ? null : v;
     const str = String(v).trim();
@@ -437,7 +445,6 @@ export async function renderProjections(root) {
 
   function renderTable() {
     let rows = filteredWithEdge(allPlayers);
-    const displayMult = rosMode ? REMAINING_GAMES : 1;
     // sort — default view demotes off-depth-chart players first, then
     // healthy QB backups (demote, don't remove); any explicit user sort
     // stays pure.
@@ -495,7 +502,6 @@ export async function renderProjections(root) {
       tbody.innerHTML = pagedRows.map(p=>{
         const pos = p.position || p.position_group || 'UNK';
         const proj = Number(p.projected_points ?? p.point_estimate ?? 0);
-        const displayProj = rosMode ? proj * REMAINING_GAMES : proj;
         // why no /2: width is HALF-width (unified 2026-09-09); the (high-low)
         // fallback derives from a full span, so it halves. Floor matches src.
         const low = Number(p.projection_lower ?? p.lower_bound ?? Math.max(0, proj - (p.width ?? 5)));
@@ -514,7 +520,7 @@ export async function renderProjections(root) {
             <td><div class="player-cell">${playerAvatar(p, 32)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(p.player_name || p.player_id)}</div><div class="player-cell-sub">${teamLogo(p.team, 14)} ${escapeHtml(p.team || '—')} ${p.model_pos_rank ? `<span style="color:var(--text-faint)">· #${p.model_pos_rank} ${pos}</span>` : ''}</div></div></div></td>
             <td>${posBadge(pos)}</td>
             <td>${teamPill}</td>
-            <td class="mono" style="font-weight:700; color:var(--amber)">${displayProj.toFixed(1)}</td>
+            <td class="mono" style="font-weight:700; color:var(--amber)">${proj.toFixed(1)}</td>
             ${compareEnabled && hasComparison ? `
             <td class="mono" style="color:var(--sky)">${market}</td>
             <td>${deltaPtsBadge(p.delta_points)}</td>

@@ -759,3 +759,64 @@ def build_weekly_projections(
         projections.append(projected_stats)
 
     return projections
+
+
+def compute_ros_projections(
+    season_stats: List[Dict],
+    schedule: List[Dict],
+    scoring_settings: Dict,
+    current_week: int,
+    prior_season_stats: Optional[List[Dict]] = None,
+    out_pids: Optional[set] = None,
+) -> List[Dict]:
+    """Compute Rest-of-Season projections by summing independent per-week projections.
+
+    Each remaining week gets its own projection using that week's specific
+    opponent, vegas line, and weather — not a naive ×N multiplier.
+
+    Args:
+        season_stats: full season game logs (used by build_weekly_projections)
+        schedule: full season schedule with vegas/weather
+        scoring_settings: league scoring (passed to build_weekly_projections)
+        current_week: the current NFL week (1-18)
+        prior_season_stats: previous season game logs (optional)
+        out_pids: confirmed Outs (optional)
+
+    Returns:
+        list of dicts sorted by ros_points descending, each with:
+        player_id, player_display_name, position, team,
+        ros_points, per_week breakdown, remaining_games
+    """
+    # Accumulate per-player: {pid: {info, total_pts, weeks_played}}
+    totals: Dict[str, dict] = {}
+
+    for wk in range(current_week, 19):
+        week_projs = build_weekly_projections(
+            season_stats=season_stats,
+            schedule=schedule,
+            target_week=wk,
+            scoring_settings=scoring_settings,
+            prior_season_stats=prior_season_stats,
+            out_pids=out_pids,
+        )
+        for p in week_projs:
+            pid = p.get("player_id", "")
+            if not pid:
+                continue
+            pts = float(p.get("projected_points") or 0)
+            if pid not in totals:
+                totals[pid] = {
+                    "player_id": pid,
+                    "player_display_name": p.get("player_display_name", ""),
+                    "position": p.get("position", ""),
+                    "team": p.get("team") or p.get("recent_team") or "",
+                    "ros_points": 0.0,
+                    "per_week": {},
+                    "remaining_games": 0,
+                }
+            totals[pid]["ros_points"] += pts
+            totals[pid]["per_week"][wk] = round(pts, 2)
+            totals[pid]["remaining_games"] += 1
+
+    result = sorted(totals.values(), key=lambda x: x["ros_points"], reverse=True)
+    return result

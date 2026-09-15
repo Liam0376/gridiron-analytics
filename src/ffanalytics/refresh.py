@@ -772,6 +772,35 @@ def run_refresh_with_data(
             _model_projs = projs
             data["model_projections"] = projs
             data["player_stats"] = enriched_player_stats
+
+            # Rest-of-season: sum independent per-week projections
+            try:
+                from ffanalytics.stat_projector import compute_ros_projections
+                _full_sched = data.get("schedule", [])
+                _scoring = data.get("league_settings", {}).get("scoring_settings", {})
+                _cw = compute_nfl_week()
+                _ros = compute_ros_projections(
+                    player_stats, _full_sched, _scoring, _cw,
+                    prior_season_stats=prior_season_stats,
+                    out_pids=build_out_gsis_set(
+                        sleeper_players_map, data.get("injury_status")),
+                )
+                for rp in _ros:
+                    conn.execute(
+                        """INSERT OR REPLACE INTO ros_projections
+                           (season, player_id, player_name, position, team,
+                            ros_points, remaining_games, per_game_neutral, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            season, rp["player_id"], rp["player_display_name"],
+                            rp["position"], rp["team"], rp["ros_points"],
+                            rp["remaining_games"],
+                            round(rp["ros_points"] / max(1, rp["remaining_games"]), 2),
+                            ran_at_iso,
+                        ),
+                    )
+            except Exception as _ros_exc:
+                logger.warning(f"refresh: ros_projections failed: {_ros_exc}")
         except Exception as p_exc:
             logger.warning(f"Projection model execution warning: {p_exc}")
 

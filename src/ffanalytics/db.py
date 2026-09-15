@@ -244,3 +244,23 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             )"""
         )
         conn.execute("PRAGMA user_version=10")
+
+    if cur_version < 11:
+        # Rest-of-season projections v11 — per-player sum of independent
+        # per-week projections. Populated during refresh from
+        # build_weekly_projections called for each remaining week. Additive only.
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS ros_projections (
+                season INTEGER NOT NULL,
+                player_id TEXT NOT NULL,
+                player_name TEXT NOT NULL,
+                position TEXT NOT NULL,
+                team TEXT NOT NULL,
+                ros_points REAL NOT NULL,
+                remaining_games INTEGER NOT NULL,
+                per_game_neutral REAL NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (season, player_id)
+            )"""
+        )
+        conn.execute("PRAGMA user_version=11")
