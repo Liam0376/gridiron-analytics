@@ -1,6 +1,6 @@
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from ffanalytics import db, refresh
 
@@ -408,11 +408,15 @@ def test_preseason_refresh_patches_teams_and_adds_rookies():
     )
     sched_backup = sched_cache_path.read_text() if sched_cache_path.exists() else None
     try:
-        _, data = refresh.run_refresh_with_data(
-            conn, season=2026, sleeper_session=_mock_sleeper_session(players_map),
-            nfl_module=fake_nfl, ran_at_iso="2026-09-09T12:00:00",
-            stats_season=2025, league_id="123",
-        )
+        # why pin week=1: refresh targets live compute_nfl_week(), but this
+        # fixture only has week-1 games. Unpinned, the suite goes BYE as soon
+        # as the real season reaches week 2 (failed 2026-09-15).
+        with patch.object(refresh, "compute_nfl_week", return_value=1):
+            _, data = refresh.run_refresh_with_data(
+                conn, season=2026, sleeper_session=_mock_sleeper_session(players_map),
+                nfl_module=fake_nfl, ran_at_iso="2026-09-09T12:00:00",
+                stats_season=2025, league_id="123",
+            )
         # hub/server.py reads this exact path for weather/NFL-slate display
         # (isolation contract: hub can't fetch schedule data itself) — only
         # scripts/seed_demo.py ever wrote it before this fix, once, at
@@ -489,11 +493,12 @@ def test_refresh_writes_independent_weekly_projections_not_one_snapshot():
     )
     sched_backup = sched_cache_path.read_text() if sched_cache_path.exists() else None
     try:
-        refresh.run_refresh_with_data(
-            conn, season=2026, sleeper_session=_mock_sleeper_session(players_map),
-            nfl_module=fake_nfl, ran_at_iso="2026-09-09T12:00:00",
-            stats_season=2025, league_id="123",
-        )
+        with patch.object(refresh, "compute_nfl_week", return_value=1):
+            _, data = refresh.run_refresh_with_data(
+                conn, season=2026, sleeper_session=_mock_sleeper_session(players_map),
+                nfl_module=fake_nfl, ran_at_iso="2026-09-09T12:00:00",
+                stats_season=2025, league_id="123",
+            )
     finally:
         if sched_backup is not None:
             sched_cache_path.write_text(sched_backup)
