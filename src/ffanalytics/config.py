@@ -267,6 +267,11 @@ def compute_nfl_week(now: datetime | None = None) -> int:
         return 1
     days_since = (now - season_start).days
     week_num = days_since // 7 + 1
+    # NFL weeks run Thu-Wed. Mon-based calc undercounts Thu-Sat (already
+    # in the next NFL week). Also bump Tue/Wed: the prior week's games
+    # finished Monday night, so projections should target the next week.
+    if now.weekday() >= 1:  # Tue=1 through Sat=5
+        week_num += 1
     if week_num < 1:
         return 1
     if week_num > 18:

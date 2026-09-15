@@ -208,6 +208,9 @@ def compute_nfl_week(now=None):
         return 1
     days = (now - season_start).days
     w = days // 7 + 1
+    # NFL weeks run Thu-Wed. Mon-based calc undercounts Tue-Sat.
+    if now.weekday() >= 1:
+        w += 1
     return max(1, min(18, w))
 
 def get_db_path(cli_path: str | None) -> Path:
