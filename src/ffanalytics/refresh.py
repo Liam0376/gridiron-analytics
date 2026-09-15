@@ -106,18 +106,143 @@ def build_sleeper_team_map(sleeper_players: dict) -> dict:
     return out
 
 
-def patch_proj_teams(projs: list, team_by_np: dict, opp_map: dict) -> int:
-    """Overwrite stale nflverse teams on projection rows with current Sleeper
-    teams; remap opponent from the target-week schedule. Mutates rows.
-    Returns patched count. Never raises on weird rows (soft-fail per row)."""
+def build_gsis_team_map(weekly_rosters: list) -> dict:
+    """gsis_id -> current canonical team from nflverse weekly rosters.
+
+    History stat rows carry LAST season's team; this is current (trades,
+    free agency) and needs zero name matching. Skips rows without
+    gsis/team; latest-week wins on dupes (rosters are weekly snapshots).
+    Never raises.
+    """
+    out = {}
+    try:
+        for r in weekly_rosters or []:
+            r = r or {}
+            gsis = str(r.get("gsis_id") or "").strip()
+            team = r.get("team")
+            if gsis and team:
+                out[gsis] = config.canonical_team(team)
+    except Exception:
+        pass
+    return out
+
+
+def gsis_depth_rank(depth_charts: list,
+                    positions: tuple = ("QB", "RB", "WR", "TE")) -> dict:
+    """gsis_id -> {"team", "position", "rank"} from a depth snapshot.
+
+    Positions restricted to fantasy scope — line depth is not a signal.
+    Ranks are normalized to 0-based (starter = 0) to match the repo's
+    existing convention (backtest depth arms check rank == 0 for the
+    full-share starter); nflverse's native pos_rank is 1-based, converted
+    here at the boundary so no caller re-derives it.
+    First-seen wins per gsis (a snapshot should have one row per player;
+    dedupe is defensive). Never raises.
+    """
+    out = {}
+    try:
+        for r in depth_charts or []:
+            r = r or {}
+            gsis = str(r.get("gsis_id") or "").strip()
+            pos = str(r.get("pos_abb") or "").upper()
+            if not gsis or pos not in positions or gsis in out:
+                continue
+            try:
+                rank = int(r.get("pos_rank")) - 1
+            except Exception:
+                continue
+            if rank < 0:
+                continue
+            out[gsis] = {"team": config.canonical_team(r.get("team")),
+                         "position": pos, "rank": rank}
+    except Exception:
+        pass
+    return out
+
+
+def opportunity_features(opp_rows: list) -> dict:
+    """Per-(gsis, week) opportunity features from nflverse opportunity rows.
+
+    Returns {(gsis, week_int): {target_share, air_share, wopr, rush_share,
+    rec_gap, rec_yd_gap, rec_td_gap, rush_yd_gap, rush_td_gap, rec_xfp,
+    rec_exp, rec_yd_exp, rec_td_exp, rush_yd_exp, rush_td_exp}}.
+    Team denominators come from the row's own _team columns (exact, no PBP
+    parsing, no name matching — player_id IS gsis). WOPR = 1.5*target_share
+    + 0.7*air_share (Hermsmeyer). Gaps are actual-minus-expected on the
+    week (negative = underperformed expectation = positive-regression
+    candidate). Zero denominators -> 0.0. Rows without gsis skipped.
+    Week kept as-is (int); the feed includes playoffs (19-22, no
+    season_type flag) so consumers filter week<=18 for REG work.
+    Never raises.
+    """
+    def _f(v):
+        try:
+            f = float(v or 0)
+            if f != f or f in (float("inf"), float("-inf")):
+                return 0.0
+            return f
+        except Exception:
+            return 0.0
+
+    out = {}
+    try:
+        for r in opp_rows or []:
+            r = r or {}
+            gsis = str(r.get("player_id") or "").strip()
+            if not gsis:
+                continue
+            try:
+                wk = int(r.get("week"))
+            except Exception:
+                continue
+            ts = _f(r.get("rec_attempt")) / _f(r.get("rec_attempt_team")) \
+                if _f(r.get("rec_attempt_team")) > 0 else 0.0
+            ash = _f(r.get("rec_air_yards")) / _f(r.get("rec_air_yards_team")) \
+                if _f(r.get("rec_air_yards_team")) > 0 else 0.0
+            rs = _f(r.get("rush_attempt")) / _f(r.get("rush_attempt_team")) \
+                if _f(r.get("rush_attempt_team")) > 0 else 0.0
+            out[(gsis, wk)] = {
+                "target_share": ts,
+                "air_share": ash,
+                "wopr": 1.5 * ts + 0.7 * ash,
+                "rush_share": rs,
+                "rec_gap": _f(r.get("receptions")) - _f(r.get("receptions_exp")),
+                "rec_yd_gap": _f(r.get("rec_yards_gained")) - _f(r.get("rec_yards_gained_exp")),
+                "rec_td_gap": _f(r.get("rec_touchdown")) - _f(r.get("rec_touchdown_exp")),
+                "rush_yd_gap": _f(r.get("rush_yards_gained")) - _f(r.get("rush_yards_gained_exp")),
+                "rush_td_gap": _f(r.get("rush_touchdown")) - _f(r.get("rush_touchdown_exp")),
+                "rec_xfp": _f(r.get("rec_fantasy_points_exp")),
+                "rec_exp": _f(r.get("receptions_exp")),
+                "rec_yd_exp": _f(r.get("rec_yards_gained_exp")),
+                "rec_td_exp": _f(r.get("rec_touchdown_exp")),
+                "rush_yd_exp": _f(r.get("rush_yards_gained_exp")),
+                "rush_td_exp": _f(r.get("rush_touchdown_exp")),
+            }
+    except Exception:
+        pass
+    return out
+
+
+def patch_proj_teams(projs: list, team_by_np: dict, opp_map: dict,
+                     team_by_gsis: dict | None = None) -> int:
+    """Overwrite stale nflverse teams on projection rows with current
+    Sleeper teams; remap opponent from the target-week schedule. Mutates rows.
+    Returns patched count. Never raises on weird rows (soft-fail per row).
+
+    gsis join first (exact, no name fragility), name map fallback for rows
+    without GSIS (Sleeper-id rookie rows). team_by_gsis=None preserves the
+    old 3-arg behavior exactly.
+    """
     patched = 0
     for pr in projs or []:
         try:
-            key = _norm_name_pos(
-                pr.get("player_display_name") or pr.get("player_name"),
-                pr.get("position") or pr.get("position_group"),
-            )
-            nt = (team_by_np or {}).get(key)
+            nt = (team_by_gsis or {}).get(str(pr.get("player_id") or ""))
+            if not nt:
+                key = _norm_name_pos(
+                    pr.get("player_display_name") or pr.get("player_name"),
+                    pr.get("position") or pr.get("position_group"),
+                )
+                nt = (team_by_np or {}).get(key)
             if nt and nt != (pr.get("team") or ""):
                 pr["team"] = nt
                 pr["recent_team"] = nt
@@ -490,11 +615,64 @@ def run_refresh_with_data(
             # why rookie rows: the incoming class must be identified (name,
             # team, pos), never invisible — zeros + is_empty flag, never
             # imputed. Soft-fail each step; projections stand without them.
+            # why gsis-first team patch (gsis-identity spec): weekly history
+            # rows carry last season's team; nflverse weekly rosters are the
+            # gsis-keyed current truth (trades/FA) with no name matching.
+            # Snapshots cached to data/nfl_cache (last-good fallback, never
+            # abort); the depth file is owned here for backtest consumers.
+            # Name map stays as fallback for rows without GSIS (rookie rows).
+            _gsis_map: dict = {}
+            try:
+                _repo_root = Path(__file__).resolve().parents[2]
+                _cache_dir = _repo_root / "data" / "nfl_cache"
+                _cache_dir.mkdir(parents=True, exist_ok=True)
+                _rosters_path = _cache_dir / f"rosters_weekly_{season}.json"
+                _depth_path = _cache_dir / f"depth_{season}.json"
+                try:
+                    _rosters = nflverse.get_weekly_rosters(season, nfl_module=nfl_module)
+                    _rosters_path.write_text(json.dumps(_rosters))
+                except Exception as _rf_exc:
+                    logger.warning(f"refresh: weekly-rosters fetch failed, last-good cache: {_rf_exc}")
+                    try:
+                        _rosters = json.loads(_rosters_path.read_text())
+                    except Exception:
+                        _rosters = []
+                try:
+                    _depth = nflverse.get_depth_charts(season, nfl_module=nfl_module)
+                    _depth_path.write_text(json.dumps(_depth))
+                except Exception as _df_exc:
+                    logger.warning(f"refresh: depth fetch failed, last-good cache: {_df_exc}")
+                _gsis_map = build_gsis_team_map(_rosters or [])
+                _log(conn, "identity", True, None, ran_at_iso)
+            except Exception as _id_exc:
+                _log(conn, "identity", False, str(_id_exc), ran_at_iso)
+                logger.warning(f"refresh: gsis identity step skipped: {_id_exc}")
+            # why cache opportunity/NGS here (opportunity spec): no refresh
+            # math consumes them yet — backtests do. One owner for the files,
+            # last-good fallback, refresh_log entry, never abort.
+            try:
+                _opp_path = _cache_dir / f"opportunity_{season}.json"
+                _ngs_path = _cache_dir / f"ngs_receiving_{season}.json"
+                try:
+                    _opp_rows = nflverse.get_opportunity(season, nfl_module=nfl_module)
+                    _opp_path.write_text(json.dumps(_opp_rows))
+                except Exception as _o_exc:
+                    logger.warning(f"refresh: opportunity fetch failed, last-good cache: {_o_exc}")
+                try:
+                    _ngs_rows = nflverse.get_ngs_receiving(season, nfl_module=nfl_module)
+                    _ngs_path.write_text(json.dumps(_ngs_rows))
+                except Exception as _n_exc:
+                    logger.warning(f"refresh: NGS fetch failed, last-good cache: {_n_exc}")
+                _log(conn, "opportunity", True, None, ran_at_iso)
+            except Exception as _op_exc:
+                _log(conn, "opportunity", False, str(_op_exc), ran_at_iso)
+                logger.warning(f"refresh: opportunity cache step skipped: {_op_exc}")
             try:
                 from ffanalytics.adapters.schedule import get_nfl_team_matchups
                 _opp_map = get_nfl_team_matchups(sched, target_wk)
                 _team_map = build_sleeper_team_map(sleeper_players_map)
-                _n_patched = patch_proj_teams(projs, _team_map, _opp_map)
+                _n_patched = patch_proj_teams(projs, _team_map, _opp_map,
+                                              team_by_gsis=_gsis_map)
                 if _n_patched:
                     logger.info(f"refresh: Sleeper team patch applied to {_n_patched} rows")
                 _have = {

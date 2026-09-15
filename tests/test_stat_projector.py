@@ -273,3 +273,90 @@ def test_build_weekly_projections_out_pids_zero_weekly_keep_neutral():
     assert projs[0]["_neutral_points"] > 0
     projs2 = build_weekly_projections(season_stats, schedule, target_week=4, scoring_settings=scoring)
     assert projs2[0]["projected_points"] > 0  # absent map = today's behavior
+
+
+def test_xfp_params_off_is_legacy_exact():
+    # why: the arms must measure the mechanism, not an approximation — and
+    # production callers (which never pass these) must see zero change.
+    history = [
+        {"receiving_yards": 80, "receptions": 6, "receiving_tds": 1},
+        {"receiving_yards": 100, "receptions": 7, "receiving_tds": 0},
+        {"receiving_yards": 90, "receptions": 5, "receiving_tds": 1},
+    ]
+    base = project_player_stats(history, "WR")
+    assert project_player_stats(history, "WR", xfp_adjust=None, td_prior=None) == base
+    assert project_player_stats(history, "WR", xfp_adjust={}, td_prior={}) == base
+
+
+def test_xfp_adjust_pulls_base_with_cap():
+    history = [
+        {"receiving_yards": 100, "receptions": 8, "receiving_tds": 0},
+        {"receiving_yards": 100, "receptions": 8, "receiving_tds": 0},
+        {"receiving_yards": 100, "receptions": 8, "receiving_tds": 0},
+    ]
+    # 3 games: no usage trend (>=4 needed), no Vegas/weather by default.
+    proj = project_player_stats(history, "WR", xfp_adjust={"receiving_yards": 20.0})
+    assert proj["receiving_yards"] == 120.0
+    # cap: +-50% of base.
+    proj = project_player_stats(history, "WR", xfp_adjust={"receiving_yards": 200.0})
+    assert proj["receiving_yards"] == 150.0
+    proj = project_player_stats(history, "WR", xfp_adjust={"receiving_yards": -200.0})
+    assert proj["receiving_yards"] == 50.0
+
+
+def test_xfp_adjust_no_pull_from_zero_base():
+    history = [
+        {"receiving_yards": 0, "receptions": 0, "receiving_tds": 0},
+        {"receiving_yards": 0, "receptions": 0, "receiving_tds": 0},
+        {"receiving_yards": 0, "receptions": 0, "receiving_tds": 0},
+    ]
+    proj = project_player_stats(history, "WR", xfp_adjust={"receiving_yards": 50.0})
+    assert proj["receiving_yards"] == 0.0
+
+
+def test_td_prior_replaces_position_mean_at_same_weight():
+    # TE receiving_tds mean 0.14 (xFP-recalibrated 2026-09-15): all-zero
+    # history -> 0*0.7 + 0.14*0.3. Override swaps the prior, weight stays.
+    history = [
+        {"receiving_yards": 40, "receptions": 4, "receiving_tds": 0},
+        {"receiving_yards": 40, "receptions": 4, "receiving_tds": 0},
+        {"receiving_yards": 40, "receptions": 4, "receiving_tds": 0},
+    ]
+    base = project_player_stats(history, "TE")
+    assert abs(base["receiving_tds"] - 0.14 * 0.30) < 1e-9
+    prior = project_player_stats(history, "TE", td_prior={"receiving_tds": 0.5})
+    assert abs(prior["receiving_tds"] - 0.5 * 0.30) < 1e-9
+
+
+def test_td_priors_recalibrated_to_xfp_levels():
+    # why (opportunity-td-priors spec, user-confirmed 2026-09-15): the old
+    # flat means sat far above xFP-implied scoring rates (systematic
+    # over-projection). Hand-computed pins — not backtest-derived.
+    # TE all-zero receiving_tds: 0*0.7 + 0.14*0.3.
+    hist_te = [
+        {"receiving_yards": 40, "receptions": 4, "receiving_tds": 0},
+        {"receiving_yards": 40, "receptions": 4, "receiving_tds": 0},
+        {"receiving_yards": 40, "receptions": 4, "receiving_tds": 0},
+    ]
+    assert abs(project_player_stats(hist_te, "TE")["receiving_tds"] - 0.042) < 1e-9
+    # RB rushing_tds [1,0,0]: avg 1/3, 0.3333*0.7 + 0.20*0.3.
+    hist_rb = [
+        {"carries": 10, "rushing_yards": 50, "rushing_tds": 1, "receiving_yards": 10, "receptions": 1, "receiving_tds": 0},
+        {"carries": 10, "rushing_yards": 50, "rushing_tds": 0, "receiving_yards": 10, "receptions": 1, "receiving_tds": 0},
+        {"carries": 10, "rushing_yards": 50, "rushing_tds": 0, "receiving_yards": 10, "receptions": 1, "receiving_tds": 0},
+    ]
+    assert abs(project_player_stats(hist_rb, "RB")["rushing_tds"] - (1 / 3 * 0.7 + 0.20 * 0.3)) < 1e-9
+    # WR all-zero receiving_tds: 0*0.7 + 0.18*0.3.
+    hist_wr = [
+        {"receiving_yards": 60, "receptions": 5, "receiving_tds": 0},
+        {"receiving_yards": 60, "receptions": 5, "receiving_tds": 0},
+        {"receiving_yards": 60, "receptions": 5, "receiving_tds": 0},
+    ]
+    assert abs(project_player_stats(hist_wr, "WR")["receiving_tds"] - 0.054) < 1e-9
+    # QB untouched: all-zero passing_tds still regresses to the old 1.7.
+    hist_qb = [
+        {"passing_yards": 200, "passing_tds": 0, "passing_interceptions": 0, "rushing_yards": 10, "rushing_tds": 0},
+        {"passing_yards": 200, "passing_tds": 0, "passing_interceptions": 0, "rushing_yards": 10, "rushing_tds": 0},
+        {"passing_yards": 200, "passing_tds": 0, "passing_interceptions": 0, "rushing_yards": 10, "rushing_tds": 0},
+    ]
+    assert abs(project_player_stats(hist_qb, "QB")["passing_tds"] - 1.7 * 0.3) < 1e-9

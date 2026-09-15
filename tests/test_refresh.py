@@ -83,8 +83,7 @@ def test_run_refresh_nflverse_failure_logs_and_continues():
     conn.close()
 
 
-def test_build_sleeper_team_map_canonicalizes_rams():
-    # why (user-caught live bug, 2026-09-10): Sleeper's LAR vs the
+def test_build_sleeper_team_map_canonicalizes_rams():    # why (user-caught live bug, 2026-09-10): Sleeper's LAR vs the
     # schedule/hub LA convention — the map must emit canonical codes or
     # every downstream team filter quietly drops Rams rows.
     m = refresh.build_sleeper_team_map({
@@ -118,6 +117,57 @@ def test_patch_proj_teams_mover_stayer_unknown():
     assert projs[0]["team"] == "BUF" and projs[0]["recent_team"] == "BUF"
     assert projs[0]["opponent_team"] == "MIA"
     assert projs[1]["team"] == "KC" and projs[1]["opponent_team"] == ""
+    assert projs[2]["team"] == "KC"
+
+
+def test_build_gsis_team_map_current_team_no_names():    # why (gsis-identity spec): history rows carry last season's team; the
+    # weekly roster is the gsis-keyed current truth. Movers resolve with
+    # zero name matching.
+    m = refresh.build_gsis_team_map([
+        {"gsis_id": "00-0030565", "team": "LV"},
+        {"gsis_id": "00-0035228", "team": "MIN"},
+        {"gsis_id": None, "team": "KC"},
+        {"gsis_id": "00-0000000", "team": None},
+        None,
+    ])
+    assert m == {"00-0030565": "LV", "00-0035228": "MIN"}
+
+
+def test_gsis_depth_rank_skill_only_first_seen_wins():
+    # why 0-based: nflverse pos_rank is 1-based (starter = 1); the repo
+    # convention (backtest rank == 0 -> full share) is 0-based, converted
+    # at this boundary. Caught live 2026-09-15: unconverted, every true
+    # starter scaled to 0.05 and Week-1 V1 MAE regressed 4.163 -> 4.567.
+    rows = [
+        {"gsis_id": "A", "team": "ATL", "pos_abb": "QB", "pos_rank": 1},
+        {"gsis_id": "A", "team": "ATL", "pos_abb": "QB", "pos_rank": 9},
+        {"gsis_id": "B", "team": "ATL", "pos_abb": "LDE", "pos_rank": 1},
+        {"gsis_id": "C", "team": "ATL", "pos_abb": "WR", "pos_rank": "not-a-rank"},
+        {"gsis_id": "", "team": "ATL", "pos_abb": "RB", "pos_rank": 1},
+    ]
+    assert refresh.gsis_depth_rank(rows) == {
+        "A": {"team": "ATL", "position": "QB", "rank": 0},
+    }
+
+
+def test_patch_proj_teams_gsis_first_name_fallback():
+    # gsis patches even when the name map is silent (mover with a name the
+    # map never saw); name map still covers gsis-less rookie rows; rows
+    # with neither stay untouched. No raises anywhere.
+    projs = [
+        {"player_id": "00-0030565", "player_display_name": "Nobody Knows",
+         "position": "QB", "team": "SEA", "recent_team": "SEA", "opponent_team": ""},
+        {"player_id": "9999", "player_display_name": "Rookie Unknown",
+         "position": "WR", "team": "KC", "recent_team": "KC", "opponent_team": ""},
+        {"player_id": "8888", "player_display_name": "Mystery Man",
+         "position": "WR", "team": "KC", "recent_team": "KC", "opponent_team": ""},
+    ]
+    team_map = {("rookie unknown", "WR"): "BUF"}
+    gsis_map = {"00-0030565": "LV"}
+    opp_map = {"LV": "DEN", "BUF": "MIA", "KC": "DEN"}
+    assert refresh.patch_proj_teams(projs, team_map, opp_map, team_by_gsis=gsis_map) == 2
+    assert projs[0]["team"] == "LV" and projs[0]["opponent_team"] == "DEN"
+    assert projs[1]["team"] == "BUF" and projs[1]["opponent_team"] == "MIA"
     assert projs[2]["team"] == "KC"
 
 
@@ -179,7 +229,49 @@ def test_patch_proj_teams_matches_across_name_suffix_mismatch():
     assert refresh.patch_proj_teams(projs, team_map, {"KC": "DEN"}) == 1
     assert projs[0]["team"] == "KC"
     assert projs[0]["recent_team"] == "KC"
-    assert projs[0]["opponent_team"] == "DEN"
+
+
+def test_opportunity_features_shares_and_gaps():
+    rows = [{
+        "player_id": "00-0035676", "week": 1.0,
+        "rec_attempt": 9.0, "rec_attempt_team": 36.0,
+        "rec_air_yards": 120.0, "rec_air_yards_team": 300.0,
+        "rush_attempt": 1.0, "rush_attempt_team": 25.0,
+        "receptions": 5.0, "receptions_exp": 6.5,
+        "rec_yards_gained": 60.0, "rec_yards_gained_exp": 78.0,
+        "rec_touchdown": 1.0, "rec_touchdown_exp": 0.4,
+        "rush_yards_gained": 3.0, "rush_yards_gained_exp": 2.0,
+        "rush_touchdown": 0.0, "rush_touchdown_exp": 0.0,
+        "rec_fantasy_points_exp": 12.3,
+    }]
+    feats = refresh.opportunity_features(rows)
+    f = feats[("00-0035676", 1)]
+    assert abs(f["target_share"] - 0.25) < 1e-9
+    assert abs(f["air_share"] - 0.4) < 1e-9
+    assert abs(f["wopr"] - (1.5 * 0.25 + 0.7 * 0.4)) < 1e-9
+    assert abs(f["rush_share"] - 0.04) < 1e-9
+    assert abs(f["rec_gap"] - (-1.5)) < 1e-9
+    assert abs(f["rec_yd_gap"] - (-18.0)) < 1e-9
+    assert abs(f["rec_td_gap"] - 0.6) < 1e-9
+    assert abs(f["rec_xfp"] - 12.3) < 1e-9
+    assert abs(f["rec_yd_exp"] - 78.0) < 1e-9
+    assert abs(f["rec_td_exp"] - 0.4) < 1e-9
+
+
+def test_opportunity_features_zero_division_and_skips():
+    rows = [
+        {"player_id": "A", "week": 2, "rec_attempt": 5.0,
+         "rec_attempt_team": 0.0, "rec_air_yards": 50.0,
+         "rec_air_yards_team": None},
+        {"player_id": "", "week": 2, "rec_attempt": 5.0},
+        {"player_id": "B", "week": "not-a-week"},
+        None,
+    ]
+    feats = refresh.opportunity_features(rows)
+    assert feats[("A", 2)]["target_share"] == 0.0
+    assert feats[("A", 2)]["air_share"] == 0.0
+    assert feats[("A", 2)]["wopr"] == 0.0
+    assert len(feats) == 1
 
 
 def test_build_rookie_rows_filters_and_flags():

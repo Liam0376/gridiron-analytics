@@ -21,6 +21,33 @@ def get_injury_history(season: int, nfl_module=None) -> list[dict]:
     frame = _call_with_retry(lambda: nfl.load_injuries(seasons=[season]), name="nflverse")
     return frame.to_dicts()
 
+def get_weekly_rosters(season: int, nfl_module=None) -> list[dict]:
+    """Weekly roster snapshots (gsis_id, team, week, status, sleeper_id,
+    pfr/pff/espn/yahoo ids, headshot_url) — the current-team source of
+    truth. History stat rows carry last season's team; this is what fixes
+    movers without name matching (gsis-identity spec).
+    """
+    nfl = _nfl_module(nfl_module)
+    frame = _call_with_retry(lambda: nfl.load_rosters_weekly(seasons=[season]), name="nflverse")
+    return frame.to_dicts()
+
+
+def get_depth_charts(season: int, nfl_module=None) -> list[dict]:
+    """Depth-chart snapshot (gsis_id, team, pos_abb, pos_rank, dt).
+
+    nflverse keeps every scrape (dt); refresh-time consumers want the
+    CURRENT chart, so this returns latest-dt rows only. Backtests pin an
+    older snapshot via the cached file, not via this function.
+    """
+    nfl = _nfl_module(nfl_module)
+    frame = _call_with_retry(lambda: nfl.load_depth_charts(seasons=[season]), name="nflverse")
+    rows = frame.to_dicts()
+    if not rows:
+        return []
+    latest = max(str(r.get("dt") or "") for r in rows)
+    return [r for r in rows if str(r.get("dt") or "") == latest]
+
+
 def get_player_ids(nfl_module=None) -> list[dict]:
     """Full player-identity master list (~25k rows: gsis_id, display_name,
     position, latest_team, ...) — NOT filtered to this week's box score.
@@ -37,4 +64,29 @@ def get_player_ids(nfl_module=None) -> list[dict]:
     """
     nfl = _nfl_module(nfl_module)
     frame = _call_with_retry(lambda: nfl.load_players(), name="nflverse")
+    return frame.to_dicts()
+
+
+def get_opportunity(season: int, nfl_module=None) -> list[dict]:
+    """Per-player-per-week opportunity + expected values (gsis player_id,
+    team attempts/air-yards totals in-row, receptions_exp /
+    rec_yards_gained_exp / rec_touchdown_exp, actuals, diffs).
+    Feed includes playoffs (weeks 19-22, no season_type flag) — consumers
+    filter week<=18 for REG work. Exact shares need no PBP parsing.
+    """
+    nfl = _nfl_module(nfl_module)
+    frame = _call_with_retry(lambda: nfl.load_ff_opportunity(seasons=[season]), name="nflverse")
+    return frame.to_dicts()
+
+
+def get_ngs_receiving(season: int, nfl_module=None) -> list[dict]:
+    """Next Gen Stats receiving (air-yard share, aDOT, cushion/separation).
+    Min-targets threshold applies (partial coverage by design) — reserved
+    for display/role flags, not projection arms (opportunity air share
+    covers the same signal completely). Name-keyed rows (no gsis).
+    """
+    nfl = _nfl_module(nfl_module)
+    frame = _call_with_retry(
+        lambda: nfl.load_nextgen_stats(seasons=[season], stat_type="receiving"),
+        name="nflverse")
     return frame.to_dicts()

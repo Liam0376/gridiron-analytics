@@ -62,6 +62,29 @@ included, no longer K-zeroed as in early scratch backtest_final.py):
     verdict.) Without K: 4.556 vs 4.61 local, still
     fails. Ensemble w=0.40 4.45 >4.474 local → fail OOS (combined 4.448 >4.536
     would pass but is in-sample 2024 leakage; OOS gate is val only).
+  - xFP pull on receiving yards/receptions (X1, 2026-09-15, pre-registered
+    k=0.15 primary / 0.30 sensitivity): REJECTED — evidence:
+    data/ml/backtest_opportunity_results.json. 2025 holdout weeks 4-18
+    all-universe n=8049: paired-t t=-4.36 (diff -0.0065, significantly
+    WORSE than BASE); 2026 Week 1 n=652: t=+0.99 (n.s., inconsistent
+    direction). Trailing xFP gaps are noise at weekly resolution, or the
+    pull double-counts the usage trend's form capture. The xfp_adjust
+    pipeline param stays (tested, default-off) as the instrument, not a win.
+  - Individualized TD prior (X2, 2026-09-15): SUPERSEDED by the POP
+    control same day — population xFP prior beats individualization both
+    samples (X2-vs-POP paired-t t=-5.05 on 2025, t=-2.65 on 2026wk1, both
+    favoring POP). Trailing individual xFP TD rates are too noisy to beat
+    their own mean: shrink all the way. The td_prior pipeline param stays
+    (tested, default-off) as the instrument, not a win.
+  - Population xFP TD priors (POP/FROZEN, 2026-09-15): SHIPPED to
+    POS_TD_MEANS (RB rush 0.20/rec 0.04, WR rec 0.18/rush 0.005, TE rec
+    0.14; QB/K untouched — X2/POP never applied there, no evidence).
+    Evidence: data/ml/backtest_opportunity_results.json — BASE-FROZEN
+    paired-t t=42.4 (diff +0.099) on 2025 holdout n=8049 and t=16.1
+    (diff +0.124) on 2026wk1 n=652, corr neutral both, bias improved;
+    FROZEN reproduces live-POP within noise (parity diff +0.006/+0.003).
+    Weight stays 30%, mechanism unchanged — only the prior LEVEL was
+    stale (production means sat far above xFP-implied scoring rates).
   - XGBoost stat-level per-stat (16 boosters 2026-08-28, same 38 cols, real PBP):
     REJECTED — evidence: data/models/stat_level/meta.json val 4.463 vs true
     stat 4.474 local (+0.011 win) but corr 0.658 vs 0.6918 (stale K-zeroed
@@ -160,6 +183,12 @@ WIND_PENALTY_PER_MPH = 0.015  # 1.5% per mph over threshold
 COLD_THRESHOLD_F = 32
 COLD_PENALTY_PER_DEGREE = 0.003  # 0.3% per degree below freezing
 
+# xFP-pull cap (opportunity spec): additive pull capped at ±50% of base —
+# same anti-blowup discipline as the usage-trend ±50% cap. No pull from a
+# zero base (mirrors the usage trend's season_avg > 0 guard): a player
+# averaging nothing gets nothing invented for them.
+XFP_PULL_CAP = 0.50
+
 # Empirical backtested residual distributions by position (2024-2025 out-of-sample)
 # Used for split-conformal prediction intervals when custom player residuals are omitted.
 POS_RESIDUALS = {
@@ -203,11 +232,17 @@ def compute_conformal_bounds(
         "projection_width": round(width, 2),
         "confidence": conf,
     }
+# Position TD priors (per-game rates). RB/WR/TE recalibrated 2026-09-15
+# to 2024-2025 trailing-xFP means (opportunity follow-up: the POP control
+# beat both the old flat means and individualized priors on the 2025
+# holdout and 2026 Week 1; FROZEN constants reproduced POP within noise).
+# Weight unchanged (30%) — only the prior LEVEL was stale. QB/K untouched
+# (the arms never applied there: no evidence either way).
 POS_TD_MEANS = {
     "QB": {"passing_tds": 1.7, "rushing_tds": 0.15},
-    "RB": {"rushing_tds": 0.35, "receiving_tds": 0.08},
-    "WR": {"receiving_tds": 0.30, "rushing_tds": 0.02},
-    "TE": {"receiving_tds": 0.22},
+    "RB": {"rushing_tds": 0.20, "receiving_tds": 0.04},
+    "WR": {"receiving_tds": 0.18, "rushing_tds": 0.005},
+    "TE": {"receiving_tds": 0.14},
     "K": {},
 }
 
@@ -246,11 +281,19 @@ def weighted_recent_avg(
     return (sum(old) + sum(recent) * recent_weight) / total_weight
 
 
-def _td_regression(base: float, position: str, stat_key: str) -> float:
-    """Regress TD projections 30% toward position mean."""
+def _td_regression(base: float, position: str, stat_key: str,
+                   prior_override: float | None = None) -> float:
+    """Regress TD projections 30% toward position mean.
+
+    prior_override replaces the population mean with a player-specific
+    prior (trailing xFP-implied TD rate) at the same weight — empirical
+    Bayes shape: individual prior vs population prior, weight unchanged.
+    None preserves legacy behavior exactly.
+    """
     td_means = POS_TD_MEANS.get(position, {})
     if stat_key in td_means:
-        return base * (1 - TD_REGRESSION_WEIGHT) + td_means[stat_key] * TD_REGRESSION_WEIGHT
+        prior = td_means[stat_key] if prior_override is None else prior_override
+        return base * (1 - TD_REGRESSION_WEIGHT) + prior * TD_REGRESSION_WEIGHT
     return base
 
 
@@ -357,10 +400,13 @@ def project_player_stats(
     wind_mph: float = 0,
     temp_f: float = None,
     is_out: bool = False,
+    xfp_adjust: Optional[Dict[str, float]] = None,
+    td_prior: Optional[Dict[str, float]] = None,
 ) -> Dict[str, float]:
     """Project a player's stats for an upcoming game.
 
-    Pipeline: weighted-recent avg → TD regression → usage trend →
+    Pipeline: weighted-recent avg → xFP pull (optional, default off) →
+    TD regression → usage trend →
     Vegas implied total → weather adjustment → out-zeroing.
 
     Args:
@@ -376,6 +422,15 @@ def project_player_stats(
             Darnold projected 163 yds while Out). Season/ROS callers must
             NOT pass this (a 1-week Out must not nuke season value) —
             enforced by call-site, not here.
+        xfp_adjust: {stat_key: additive delta} applied to the base
+            immediately after the recent-average/blend, BEFORE TD regression
+            and usage trend, so every downstream step composes exactly as
+            with unadjusted bases. Intended for trailing xFP gaps
+            (k * (expected - actual)); capped at +-XFP_PULL_CAP of |base|,
+            no pull from a zero base. None/empty = off (legacy exact).
+        td_prior: {td_stat_key: individualized prior} replacing the
+            position mean inside _td_regression at the same 30% weight.
+            None/empty = off (legacy exact).
     """
     stat_keys = _get_projection_stats(position)
     projected = {}
@@ -413,7 +468,15 @@ def project_player_stats(
         else:
             base = 0.0
 
-        base = _td_regression(base, position, stat_key)
+        if xfp_adjust and stat_key in xfp_adjust and base != 0:
+            try:
+                delta = float(xfp_adjust[stat_key] or 0)
+            except Exception:
+                delta = 0.0
+            cap = abs(base) * XFP_PULL_CAP
+            base = base + max(-cap, min(cap, delta))
+        base = _td_regression(base, position, stat_key,
+                              prior_override=(td_prior or {}).get(stat_key))
         base = _usage_trend_adjustment(base, player_history, stat_key)
         projected[stat_key] = base
 
