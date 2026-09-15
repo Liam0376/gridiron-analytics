@@ -160,6 +160,63 @@ def gsis_depth_rank(depth_charts: list,
     return out
 
 
+def opportunity_features(opp_rows: list) -> dict:
+    """Per-(gsis, week) opportunity features from nflverse opportunity rows.
+
+    Returns {(gsis, week_int): {target_share, air_share, wopr, rush_share,
+    rec_gap, rec_yd_gap, rec_td_gap, rush_yd_gap, rush_td_gap, rec_xfp}}.
+    Team denominators come from the row's own _team columns (exact, no PBP
+    parsing, no name matching — player_id IS gsis). WOPR = 1.5*target_share
+    + 0.7*air_share (Hermsmeyer). Gaps are actual-minus-expected on the
+    week (negative = underperformed expectation = positive-regression
+    candidate). Zero denominators -> 0.0. Rows without gsis skipped.
+    Week kept as-is (int); the feed includes playoffs (19-22, no
+    season_type flag) so consumers filter week<=18 for REG work.
+    Never raises.
+    """
+    def _f(v):
+        try:
+            f = float(v or 0)
+            if f != f or f in (float("inf"), float("-inf")):
+                return 0.0
+            return f
+        except Exception:
+            return 0.0
+
+    out = {}
+    try:
+        for r in opp_rows or []:
+            r = r or {}
+            gsis = str(r.get("player_id") or "").strip()
+            if not gsis:
+                continue
+            try:
+                wk = int(r.get("week"))
+            except Exception:
+                continue
+            ts = _f(r.get("rec_attempt")) / _f(r.get("rec_attempt_team")) \
+                if _f(r.get("rec_attempt_team")) > 0 else 0.0
+            ash = _f(r.get("rec_air_yards")) / _f(r.get("rec_air_yards_team")) \
+                if _f(r.get("rec_air_yards_team")) > 0 else 0.0
+            rs = _f(r.get("rush_attempt")) / _f(r.get("rush_attempt_team")) \
+                if _f(r.get("rush_attempt_team")) > 0 else 0.0
+            out[(gsis, wk)] = {
+                "target_share": ts,
+                "air_share": ash,
+                "wopr": 1.5 * ts + 0.7 * ash,
+                "rush_share": rs,
+                "rec_gap": _f(r.get("receptions")) - _f(r.get("receptions_exp")),
+                "rec_yd_gap": _f(r.get("rec_yards_gained")) - _f(r.get("rec_yards_gained_exp")),
+                "rec_td_gap": _f(r.get("rec_touchdown")) - _f(r.get("rec_touchdown_exp")),
+                "rush_yd_gap": _f(r.get("rush_yards_gained")) - _f(r.get("rush_yards_gained_exp")),
+                "rush_td_gap": _f(r.get("rush_touchdown")) - _f(r.get("rush_touchdown_exp")),
+                "rec_xfp": _f(r.get("rec_fantasy_points_exp")),
+            }
+    except Exception:
+        pass
+    return out
+
+
 def patch_proj_teams(projs: list, team_by_np: dict, opp_map: dict,
                      team_by_gsis: dict | None = None) -> int:
     """Overwrite stale nflverse teams on projection rows with current
@@ -584,6 +641,26 @@ def run_refresh_with_data(
             except Exception as _id_exc:
                 _log(conn, "identity", False, str(_id_exc), ran_at_iso)
                 logger.warning(f"refresh: gsis identity step skipped: {_id_exc}")
+            # why cache opportunity/NGS here (opportunity spec): no refresh
+            # math consumes them yet — backtests do. One owner for the files,
+            # last-good fallback, refresh_log entry, never abort.
+            try:
+                _opp_path = _cache_dir / f"opportunity_{season}.json"
+                _ngs_path = _cache_dir / f"ngs_receiving_{season}.json"
+                try:
+                    _opp_rows = nflverse.get_opportunity(season, nfl_module=nfl_module)
+                    _opp_path.write_text(json.dumps(_opp_rows))
+                except Exception as _o_exc:
+                    logger.warning(f"refresh: opportunity fetch failed, last-good cache: {_o_exc}")
+                try:
+                    _ngs_rows = nflverse.get_ngs_receiving(season, nfl_module=nfl_module)
+                    _ngs_path.write_text(json.dumps(_ngs_rows))
+                except Exception as _n_exc:
+                    logger.warning(f"refresh: NGS fetch failed, last-good cache: {_n_exc}")
+                _log(conn, "opportunity", True, None, ran_at_iso)
+            except Exception as _op_exc:
+                _log(conn, "opportunity", False, str(_op_exc), ran_at_iso)
+                logger.warning(f"refresh: opportunity cache step skipped: {_op_exc}")
             try:
                 from ffanalytics.adapters.schedule import get_nfl_team_matchups
                 _opp_map = get_nfl_team_matchups(sched, target_wk)

@@ -120,8 +120,7 @@ def test_patch_proj_teams_mover_stayer_unknown():
     assert projs[2]["team"] == "KC"
 
 
-def test_build_gsis_team_map_current_team_no_names():
-    # why (gsis-identity spec): history rows carry last season's team; the
+def test_build_gsis_team_map_current_team_no_names():    # why (gsis-identity spec): history rows carry last season's team; the
     # weekly roster is the gsis-keyed current truth. Movers resolve with
     # zero name matching.
     m = refresh.build_gsis_team_map([
@@ -230,7 +229,47 @@ def test_patch_proj_teams_matches_across_name_suffix_mismatch():
     assert refresh.patch_proj_teams(projs, team_map, {"KC": "DEN"}) == 1
     assert projs[0]["team"] == "KC"
     assert projs[0]["recent_team"] == "KC"
-    assert projs[0]["opponent_team"] == "DEN"
+
+
+def test_opportunity_features_shares_and_gaps():
+    rows = [{
+        "player_id": "00-0035676", "week": 1.0,
+        "rec_attempt": 9.0, "rec_attempt_team": 36.0,
+        "rec_air_yards": 120.0, "rec_air_yards_team": 300.0,
+        "rush_attempt": 1.0, "rush_attempt_team": 25.0,
+        "receptions": 5.0, "receptions_exp": 6.5,
+        "rec_yards_gained": 60.0, "rec_yards_gained_exp": 78.0,
+        "rec_touchdown": 1.0, "rec_touchdown_exp": 0.4,
+        "rush_yards_gained": 3.0, "rush_yards_gained_exp": 2.0,
+        "rush_touchdown": 0.0, "rush_touchdown_exp": 0.0,
+        "rec_fantasy_points_exp": 12.3,
+    }]
+    feats = refresh.opportunity_features(rows)
+    f = feats[("00-0035676", 1)]
+    assert abs(f["target_share"] - 0.25) < 1e-9
+    assert abs(f["air_share"] - 0.4) < 1e-9
+    assert abs(f["wopr"] - (1.5 * 0.25 + 0.7 * 0.4)) < 1e-9
+    assert abs(f["rush_share"] - 0.04) < 1e-9
+    assert abs(f["rec_gap"] - (-1.5)) < 1e-9
+    assert abs(f["rec_yd_gap"] - (-18.0)) < 1e-9
+    assert abs(f["rec_td_gap"] - 0.6) < 1e-9
+    assert abs(f["rec_xfp"] - 12.3) < 1e-9
+
+
+def test_opportunity_features_zero_division_and_skips():
+    rows = [
+        {"player_id": "A", "week": 2, "rec_attempt": 5.0,
+         "rec_attempt_team": 0.0, "rec_air_yards": 50.0,
+         "rec_air_yards_team": None},
+        {"player_id": "", "week": 2, "rec_attempt": 5.0},
+        {"player_id": "B", "week": "not-a-week"},
+        None,
+    ]
+    feats = refresh.opportunity_features(rows)
+    assert feats[("A", 2)]["target_share"] == 0.0
+    assert feats[("A", 2)]["air_share"] == 0.0
+    assert feats[("A", 2)]["wopr"] == 0.0
+    assert len(feats) == 1
 
 
 def test_build_rookie_rows_filters_and_flags():

@@ -65,3 +65,28 @@ def get_player_ids(nfl_module=None) -> list[dict]:
     nfl = _nfl_module(nfl_module)
     frame = _call_with_retry(lambda: nfl.load_players(), name="nflverse")
     return frame.to_dicts()
+
+
+def get_opportunity(season: int, nfl_module=None) -> list[dict]:
+    """Per-player-per-week opportunity + expected values (gsis player_id,
+    team attempts/air-yards totals in-row, receptions_exp /
+    rec_yards_gained_exp / rec_touchdown_exp, actuals, diffs).
+    Feed includes playoffs (weeks 19-22, no season_type flag) — consumers
+    filter week<=18 for REG work. Exact shares need no PBP parsing.
+    """
+    nfl = _nfl_module(nfl_module)
+    frame = _call_with_retry(lambda: nfl.load_ff_opportunity(seasons=[season]), name="nflverse")
+    return frame.to_dicts()
+
+
+def get_ngs_receiving(season: int, nfl_module=None) -> list[dict]:
+    """Next Gen Stats receiving (air-yard share, aDOT, cushion/separation).
+    Min-targets threshold applies (partial coverage by design) — reserved
+    for display/role flags, not projection arms (opportunity air share
+    covers the same signal completely). Name-keyed rows (no gsis).
+    """
+    nfl = _nfl_module(nfl_module)
+    frame = _call_with_retry(
+        lambda: nfl.load_nextgen_stats(seasons=[season], stat_type="receiving"),
+        name="nflverse")
+    return frame.to_dicts()

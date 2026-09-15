@@ -79,3 +79,27 @@ def test_get_depth_charts_empty_in_empty_out():
     fake_nfl = Mock()
     fake_nfl.load_depth_charts.return_value = _FakePolarsFrame([])
     assert nflverse.get_depth_charts(2026, nfl_module=fake_nfl) == []
+
+def test_get_opportunity_converts_to_plain_dicts():
+    from ffanalytics.adapters import nflverse
+    fake_nfl = Mock()
+    fake_nfl.load_ff_opportunity.return_value = _FakePolarsFrame(
+        [{"player_id": "00-0035676", "rec_attempt": 9.0, "rec_attempt_team": 37.0}]
+    )
+    result = nflverse.get_opportunity(2026, nfl_module=fake_nfl)
+    assert result == [{"player_id": "00-0035676", "rec_attempt": 9.0,
+                       "rec_attempt_team": 37.0}]
+    assert isinstance(result[0], dict)
+    fake_nfl.load_ff_opportunity.assert_called_once_with(seasons=[2026])
+
+def test_get_ngs_receiving_converts_to_plain_dicts():
+    from ffanalytics.adapters import nflverse
+    fake_nfl = Mock()
+    fake_nfl.load_nextgen_stats.return_value = _FakePolarsFrame(
+        [{"player_display_name": "Ja'Marr Chase",
+          "percent_share_of_intended_air_yards": 0.31}]
+    )
+    result = nflverse.get_ngs_receiving(2026, nfl_module=fake_nfl)
+    assert result[0]["percent_share_of_intended_air_yards"] == 0.31
+    fake_nfl.load_nextgen_stats.assert_called_once_with(
+        seasons=[2026], stat_type="receiving")
