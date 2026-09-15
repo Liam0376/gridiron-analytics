@@ -544,7 +544,16 @@ def run_refresh_with_data(
         rosters = sleeper.get_rosters(lid, session=sleeper_session)
         injury_status = sleeper.get_injury_statuses(session=sleeper_session)
         current_week = compute_nfl_week()
-        matchups = sleeper.get_league_matchups(lid, current_week, session=sleeper_session)
+        all_matchups: list[dict] = []
+        for wk in range(1, 19):
+            try:
+                wk_matchups = sleeper.get_league_matchups(lid, wk, session=sleeper_session)
+                for m in wk_matchups:
+                    m["week"] = wk
+                all_matchups.extend(wk_matchups)
+            except Exception:
+                pass
+        matchups = all_matchups
         data["league_settings"] = league_settings
         data["rosters"] = rosters
         data["injury_status"] = injury_status
