@@ -82,8 +82,9 @@ included, no longer K-zeroed as in early scratch backtest_final.py):
     diff +0.071 on 2025 n=8049 and t=4.7 diff +0.084 on 2026wk1 n=81,
     corr IMPROVED both, z=-0.41/-0.18; frozen 0.83 reproduces live QPOP
     within noise). Evidence: data/ml/backtest_opportunity_results.json.
-    Proposed: QB passing_tds 1.7 -> 0.83 (rushing untouched); implementation
-    pending user confirm (qb-xfp spec verdict section).
+    SHIPPED 2026-09-15 (blanket points approval): QB passing_tds 1.7 ->
+    0.83, rushing untouched; pinning test + bit-identical proof (only QB
+    rows move) in the commit.
   - Population xFP TD priors (POP/FROZEN, 2026-09-15): SHIPPED to
     POS_TD_MEANS (RB rush 0.20/rec 0.04, WR rec 0.18/rush 0.005, TE rec
     0.14; QB/K untouched — X2/POP never applied there, no evidence).
@@ -251,10 +252,12 @@ def compute_conformal_bounds(
 # to 2024-2025 trailing-xFP means (opportunity follow-up: the POP control
 # beat both the old flat means and individualized priors on the 2025
 # holdout and 2026 Week 1; FROZEN constants reproduced POP within noise).
-# Weight unchanged (30%) — only the prior LEVEL was stale. QB/K untouched
-# (the arms never applied there: no evidence either way).
+# QB passing_tds recalibrated same day (1.7 -> 0.83, qb-xfp follow-up:
+# QFROZEN passed both samples with improved corr; frozen reproduces live
+# QPOP within noise). Weight unchanged (30%) — only prior LEVELS were
+# stale. QB rushing + K untouched (no evidence either way).
 POS_TD_MEANS = {
-    "QB": {"passing_tds": 1.7, "rushing_tds": 0.15},
+    "QB": {"passing_tds": 0.83, "rushing_tds": 0.15},
     "RB": {"rushing_tds": 0.20, "receiving_tds": 0.04},
     "WR": {"receiving_tds": 0.18, "rushing_tds": 0.005},
     "TE": {"receiving_tds": 0.14},

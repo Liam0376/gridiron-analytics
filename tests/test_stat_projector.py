@@ -353,10 +353,17 @@ def test_td_priors_recalibrated_to_xfp_levels():
         {"receiving_yards": 60, "receptions": 5, "receiving_tds": 0},
     ]
     assert abs(project_player_stats(hist_wr, "WR")["receiving_tds"] - 0.054) < 1e-9
-    # QB untouched: all-zero passing_tds still regresses to the old 1.7.
+    # QB moved to its own pinning test below (qb-xfp 0.83) — no QB asserts here.
+
+
+def test_qb_pass_td_prior_recalibrated_to_xfp_level():
+    # why (qb-xfp verdict, blanket-approved 2026-09-15): old 1.7 sat ~2x
+    # above the xFP-implied population rate; QFROZEN 0.83 passed both
+    # samples with improved corr. Hand-computed pin, not backtest-derived.
+    # All-zero passing_tds history: 0*0.7 + 0.83*0.3.
     hist_qb = [
         {"passing_yards": 200, "passing_tds": 0, "passing_interceptions": 0, "rushing_yards": 10, "rushing_tds": 0},
         {"passing_yards": 200, "passing_tds": 0, "passing_interceptions": 0, "rushing_yards": 10, "rushing_tds": 0},
         {"passing_yards": 200, "passing_tds": 0, "passing_interceptions": 0, "rushing_yards": 10, "rushing_tds": 0},
     ]
-    assert abs(project_player_stats(hist_qb, "QB")["passing_tds"] - 1.7 * 0.3) < 1e-9
+    assert abs(project_player_stats(hist_qb, "QB")["passing_tds"] - 0.249) < 1e-9
