@@ -36,8 +36,8 @@ This repo runs `git config claude.mode solo` — single user, no PRs, no teammat
 ## Hard constraints
 
 - **$0 forever.** No paid tiers/hosting/DB. Surface free-tier limits. See `docs/references/stack.md`.
-- **Local only.** `127.0.0.1` only — never `0.0.0.0`/tunnels without explicit ask. Outbound only to Sleeper/nflverse/Open-Meteo.
-- NFL only. Single private user.
+- **Reachable.** Binds, tunnels, and deploys are allowed — confirm the destination with Liam first. Outbound sources unrestricted (FantasyPros, ESPN, PFR, etc.) as long as $0 holds.
+- Single private user. Other sports and DFS/betting-adjacent tools allowed on ask.
 
 ## Interface
 
@@ -57,9 +57,8 @@ Python >=3.12, `.venv/bin/python`, `SLEEPER_LEAGUE_ID` required. `FFANALYTICS_DB
 
 - `docs/references/stack.md` — env, commands, gotchas (tests, dev server, isolation `hub/verify-isolation.sh`)
 - `docs/references/architecture.md` — engineering discipline + model/hub architecture + shadow/backtest gates
-- `docs/references/league.md` — roster/scoring (Sleeper source of truth, bonuses, FAAB, Reglamento)
-- `docs/reglamento-2026.md` — official rules, never hardcode scoring
-- `hub/DESIGN.md` + `hub/README.md` — hub isolation contract
+- `docs/references/league.md` — roster/scoring/budget (Sleeper source of truth, bonuses, FAAB)
+- `hub/DESIGN.md` + `hub/README.md` — hub docs
 - `docs/research/2026-data-sources.md` — data source comparison
 
 ## Latent vs. deterministic

@@ -28,9 +28,11 @@ Follow: rejected → inline `# REJECTED` comment, not deletion.
 - `decision.py`/`shadow.py` — gate on `MIN_SHADOW_SAMPLES`
 - Scheduled: `scripts/refresh_job.sh` via `launchd` + `RUNBOOK.md`
 
-## Hub isolation — enforced, not optional
+## Hub — isolation dropped
 
-- `hub/server.py` — `mode=ro`, never write, never `POST /refresh`, `127.0.0.1:8002`
-- `hub/` never `import ffanalytics`, never deps to root `pyproject.toml`, owns `hub/package.json`. `rm -rf hub/` must keep model tests green.
-- `bash hub/verify-isolation.sh` after any `hub/` change — grep gate for imports/DB/`0.0.0.0` (`hub/DESIGN.md`, `hub/README.md`)
-- `scripts/seed_demo.py` seeds empty preseason, invoked by `hub/start.sh`
+- `hub/` may import `ffanalytics` and share deps with the root `pyproject.toml`
+  going forward (Liam lifted the isolation rule 2026-09-15; the CI isolation
+  job is gone). Existing vendored mirrors stay until refactored — no flag day.
+- `hub/verify-isolation.sh` is kept for optional use, not enforced.
+- Still true: `hub/server.py` runs `mode=ro`, never `POST /refresh`;
+  `scripts/seed_demo.py` seeds empty preseason, invoked by `hub/start.sh`.

@@ -18,12 +18,6 @@ jobs:
         env:
           SLEEPER_LEAGUE_ID: test
 
-  isolation:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: bash hub/verify-isolation.sh
-
   supply-chain:
     runs-on: ubuntu-latest
     continue-on-error: true

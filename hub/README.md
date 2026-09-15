@@ -1,20 +1,22 @@
 # Gridiron Hub — Local Command Center
 
-**Zero tokens. $0. 127.0.0.1 only. Read-only.**
+**Zero tokens. $0. Read-only.**
 
 A local fantasy football hub that turns your updated model (`data/fantasy.db` + `127.0.0.1:8000`) into a searchable, sortable UI: projections with heuristic 80%-target intervals (measured 82% overall; QB/K deviate — see `data/models/coverage_2025.json`), matchups with wind badges, tierlists for your 2-FLEX board, roster start/sit with overlap confidence, waiver priority, and trade lab.
 
 This is a **completely separate product** that lives alongside `src/ffanalytics` in one repo but shares no code, no deps, and no writes.
 
-## Isolation contract
+## Sharing contract
 
-- **No imports:** `hub/` never does `import ffanalytics` (grep fails). Math is vendored as read-only mirror or fetched via HTTP.
+- **May share:** `hub/` is allowed to import `ffanalytics` and share root deps
+  going forward (isolation rule lifted 2026-09-15). Existing vendored mirrors
+  stay until refactored — no flag day.
 - **No writes:** Hub opens `fantasy.db` with `mode=ro` (SQLite rejects writes). Never `POST /refresh` — it only `GET`s.
-- **No shared deps:** Model deps = `pyproject.toml` / `.venv`. Hub deps = `hub/package.json` / `hub/node_modules`.
-- **Local only:** Both servers bind `127.0.0.1` — hub `8001`, model `8000`, proxy `8002`. No `0.0.0.0`, no tunnel.
+- **Local default:** Model `:8000`, hub `:8001`, proxy `:8002`. Other binds and
+  deploys allowed — confirm the destination with Liam first.
 - **Deletable:** `rm -rf hub/` leaves `SLEEPER_LEAGUE_ID=test pytest` green.
 
-Verify: `bash hub/verify-isolation.sh` (also `npm run verify` inside `hub/`).
+`hub/verify-isolation.sh` is kept for optional use (`npm run verify`); CI no longer gates on it.
 
 ## One-click start
 
