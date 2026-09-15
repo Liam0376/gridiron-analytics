@@ -132,6 +132,10 @@ def gsis_depth_rank(depth_charts: list,
     """gsis_id -> {"team", "position", "rank"} from a depth snapshot.
 
     Positions restricted to fantasy scope — line depth is not a signal.
+    Ranks are normalized to 0-based (starter = 0) to match the repo's
+    existing convention (backtest depth arms check rank == 0 for the
+    full-share starter); nflverse's native pos_rank is 1-based, converted
+    here at the boundary so no caller re-derives it.
     First-seen wins per gsis (a snapshot should have one row per player;
     dedupe is defensive). Never raises.
     """
@@ -144,8 +148,10 @@ def gsis_depth_rank(depth_charts: list,
             if not gsis or pos not in positions or gsis in out:
                 continue
             try:
-                rank = int(r.get("pos_rank"))
+                rank = int(r.get("pos_rank")) - 1
             except Exception:
+                continue
+            if rank < 0:
                 continue
             out[gsis] = {"team": config.canonical_team(r.get("team")),
                          "position": pos, "rank": rank}

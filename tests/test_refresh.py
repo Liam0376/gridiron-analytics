@@ -135,6 +135,10 @@ def test_build_gsis_team_map_current_team_no_names():
 
 
 def test_gsis_depth_rank_skill_only_first_seen_wins():
+    # why 0-based: nflverse pos_rank is 1-based (starter = 1); the repo
+    # convention (backtest rank == 0 -> full share) is 0-based, converted
+    # at this boundary. Caught live 2026-09-15: unconverted, every true
+    # starter scaled to 0.05 and Week-1 V1 MAE regressed 4.163 -> 4.567.
     rows = [
         {"gsis_id": "A", "team": "ATL", "pos_abb": "QB", "pos_rank": 1},
         {"gsis_id": "A", "team": "ATL", "pos_abb": "QB", "pos_rank": 9},
@@ -143,7 +147,7 @@ def test_gsis_depth_rank_skill_only_first_seen_wins():
         {"gsis_id": "", "team": "ATL", "pos_abb": "RB", "pos_rank": 1},
     ]
     assert refresh.gsis_depth_rank(rows) == {
-        "A": {"team": "ATL", "position": "QB", "rank": 1},
+        "A": {"team": "ATL", "position": "QB", "rank": 0},
     }
 
 
