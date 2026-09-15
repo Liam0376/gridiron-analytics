@@ -7,7 +7,15 @@
 
 ## Tasks
 
-- [ ] **1. Cumulative 2026 retest script (research, no prod code).**
+- [x] **1. Cumulative 2026 retest script (research, no prod code).** DONE 2026-09-15
+  as `scripts/backtest_snap_share_2026.py` (default mode). Week 1 (n=652, QB
+  n=81): BASE 4.485/corr 0.670/QB 7.613 vs V1_0.05 4.163/corr 0.682/QB 4.470;
+  paired primary t=3.23 (QB t=4.61), corr z=-0.41 (variant better, noise band).
+  Scales tied; V0==V1 in Week 1 (no trailing snaps yet). ZERO==BASE by
+  construction (wiring check); out-rule ablation (BASE-NOOUT) t=-2.51, fired 7.
+  Depth-name hit 72/81; snap coverage 30/32 teams (DEN/KC Week 1 missing,
+  reported). Results: `data/ml/backtest_snap_share_2026_results.json`
+  (committed). Suite 231 pass / 4 skipped stays green.
   New `scripts/backtest_snap_share_2026.py`: all-universe, all weeks played in
   2026 to date (starts at Week 1, grows weekly). History rule mirrors production
   (`week<target`, cross-season bypass + prior-season fallback per
@@ -24,19 +32,28 @@
   ~4.19 / QB 8.12->4.49 / overall t~4.9 / QB t~5.7), writes
   `data/ml/backtest_snap_share_2026_results.json` (gitignored or committed? —
   predecessor committed its JSON; confirm in review).
-- [ ] **2. 2025-holdout join-fix check (research, no prod code).**
-  Re-run `scripts/backtest_snap_share.py` with ONLY the join/identity fix
-  (normalized names + depth-team where available, else same week-1-snap proxy)
-  and confirm no sign flip vs the published REJECTED direction. If the join fix
-  alone overturns 2025, the predecessor verdict gets an addendum, not a rewrite.
-  Verify: diff of results JSON vs `data/ml/backtest_snap_share_results.json`
-  reviewed in the task commit.
-- [ ] **3. Skill-share measurement (research, no prod code).**
-  Correlate 2025 PBP `target_share_wavg` / `snap_share_wavg`
-  (`src/ffanalytics/adapters/pbp.py:214`) with 2026 Week-1+ surprise
-  (actual minus BASE), split by DNP vs played. Ships as a table in the task
-  commit message, not as code. Go/no-go for a skill-position v2 spec only if
-  played-week surprise shows stable signal. Default: stays measurement-only.
+- [x] **2. 2025-holdout join-fix check (research, no prod code).** DONE 2026-09-15
+  as `scripts/backtest_snap_share_2026.py --check-2025-join`. BASE and ZERO
+  reproduce published to all decimals (4.6380/0.5949/0.6925,
+  4.3000/0.6300/0.7115); V1_0.05 moves only by the join fix itself (4.3758 vs
+  4.3680, pw 0.7054 vs 0.7060). Paired-t 13.97 vs published 13.70 (both on the
+  all-universe n=8049 sample; the header's t=1.66 is the paired n=5425 sample,
+  different cut, same REJECTED verdict). PASS: no sign flip.
+  Incidental finding: `_metrics` pairwise is traversal-order dependent under
+  tied actuals (DNP 0.0 pairs count correct iff the earlier row predicts
+  lower), so the check reuses the predecessor's set-order traversal; the 2026
+  mode uses sorted order and documents the caveat.
+  Verify: `SLEEPER_LEAGUE_ID=test PYTHONHASHSEED=0 .venv/bin/python
+  scripts/backtest_snap_share_2026.py --check-2025-join`.
+- [x] **3. Skill-share measurement (research, no prod code).** DONE 2026-09-15
+  as `scripts/backtest_snap_share_2026.py --skill-shares`, results committed
+  at `data/ml/skill_share_2026.json` (Week 1 only, n small — direction read,
+  not verdict). Played weeks: shares predict actual (RB target +0.61, WR
+  +0.38, TE +0.42) but not surprise (RB +0.13, WR -0.17, TE ~0.0; QB n=35
+  noise). DNP weeks: shares strongly negative vs surprise (RB -0.90, WR
+  -0.80, TE -0.91) — that is the playing-time signal (they did not play),
+  fixable by snap/out, not by target share. Full table in the task commit
+  message. Default stays measurement-only; no v2 spec.
 - [ ] **4. Flag-gated implementation (only if cumulative gates pass).**
   `expected_snap_share` param + caller wiring + `config.OUT_STATUSES`
   canonicalization + identity/current-team helpers with unit tests (movers,

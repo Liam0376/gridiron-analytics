@@ -1,0 +1,168 @@
+{
+ "weeks": [
+  1
+ ],
+ "n_rows": 610,
+ "cells": {
+  "RB/played/target_share": {
+   "corr_surprise": 0.13233780607883117,
+   "corr_actual": 0.6101546281050028,
+   "n": 65
+  },
+  "RB/played/snap_share": {
+   "corr_surprise": 0.13241055234128626,
+   "corr_actual": 0.6129292196140432,
+   "n": 65
+  },
+  "RB/played/rush_share": {
+   "corr_surprise": 0.16165807680518604,
+   "corr_actual": 0.6078896393863643,
+   "n": 65
+  },
+  "RB/played/air_yards_share": {
+   "corr_surprise": -0.06748707317782175,
+   "corr_actual": 0.2613540713083526,
+   "n": 65
+  },
+  "RB/dnp/target_share": {
+   "corr_surprise": -0.8960499924308786,
+   "corr_actual": null,
+   "n": 86
+  },
+  "RB/dnp/snap_share": {
+   "corr_surprise": -0.8971644054318547,
+   "corr_actual": null,
+   "n": 86
+  },
+  "RB/dnp/rush_share": {
+   "corr_surprise": -0.8503035310421843,
+   "corr_actual": null,
+   "n": 86
+  },
+  "RB/dnp/air_yards_share": {
+   "corr_surprise": -0.27785468521271917,
+   "corr_actual": null,
+   "n": 86
+  },
+  "WR/played/target_share": {
+   "corr_surprise": -0.17189996048651926,
+   "corr_actual": 0.3825484816594831,
+   "n": 92
+  },
+  "WR/played/snap_share": {
+   "corr_surprise": -0.1808351815123266,
+   "corr_actual": 0.37828217565529304,
+   "n": 92
+  },
+  "WR/played/rush_share": {
+   "corr_surprise": -0.057203077283575175,
+   "corr_actual": -0.044471442140791836,
+   "n": 92
+  },
+  "WR/played/air_yards_share": {
+   "corr_surprise": -0.06539042698845293,
+   "corr_actual": 0.3528783730053358,
+   "n": 92
+  },
+  "WR/dnp/target_share": {
+   "corr_surprise": -0.7995435689557557,
+   "corr_actual": 0.008824552731197945,
+   "n": 149
+  },
+  "WR/dnp/snap_share": {
+   "corr_surprise": -0.8046170449500389,
+   "corr_actual": 0.010558604191544722,
+   "n": 149
+  },
+  "WR/dnp/rush_share": {
+   "corr_surprise": 0.04621454363422818,
+   "corr_actual": -0.08898342162514847,
+   "n": 149
+  },
+  "WR/dnp/air_yards_share": {
+   "corr_surprise": -0.6890013673789487,
+   "corr_actual": 0.058995021405647524,
+   "n": 149
+  },
+  "TE/played/target_share": {
+   "corr_surprise": -0.07919117781815949,
+   "corr_actual": 0.4193737941705149,
+   "n": 57
+  },
+  "TE/played/snap_share": {
+   "corr_surprise": -0.08476974591078144,
+   "corr_actual": 0.4188574558773349,
+   "n": 57
+  },
+  "TE/played/rush_share": {
+   "corr_surprise": -0.11209518070985668,
+   "corr_actual": -0.098530804982592,
+   "n": 57
+  },
+  "TE/played/air_yards_share": {
+   "corr_surprise": 0.08726890106419949,
+   "corr_actual": 0.4945714804794053,
+   "n": 57
+  },
+  "TE/dnp/target_share": {
+   "corr_surprise": -0.9078044633061838,
+   "corr_actual": null,
+   "n": 80
+  },
+  "TE/dnp/snap_share": {
+   "corr_surprise": -0.9059874472924468,
+   "corr_actual": null,
+   "n": 80
+  },
+  "TE/dnp/rush_share": {
+   "corr_surprise": -0.03490110112247721,
+   "corr_actual": null,
+   "n": 80
+  },
+  "TE/dnp/air_yards_share": {
+   "corr_surprise": -0.6503253768226812,
+   "corr_actual": null,
+   "n": 80
+  },
+  "QB/played/target_share": {
+   "corr_surprise": 0.26470705754970136,
+   "corr_actual": 0.40759572039239245,
+   "n": 35
+  },
+  "QB/played/snap_share": {
+   "corr_surprise": -0.1212339110643358,
+   "corr_actual": 0.3385744178366607,
+   "n": 35
+  },
+  "QB/played/rush_share": {
+   "corr_surprise": 0.19823528145348107,
+   "corr_actual": 0.36398103360247785,
+   "n": 35
+  },
+  "QB/played/air_yards_share": {
+   "corr_surprise": -0.2297261784299063,
+   "corr_actual": -0.17252065483213275,
+   "n": 35
+  },
+  "QB/dnp/target_share": {
+   "corr_surprise": -0.5051675616783395,
+   "corr_actual": null,
+   "n": 46
+  },
+  "QB/dnp/snap_share": {
+   "corr_surprise": -0.8328899558208146,
+   "corr_actual": null,
+   "n": 46
+  },
+  "QB/dnp/rush_share": {
+   "corr_surprise": -0.5533685082407992,
+   "corr_actual": null,
+   "n": 46
+  },
+  "QB/dnp/air_yards_share": {
+   "corr_surprise": -0.21542532284060445,
+   "corr_actual": null,
+   "n": 46
+  }
+ }
+}
