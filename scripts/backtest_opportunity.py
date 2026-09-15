@@ -35,8 +35,26 @@ Gate: freeze MAE 4.563 / Corr 0.648 / Pairwise 74.1% on the 2025 holdout,
 variant-vs-BASE paired-t p<0.05 with corr non-negative, 2026 agreement in
 the same direction, full suite green. One week never promotes.
 
+  QB PRE-REGISTRATION 2026-09-15 (qb-xfp spec, committed before running):
+  Skill arms run unchanged (X1 rejected, POP/FROZEN verdicts stand).
+  New arms, QB ONLY: XQ1_015 (passing-yards pull k=0.15, PRIMARY),
+  XQ1_030 (k=0.30, sensitivity only), QPOP (single variant: td_prior
+  passing_tds = position mean trailing pass_td_exp, same construction as
+  POP). QB rushing TDs untouched. No snap scaling here (pure-pipeline
+  comparison). Verdict: an arm promotes iff it beats BASE with paired
+  p<0.05 in BOTH samples with corr neutral (QB subset reported alongside
+  overall). Anything else: REJECTED inline. No other arms.
+
 FOLLOW-UP PRE-REGISTRATION 2026-09-15 (X2 control — committed before running):
   X1 stays REJECTED (still run for record stability, never a candidate).
+
+  HIER PRE-REGISTRATION 2026-09-15 (hier-prior spec, committed before running):
+  Single arm HIER: prior = w*individual + (1-w)*POP with w = n/(n+m),
+  m=5 (one RECENT_N window of prior strength, principle pick, no grid),
+  n = games in the trailing window. Same weight/windows/scope as X2/POP.
+  Verdict: HIER promotes iff it beats POP with paired p<0.05 in BOTH
+  samples and corr neutral; else POP stands and HIER is REJECTED inline.
+  Failing BASE in both samples rejects outright. No other variants.
   New arm POP (single variant): same 30% weight, prior = the POSITION's
   mean trailing xFP-implied TD rate over that week's skill eval rows
   (pre-week data only). X2-vs-POP isolates individualization: same weight,
@@ -244,9 +262,10 @@ def _run_sample(tag, stats_cur, stats_prior, opp_cur, opp_prior, sched,
             eval_items.append((pid, w))
     print(f"[oppback:{tag}] eval player-weeks: {len(eval_items)}")
 
-    arms = ["BASE", "X1_015", "X1_030", "X2", "POP", "FROZEN"]
+    arms = ["BASE", "X1_015", "X1_030", "X2", "POP", "FROZEN", "HIER",
+            "XQ1_015", "XQ1_030", "QPOP", "QFROZEN"]
     preds = {k: [] for k in arms}
-    actual, meta, skill_mask = [], [], []
+    actual, meta, skill_mask, qb_mask = [], [], [], []
     # POP control priors (pre-week only): mean trailing xFP rate per
     # (week, position, td stat) over that week's skill eval rows.
     _rates = {}
@@ -262,6 +281,17 @@ def _run_sample(tag, stats_cur, stats_prior, opp_cur, opp_prior, sched,
         _pop_acc[(_w, _pos, "receiving_tds")].append(_rr)
         _pop_acc[(_w, _pos, "rushing_tds")].append(_ru)
     _pop_mean = {k: (sum(v) / len(v) if v else 0.0) for k, v in _pop_acc.items()}
+    _qrates = {}
+    for _pid, _w in eval_items:
+        if pos_of.get(_pid) != "QB":
+            continue
+        _win = trail.window(_pid, _w)
+        _qrates[(_pid, _w)] = (OppTrail.wavg(_win, "pass_yd_gap"),
+                               OppTrail.wavg(_win, "pass_td_exp"))
+    _qpop_acc = defaultdict(list)
+    for (_pid, _w), (_yg, _td) in _qrates.items():
+        _qpop_acc[_w].append(_td)
+    _qpop_mean = {w: (sum(v) / len(v) if v else 0.0) for w, v in _qpop_acc.items()}
     for pid, week in eval_items:
         pos = pos_of.get(pid)
         team = team_of.get(pid)
@@ -284,15 +314,48 @@ def _run_sample(tag, stats_cur, stats_prior, opp_cur, opp_prior, sched,
             actual.append(0.0)
         meta.append({"season": season, "week": week, "position": pos})
         skill_mask.append(pos in SKILL)
+        qb_mask.append(pos == "QB")
         preds["BASE"].append(base_pts)
-        if pos not in SKILL:
-            for a in ("X1_015", "X1_030", "X2", "POP", "FROZEN"):
+        if pos not in SKILL and pos != "QB":
+            for a in ("X1_015", "X1_030", "X2", "POP", "FROZEN", "HIER",
+                      "XQ1_015", "XQ1_030", "QPOP", "QFROZEN"):
                 preds[a].append(base_pts)
+            continue
+        if pos == "QB":
+            for a in ("X1_015", "X1_030", "X2", "POP", "FROZEN", "HIER"):
+                preds[a].append(base_pts)
+            _qyd_gap, _qtd_exp = _qrates.get((pid, week), (0.0, 0.0))
+            for a, k in (("XQ1_015", K_PRIMARY), ("XQ1_030", K_SENS)):
+                try:
+                    p = project_player_stats(
+                        **kwargs,
+                        xfp_adjust={"passing_yards": k * _qyd_gap})
+                    preds[a].append(float(calculate_fantasy_points(p, DEFAULT_SCORING)))
+                except Exception:
+                    preds[a].append(0.0)
+            try:
+                p = project_player_stats(
+                    **kwargs,
+                    td_prior={"passing_tds": _qpop_mean.get(week, 0.0)})
+                preds["QPOP"].append(float(calculate_fantasy_points(p, DEFAULT_SCORING)))
+            except Exception:
+                preds["QPOP"].append(0.0)
+            try:
+                # why frozen 0.83 (ship-exactness): 2025-holdout mean of the
+                # QPOP live prior (see qb-xfp verdict); QB rushing untouched.
+                p = project_player_stats(
+                    **kwargs,
+                    td_prior={"passing_tds": 0.83})
+                preds["QFROZEN"].append(float(calculate_fantasy_points(p, DEFAULT_SCORING)))
+            except Exception:
+                preds["QFROZEN"].append(0.0)
             continue
         win = trail.window(pid, week)
         yd_gap = OppTrail.wavg(win, "rec_yd_gap")
         rec_gap = OppTrail.wavg(win, "rec_gap")
         xfp_rec_td, xfp_rush_td = _rates.get((pid, week), (0.0, 0.0))
+        for a in ("XQ1_015", "XQ1_030", "QPOP", "QFROZEN"):
+            preds[a].append(base_pts)
         for a, k in (("X1_015", K_PRIMARY), ("X1_030", K_SENS)):
             try:
                 p = project_player_stats(
@@ -333,6 +396,21 @@ def _run_sample(tag, stats_cur, stats_prior, opp_cur, opp_prior, sched,
             preds["FROZEN"].append(float(calculate_fantasy_points(p, DEFAULT_SCORING)))
         except Exception:
             preds["FROZEN"].append(0.0)
+        try:
+            # why w here (hier-prior spec): partial pooling — players with
+            # deep trailing windows earn near-individual priors, thin
+            # windows shrink to POP. m=5 pre-registered, no grid.
+            _n = len(win)
+            _w = _n / (_n + 5) if _n else 0.0
+            p = project_player_stats(
+                **kwargs,
+                td_prior={
+                    "receiving_tds": _w * xfp_rec_td + (1 - _w) * _pop_mean.get((week, pos, "receiving_tds"), 0.0),
+                    "rushing_tds": _w * xfp_rush_td + (1 - _w) * _pop_mean.get((week, pos, "rushing_tds"), 0.0),
+                })
+            preds["HIER"].append(float(calculate_fantasy_points(p, DEFAULT_SCORING)))
+        except Exception:
+            preds["HIER"].append(0.0)
 
     out = {"n": len(actual), "arms": {}}
     for name in arms:
@@ -340,29 +418,48 @@ def _run_sample(tag, stats_cur, stats_prior, opp_cur, opp_prior, sched,
         si = [i for i, s in enumerate(skill_mask) if s]
         ms = _metrics([actual[i] for i in si], [preds[name][i] for i in si],
                       [meta[i] for i in si])
-        out["arms"][name] = {"overall": m, "skill": ms}
+        qi = [i for i, q in enumerate(qb_mask) if q]
+        mq = _metrics([actual[i] for i in qi], [preds[name][i] for i in qi],
+                      [meta[i] for i in qi])
+        out["arms"][name] = {"overall": m, "skill": ms, "qb": mq}
         print(f"[oppback:{tag}] {name:8s} MAE {m['mae']:.4f} corr {m['corr']:.4f} "
               f"pw {m['pairwise']:.4f} bias {m['bias']:+.3f} n={m['n']} | "
-              f"skill MAE {ms['mae']:.4f} corr {ms['corr']:.4f} n={ms['n']}")
+              f"skill MAE {ms['mae']:.4f} corr {ms['corr']:.4f} n={ms['n']} | "
+              f"QB MAE {mq['mae']:.4f} corr {mq['corr']:.4f} n={mq['n']}")
     yt = np.array(actual, dtype=float)
     paired = {}
     si = np.array([i for i, s in enumerate(skill_mask) if s])
+    qi = np.array([i for i, q in enumerate(qb_mask) if q])
     for a, b, tag2 in [("BASE", "X1_015", "primary"),
                        ("BASE", "X1_030", "sensitivity"),
                        ("BASE", "X2", "td_prior"),
                        ("BASE", "POP", "pop_control"),
                        ("X2", "POP", "indiv_vs_pop"),
                        ("BASE", "FROZEN", "frozen_ship"),
-                       ("POP", "FROZEN", "frozen_parity")]:
+                       ("POP", "FROZEN", "frozen_parity"),
+                       ("BASE", "FROZEN", "frozen_ship"),
+                       ("POP", "FROZEN", "frozen_parity"),
+                       ("BASE", "HIER", "hier_ship"),
+                       ("POP", "HIER", "hier_vs_pop"),
+                       ("BASE", "XQ1_015", "qb_primary"),
+                       ("BASE", "XQ1_030", "qb_sensitivity"),
+                       ("BASE", "QPOP", "qb_td_prior"),
+                       ("BASE", "QFROZEN", "qb_frozen_ship"),
+                       ("QPOP", "QFROZEN", "qb_frozen_parity")]:
         st = _paired_stats(preds[a], preds[b], yt)
         st_s = _paired_stats([preds[a][i] for i in si],
                              [preds[b][i] for i in si], yt[si])
+        st_q = _paired_stats([preds[a][i] for i in qi],
+                             [preds[b][i] for i in qi], yt[qi])
         paired[tag2] = {"arms": [a, b], "overall": st,
                         "skill_t": st_s["t"],
-                        "skill_mean_diff": st_s["mean_diff"]}
+                        "skill_mean_diff": st_s["mean_diff"],
+                        "qb_t": st_q["t"],
+                        "qb_mean_diff": st_q["mean_diff"]}
         print(f"[oppback:{tag}] paired {tag2} {a}-{b}: t={st['t']:.2f} "
               f"(diff {st['mean_diff']:+.4f}) skill t={st_s['t']:.2f} "
-              f"(diff {st_s['mean_diff']:+.4f}) corr z={st['z_diff']:.2f}")
+              f"(diff {st_s['mean_diff']:+.4f}) QB t={st_q['t']:.2f} "
+              f"(diff {st_q['mean_diff']:+.4f}) corr z={st['z_diff']:.2f}")
     out["paired"] = paired
     return out
 

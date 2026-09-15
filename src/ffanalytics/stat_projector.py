@@ -76,6 +76,15 @@ included, no longer K-zeroed as in early scratch backtest_final.py):
     favoring POP). Trailing individual xFP TD rates are too noisy to beat
     their own mean: shrink all the way. The td_prior pipeline param stays
     (tested, default-off) as the instrument, not a win.
+  - QB passing xFP (XQ1/QPOP/QFROZEN, 2026-09-15): SPLIT — XQ1 REJECTED
+    (2025 n.s. t=1.6, 2026 t=2.6: inconsistent, fails the both-samples
+    rule); QPOP/QFROZEN PASS both samples (BASE-QFROZEN paired-t t=14.5
+    diff +0.071 on 2025 n=8049 and t=4.7 diff +0.084 on 2026wk1 n=81,
+    corr IMPROVED both, z=-0.41/-0.18; frozen 0.83 reproduces live QPOP
+    within noise). Evidence: data/ml/backtest_opportunity_results.json.
+    SHIPPED 2026-09-15 (blanket points approval): QB passing_tds 1.7 ->
+    0.83, rushing untouched; pinning test + bit-identical proof (only QB
+    rows move) in the commit.
   - Population xFP TD priors (POP/FROZEN, 2026-09-15): SHIPPED to
     POS_TD_MEANS (RB rush 0.20/rec 0.04, WR rec 0.18/rush 0.005, TE rec
     0.14; QB/K untouched — X2/POP never applied there, no evidence).
@@ -85,6 +94,13 @@ included, no longer K-zeroed as in early scratch backtest_final.py):
     FROZEN reproduces live-POP within noise (parity diff +0.006/+0.003).
     Weight stays 30%, mechanism unchanged — only the prior LEVEL was
     stale (production means sat far above xFP-implied scoring rates).
+  - Hierarchical TD prior (HIER, 2026-09-15, pre-registered m=5):
+    REJECTED — evidence: data/ml/backtest_opportunity_results.json.
+    Worse than BASE on 2025 (paired-t t=-4.85), noise on 2026wk1 (t=-0.31);
+    vs POP t=-1.95/+0.04. Full trailing windows drive w->1 (approximately
+    X2, already lost); thin-window players are too few to matter.
+    Individual trailing TD rates carry no usable signal beyond the
+    population mean. POP stands.
   - XGBoost stat-level per-stat (16 boosters 2026-08-28, same 38 cols, real PBP):
     REJECTED — evidence: data/models/stat_level/meta.json val 4.463 vs true
     stat 4.474 local (+0.011 win) but corr 0.658 vs 0.6918 (stale K-zeroed
@@ -236,10 +252,12 @@ def compute_conformal_bounds(
 # to 2024-2025 trailing-xFP means (opportunity follow-up: the POP control
 # beat both the old flat means and individualized priors on the 2025
 # holdout and 2026 Week 1; FROZEN constants reproduced POP within noise).
-# Weight unchanged (30%) — only the prior LEVEL was stale. QB/K untouched
-# (the arms never applied there: no evidence either way).
+# QB passing_tds recalibrated same day (1.7 -> 0.83, qb-xfp follow-up:
+# QFROZEN passed both samples with improved corr; frozen reproduces live
+# QPOP within noise). Weight unchanged (30%) — only prior LEVELS were
+# stale. QB rushing + K untouched (no evidence either way).
 POS_TD_MEANS = {
-    "QB": {"passing_tds": 1.7, "rushing_tds": 0.15},
+    "QB": {"passing_tds": 0.83, "rushing_tds": 0.15},
     "RB": {"rushing_tds": 0.20, "receiving_tds": 0.04},
     "WR": {"receiving_tds": 0.18, "rushing_tds": 0.005},
     "TE": {"receiving_tds": 0.14},

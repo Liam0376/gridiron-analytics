@@ -50,10 +50,14 @@ from ffanalytics.scoring import calculate_fantasy_points, DEFAULT_SCORING  # noq
 
 CACHE = REPO_ROOT / "data" / "nfl_cache"
 OUT_JSON = REPO_ROOT / "data" / "ml" / "backtest_ecr_results.json"
+# why v2 (2026-09-15): v1 filtered out the weekly-op (overall) page, which
+# the overall-rank threshold sweep needs. Delete v1 to refetch.
+ARCH_CACHE = "ecr_archive_weekly_v2.json"
 POSITIONS = ("QB", "RB", "WR", "TE", "K")
 WEEKLY_TYPES = {"weekly-qb", "weekly-rb", "weekly-wr", "weekly-te",
-                "weekly-k", "weekly-dst"}
-EDGE_THRESHOLD = 12  # same threshold as comparison/_edge.py
+                "weekly-k", "weekly-dst", "weekly-op"}
+EDGE_THRESHOLD = 12  # status-quo flat threshold (comparison/_edge.py)
+THRESHOLD_GRID = (6, 8, 10, 12)
 
 
 def _load_cache(name):
@@ -108,6 +112,7 @@ def _load_archive_weekly():
                 continue
             keep.append({
                 "scrape_date": str(r.get("scrape_date") or ""),
+                "page_type": str(r.get("page_type") or ""),
                 "fpid": str(r.get("id") or ""),
                 "name": r.get("player") or "",
                 "pos": str(r.get("pos") or "").upper(),
@@ -115,7 +120,7 @@ def _load_archive_weekly():
                 "ecr": r.get("ecr"),
             })
         return keep
-    return _ensure_cache("ecr_archive_weekly.json", _fetch)
+    return _ensure_cache(ARCH_CACHE, _fetch)
 
 
 def _thursday_teams(sched, week, cutoff_iso):
@@ -152,12 +157,16 @@ def _ecr_for_week(arch, sched, week):
     rows = [r for r in arch if r["scrape_date"] == scrape]
     by_fpid, pos_of = {}, {}
     order = defaultdict(list)
+    overall = []
     for r in rows:
         try:
             e = float(r["ecr"]) if r["ecr"] is not None else None
         except Exception:
             e = None
         if e is None or not r["fpid"]:
+            continue
+        if r.get("page_type") == "weekly-op":
+            overall.append((e, r["fpid"]))
             continue
         by_fpid[r["fpid"]] = e
         pos_of[r["fpid"]] = r["pos"]
@@ -167,8 +176,11 @@ def _ecr_for_week(arch, sched, week):
         lst.sort()
         for i, (_, fpid) in enumerate(lst, start=1):
             pos_rank[fpid] = i
+    overall.sort()
+    overall_rank = {fpid: i for i, (_, fpid) in enumerate(overall, start=1)}
     early = _thursday_teams(sched, week, scrape)
     return {"ecr": by_fpid, "pos_rank": pos_rank, "pos": pos_of,
+            "overall_rank": overall_rank,
             "scrape": scrape, "early_teams": sorted(early)}, None, None
 
 
@@ -281,11 +293,48 @@ def _calibrate_week(model, ecr, early_teams):
     return res
 
 
+def _sweep_overall_thresholds(model, ecr, early_teams):
+    """Overall-rank disagreement sweep per player position.
+
+    Same quantity comparison/_edge.py rules on (overall ECR rank vs model
+    overall rank): for T in THRESHOLD_GRID, players with |model - ecr| >= T
+    count a win for whichever rank was closer to the actual overall rank.
+    Returns {pos: {T: [mw, ew]}}.
+    """
+    common = []
+    for pid, m in model.items():
+        if not m["fpid"] or m["fpid"] not in ecr["overall_rank"]:
+            continue
+        if m["team"] in (early_teams or set()):
+            continue
+        common.append((pid, m["pos"], m["proj"], m["actual"],
+                       ecr["overall_rank"][m["fpid"]]))
+    if len(common) < 5:
+        return {}
+    order_m = np.argsort([-c[2] for c in common], kind="stable")
+    order_a = np.argsort([-c[3] for c in common], kind="stable")
+    mr = np.empty(len(common))
+    ar = np.empty(len(common))
+    mr[order_m] = np.arange(1, len(common) + 1)
+    ar[order_a] = np.arange(1, len(common) + 1)
+    out = defaultdict(lambda: defaultdict(lambda: [0, 0]))
+    for i, (_, pos, _, _, er) in enumerate(common):
+        for t in THRESHOLD_GRID:
+            if abs(float(mr[i]) - float(er)) < t:
+                continue
+            if abs(float(mr[i]) - float(ar[i])) < abs(float(er) - float(ar[i])):
+                out[pos][t][0] += 1
+            else:
+                out[pos][t][1] += 1
+    return {p: {t: v for t, v in sorted(d.items())} for p, d in out.items()}
+
+
 def _run_sample(tag, stats_cur, stats_prior, sched, weeks, season,
                 arch, fpid_by_gsis):
     per_week, agg = {}, defaultdict(lambda: {"n": 0, "sm": [], "se": [],
                                              "mw": 0, "ew": 0, "ties": 0,
                                              "dn": 0})
+    sweep_agg = defaultdict(lambda: [0, 0])
     for w in weeks:
         ecr, _, _ = _ecr_for_week(arch, sched, w)
         if ecr is None:
@@ -294,8 +343,13 @@ def _run_sample(tag, stats_cur, stats_prior, sched, weeks, season,
         model = _model_week(stats_cur, stats_prior, sched, w, fpid_by_gsis)
         early = set(ecr["early_teams"])
         cal = _calibrate_week(model, ecr, early)
+        sweep = _sweep_overall_thresholds(model, ecr, early)
         per_week[str(w)] = {"scrape": ecr["scrape"], "early_teams": ecr["early_teams"],
                             "pos": cal}
+        for p, dd in sweep.items():
+            for t, (mw, ew) in dd.items():
+                sweep_agg[(p, t)][0] += mw
+                sweep_agg[(p, t)][1] += ew
         line = " ".join(
             f"{p}:n={c['n']} spM={c['spearman_model']:+.3f} spE={c['spearman_ecr']:+.3f} "
             f"d={c['disagree_n']}(M{c['model_wins']}/E{c['ecr_wins']})"
@@ -326,7 +380,30 @@ def _run_sample(tag, stats_cur, stats_prior, sched, weeks, season,
         f"{p}:spM={s['spearman_model_mean']} spE={s['spearman_ecr_mean']} "
         f"d={s['disagree_n']}(M{s['model_wins']}/E{s['ecr_wins']})"
         for p, s in sorted(summary.items())))
-    return {"weeks": per_week, "summary": summary}
+    # why pre-registered rule (point 4): per position, among thresholds with
+    # n>=30 pick max model win-rate, tie-break toward 12 (status quo); best
+    # <=50% keeps 12; K forced 12 (tiny n, documented). Frozen after this.
+    recommended = {}
+    for pos in sorted({p for (p, t) in sweep_agg}):
+        cells = {t: sweep_agg[(pos, t)] for t in THRESHOLD_GRID
+                 if sum(sweep_agg[(pos, t)]) >= 30}
+        if pos == "K" or not cells:
+            recommended[pos] = EDGE_THRESHOLD
+            continue
+        scored = sorted(
+            ((mw / (mw + ew) if (mw + ew) else 0.0, -abs(t - EDGE_THRESHOLD), t)
+             for t, (mw, ew) in cells.items()),
+            reverse=True)
+        best_rate, _, best_t = scored[0]
+        recommended[pos] = best_t if best_rate > 0.50 else EDGE_THRESHOLD
+    print(f"[ecrback:{tag}] THRESHOLDS " + " ".join(
+        f"{p}={recommended[p]}"
+        f"({';'.join(f'T{t}:{mw}/{ew}' for t, (mw, ew) in sorted(((t, sweep_agg[(p, t)]) for t in THRESHOLD_GRID), key=lambda x: x[0]))})"
+        for p in sorted({p for (p, t) in sweep_agg})))
+    return {"weeks": per_week, "summary": summary,
+            "threshold_sweep": {f"{p}/T{t}": {"mw": mw, "ew": ew}
+                                for (p, t), (mw, ew) in sorted(sweep_agg.items())},
+            "recommended_thresholds": recommended}
 
 
 def main():

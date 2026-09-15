@@ -557,3 +557,16 @@ def test_nflverse_ecr_to_fpros_shape():
     assert out["position_id"] == "QB"
     assert out["fantasypros_id"] == "12345"
     assert out["tier"] is None and out["rank_adp_ppr"] is None
+
+
+def test_opportunity_features_passing_keys():
+    rows = [{
+        "player_id": "00-0023459", "week": 1,
+        "pass_yards_gained": 240.0, "pass_yards_gained_exp": 260.0,
+        "pass_touchdown": 2.0, "pass_touchdown_exp": 1.5,
+    }]
+    f = refresh.opportunity_features(rows)[("00-0023459", 1)]
+    assert abs(f["pass_yd_gap"] - (-20.0)) < 1e-9
+    assert abs(f["pass_td_gap"] - 0.5) < 1e-9
+    assert abs(f["pass_yd_exp"] - 260.0) < 1e-9
+    assert abs(f["pass_td_exp"] - 1.5) < 1e-9
