@@ -3,6 +3,7 @@ const routes = [
   { id: 'team', label: 'Team Hub', path: '#team' },
   { id: 'matchups', label: 'Matchups', path: '#matchups' },
   { id: 'projections', label: 'Projections', path: '#projections' },
+  { id: 'ros', label: 'RoS', path: '#ros' },
   { id: 'props', label: 'Props', path: '#props' },
   { id: 'tierlists', label: 'Tier Lists', path: '#tierlists' },
   { id: 'auction', label: 'Auction', path: '#auction' },

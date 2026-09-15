@@ -19,6 +19,7 @@ const viewLoaders = {
   team: () => import('./views/team.js'),
   matchups: () => import('./views/matchups.js'),
   projections: () => import('./views/projections.js'),
+  ros: () => import('./views/ros.js'),
   props: () => import('./views/props.js'),
   tierlists: () => import('./views/tierlists.js'),
   auction: () => import('./views/auction.js'),

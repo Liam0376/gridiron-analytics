@@ -759,3 +759,79 @@ def build_weekly_projections(
         projections.append(projected_stats)
 
     return projections
+
+
+def compute_ros_projections(
+    model_projections: List[Dict],
+    schedule: List[Dict],
+    current_week: int,
+) -> List[Dict]:
+    """Compute Rest-of-Season projections for all players.
+
+    Uses the Vegas-neutral per-game projection (_neutral_points) from the
+    current week's model, multiplied by remaining games (excluding bye weeks).
+    This avoids extrapolating a single week's matchup-specific Vegas line
+    across the whole season.
+
+    Args:
+        model_projections: current week's model projection rows (must contain
+            _neutral_points, player_id, player_display_name, position, team)
+        schedule: full season schedule from data/nfl_cache/schedule_YYYY.json
+        current_week: the current NFL week (1-18)
+
+    Returns:
+        list of dicts with player_id, player_display_name, position, team,
+        ros_points, remaining_games, per_game_neutral
+    """
+    # Build team bye week map: team -> week where they don't play
+    teams = set()
+    for g in schedule:
+        ht = g.get("home_team")
+        at = g.get("away_team")
+        if ht:
+            teams.add(ht)
+        if at:
+            teams.add(at)
+
+    bye_weeks: Dict[str, int] = {}
+    for wk in range(1, 19):
+        active_teams = set()
+        for g in schedule:
+            if g.get("week") == wk:
+                if g.get("home_team"):
+                    active_teams.add(g["home_team"])
+                if g.get("away_team"):
+                    active_teams.add(g["away_team"])
+        for t in teams - active_teams:
+            bye_weeks[t] = wk
+
+    # Compute remaining games per team (current_week through 18, excluding bye)
+    remaining_by_team: Dict[str, int] = {}
+    for t in teams:
+        remaining = 0
+        for wk in range(current_week, 19):
+            if bye_weeks.get(t) != wk:
+                remaining += 1
+        remaining_by_team[t] = remaining
+
+    ros = []
+    for p in model_projections:
+        neutral = p.get("_neutral_points")
+        if neutral is None or neutral <= 0:
+            continue
+        team = p.get("team") or p.get("recent_team") or ""
+        remaining = remaining_by_team.get(team, 0)
+        if remaining <= 0:
+            continue
+        ros.append({
+            "player_id": p.get("player_id"),
+            "player_display_name": p.get("player_display_name", ""),
+            "position": p.get("position", ""),
+            "team": team,
+            "ros_points": round(neutral * remaining, 2),
+            "remaining_games": remaining,
+            "per_game_neutral": round(neutral, 2),
+        })
+
+    ros.sort(key=lambda x: x["ros_points"], reverse=True)
+    return ros

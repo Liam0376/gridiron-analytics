@@ -1262,6 +1262,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.handle_meta(conn, qs)
             elif path == "/hub-api/ready":
                 self.handle_ready(conn)
+            elif path == "/hub-api/projections/ros":
+                self.handle_ros_projections(conn, qs)
             elif path == "/hub-api/projections":
                 self.handle_projections(conn, qs)
             elif path == "/hub-api/matchups":
@@ -1476,6 +1478,26 @@ class Handler(BaseHTTPRequestHandler):
             self.json({"status": "ready"})
         else:
             self.json({"error": "not ready: database empty or missing"}, status=503)
+
+    def handle_ros_projections(self, conn, qs):
+        try:
+            row = conn.execute(
+                "SELECT season FROM ros_projections ORDER BY rowid DESC LIMIT 1"
+            ).fetchone()
+            if not row:
+                self.json({"players": [], "count": 0})
+                return
+            season = row[0]
+            rows = conn.execute(
+                "SELECT player_id, player_name, position, team, ros_points, "
+                "remaining_games, per_game_neutral FROM ros_projections "
+                "WHERE season = ? ORDER BY ros_points DESC",
+                (season,),
+            ).fetchall()
+            players = [dict(r) for r in rows]
+            self.json({"players": players, "count": len(players)})
+        except Exception as e:
+            self.json({"error": str(e)}, status=500)
 
     def handle_projections(self, conn, qs):
         # 60s server-side cache + Last-Modified/304 mirroring rosters-full.

@@ -1111,6 +1111,30 @@ def run_refresh_with_data(
         elif not status.get("sleeper"):
             logger.warning("refresh: sleeper status=false — skipping sleeper_matchups INSERT (preserve last-good)")
 
+        # Rest-of-season projections: aggregate neutral per-game across remaining weeks.
+        if _model_projs:
+            try:
+                from ffanalytics.stat_projector import compute_ros_projections
+                _repo_root = Path(__file__).resolve().parents[2]
+                _sched_path = _repo_root / "data" / "nfl_cache" / f"schedule_{season}.json"
+                _sched = json.loads(_sched_path.read_text()) if _sched_path.exists() else []
+                _ros = compute_ros_projections(_model_projs, _sched, compute_nfl_week())
+                for rp in _ros:
+                    conn.execute(
+                        """INSERT OR REPLACE INTO ros_projections
+                           (season, player_id, player_name, position, team,
+                            ros_points, remaining_games, per_game_neutral, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            season, rp["player_id"], rp["player_display_name"],
+                            rp["position"], rp["team"], rp["ros_points"],
+                            rp["remaining_games"], rp["per_game_neutral"],
+                            ran_at_iso,
+                        ),
+                    )
+            except Exception as _ros_exc:
+                logger.warning(f"refresh: ros_projections failed: {_ros_exc}")
+
         # P0 idempotency: news_data UNIQUE(season, week, kind) — OR REPLACE so
         # re-refresh of the same week/kind overwrites instead of UNIQUE-fail.
         # STORE-ON-SUCCESS: skip news kinds when news source failed.
