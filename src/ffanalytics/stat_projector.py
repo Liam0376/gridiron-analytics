@@ -76,6 +76,14 @@ included, no longer K-zeroed as in early scratch backtest_final.py):
     favoring POP). Trailing individual xFP TD rates are too noisy to beat
     their own mean: shrink all the way. The td_prior pipeline param stays
     (tested, default-off) as the instrument, not a win.
+  - QB passing xFP (XQ1/QPOP/QFROZEN, 2026-09-15): SPLIT — XQ1 REJECTED
+    (2025 n.s. t=1.6, 2026 t=2.6: inconsistent, fails the both-samples
+    rule); QPOP/QFROZEN PASS both samples (BASE-QFROZEN paired-t t=14.5
+    diff +0.071 on 2025 n=8049 and t=4.7 diff +0.084 on 2026wk1 n=81,
+    corr IMPROVED both, z=-0.41/-0.18; frozen 0.83 reproduces live QPOP
+    within noise). Evidence: data/ml/backtest_opportunity_results.json.
+    Proposed: QB passing_tds 1.7 -> 0.83 (rushing untouched); implementation
+    pending user confirm (qb-xfp spec verdict section).
   - Population xFP TD priors (POP/FROZEN, 2026-09-15): SHIPPED to
     POS_TD_MEANS (RB rush 0.20/rec 0.04, WR rec 0.18/rush 0.005, TE rec
     0.14; QB/K untouched — X2/POP never applied there, no evidence).
