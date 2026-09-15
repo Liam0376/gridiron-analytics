@@ -516,6 +516,56 @@ def test_refresh_writes_independent_weekly_projections_not_one_snapshot():
     conn.close()
 
 
+def test_refresh_empty_schedule_fetch_preserves_last_good_cache():
+    # why (live bug 2026-09-15): sched_adapter.get_schedule returning an
+    # empty list (no exception — a real transient upstream gap) still hit
+    # the write path and overwrote data/nfl_cache/schedule_2026.json with
+    # `[]`, wiping every team's opponent hub-wide (Team Hub, Matchups,
+    # Projections all read this file and can't refetch it themselves —
+    # isolation contract). Confirmed live this session.
+    import json
+    conn, tmp = _fresh_conn()
+    players_map = {
+        "99": {"full_name": "Test Veteran", "position": "WR", "team": "KC",
+               "years_exp": 5, "active": True, "gsis_id": "gsis-vet1"},
+    }
+    fake_nfl = Mock()
+
+    class _Frame:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def to_dicts(self):
+            return self._rows
+
+    fake_nfl.load_player_stats.return_value = _Frame(_vet_rows())
+    fake_nfl.load_schedules.return_value = _Frame([])  # empty, not an exception
+
+    sched_cache_path = (
+        Path(__file__).resolve().parent.parent / "data" / "nfl_cache" / "schedule_2026.json"
+    )
+    good_schedule = json.dumps([{"game_id": "2026_02_DET_BUF", "week": 2,
+                                  "home_team": "BUF", "away_team": "DET"}])
+    sched_backup = sched_cache_path.read_text() if sched_cache_path.exists() else None
+    sched_cache_path.parent.mkdir(parents=True, exist_ok=True)
+    sched_cache_path.write_text(good_schedule)
+    try:
+        refresh.run_refresh_with_data(
+            conn, season=2026, sleeper_session=_mock_sleeper_session(players_map),
+            nfl_module=fake_nfl, ran_at_iso="2026-09-09T12:00:00",
+            stats_season=2025, league_id="123",
+        )
+        assert sched_cache_path.read_text() == good_schedule, (
+            "empty schedule fetch must not clobber the last-good cache file"
+        )
+    finally:
+        if sched_backup is not None:
+            sched_cache_path.write_text(sched_backup)
+        elif sched_cache_path.exists():
+            sched_cache_path.unlink()
+    conn.close()
+
+
 def test_xwalk_resolves_player_absent_from_this_weeks_stats():
     # why (user-caught live bug, 2026-09-10): the name+pos xwalk fallback
     # only matched players with a row in THIS week's player_stats — a real
@@ -695,6 +745,21 @@ def test_write_json_cache_survives_date_objects(tmp_path):
     import json
     assert json.loads(p.read_text())[0]["birth_date"] == "1991-08-07"
     assert not (tmp_path / "rosters_weekly_2026.json.tmp").exists()
+
+
+def test_write_json_cache_empty_payload_preserves_last_good(tmp_path):
+    # why (live bug 2026-09-15): an empty-but-successful fetch (no exception,
+    # just nothing back) overwrote data/nfl_cache/schedule_2026.json with
+    # `[]`, wiping every team's opponent for Team Hub/Matchups/Projections
+    # (hub can't refetch the schedule itself — isolation contract). Same
+    # STORE-ON-SUCCESS discipline as player_stats/sleeper_matchups elsewhere
+    # in this file, just missing here. Covers all 6 write_json_cache call
+    # sites (rosters_weekly, depth, opportunity, ngs, ecr, playerids) at once.
+    p = tmp_path / "schedule_2026.json"
+    refresh.write_json_cache(p, [{"game_id": "2026_02_DET_BUF", "week": 2}])
+    good = p.read_text()
+    refresh.write_json_cache(p, [])
+    assert p.read_text() == good, "empty payload must not clobber last-good cache"
 
 
 def test_matchup_missing_week_key_raises():

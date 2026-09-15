@@ -110,7 +110,21 @@ def write_json_cache(path, rows: list) -> None:
     """Best-effort atomic cache write. default=str because nflverse rows
     carry non-JSON natives (roster birth_date is a datetime.date — caught
     live 2026-09-15: it killed the weekly-rosters cache write and silently
-    disabled the gsis team patch). Never raises."""
+    disabled the gsis team patch). Never raises.
+
+    STORE-ON-SUCCESS: a fetch that raises is already handled by the
+    caller's except (last-good preserved); this guards the other failure
+    mode — a fetch that returns cleanly but empty (transient upstream
+    hiccup, parsing gap) — same class of bug as the player_stats/
+    sleeper_matchups STORE-ON-SUCCESS checks elsewhere in this file.
+    Confirmed live 2026-09-15: an empty schedule fetch overwrote
+    data/nfl_cache/schedule_2026.json with `[]`, wiping every team's
+    opponent for the hub (Team Hub, Matchups, Projections all read this
+    file and can't refetch it themselves — isolation contract).
+    """
+    if not rows:
+        logger.warning("refresh: cache write skipped for %s — empty payload, preserving last-good", path)
+        return
     try:
         tmp = Path(str(path) + ".tmp")
         tmp.write_text(json.dumps(rows, default=str))
@@ -612,16 +626,23 @@ def run_refresh_with_data(
                 # the same underlying schedule call. Same data, two
                 # consumers, only one was being kept current. Atomic tmp->
                 # rename so hub never reads a half-written file mid-refresh.
-                try:
-                    _repo_root = Path(__file__).resolve().parents[2]
-                    _cache_dir = _repo_root / "data" / "nfl_cache"
-                    _cache_dir.mkdir(parents=True, exist_ok=True)
-                    _sched_path = _cache_dir / f"schedule_{season}.json"
-                    _sched_tmp = _sched_path.with_suffix(".json.tmp")
-                    _sched_tmp.write_text(_safe_dumps(data["schedule"]))
-                    _sched_tmp.replace(_sched_path)
-                except Exception as _sched_write_exc:
-                    logger.warning(f"refresh: schedule cache write failed: {_sched_write_exc}")
+                # STORE-ON-SUCCESS (same guard as write_json_cache): a fetch
+                # that returns cleanly but empty must not overwrite a good
+                # cache — confirmed live 2026-09-15, an empty schedule fetch
+                # wiped every team's opponent for Team Hub/Matchups/Projections.
+                if not data["schedule"]:
+                    logger.warning("refresh: schedule fetch returned empty, preserving last-good cache")
+                else:
+                    try:
+                        _repo_root = Path(__file__).resolve().parents[2]
+                        _cache_dir = _repo_root / "data" / "nfl_cache"
+                        _cache_dir.mkdir(parents=True, exist_ok=True)
+                        _sched_path = _cache_dir / f"schedule_{season}.json"
+                        _sched_tmp = _sched_path.with_suffix(".json.tmp")
+                        _sched_tmp.write_text(_safe_dumps(data["schedule"]))
+                        _sched_tmp.replace(_sched_path)
+                    except Exception as _sched_write_exc:
+                        logger.warning(f"refresh: schedule cache write failed: {_sched_write_exc}")
             except Exception as _sched_exc:
                 logger.warning(f"refresh: full-season schedule fetch failed: {_sched_exc}")
             # why a real prior-season fetch, not reuse of `player_stats`
