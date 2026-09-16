@@ -36,7 +36,10 @@ except Exception as e:
     print(f"live 2026 schedule fetch failed ({e}) — fallback to {schedule_path.name}")
     schedule=json.loads(schedule_path.read_text())
     stats_2025=stats_2025  # keep as stats_2025 for naming
-scoring=requests.get(f"https://api.sleeper.app/v1/league/{os.environ['SLEEPER_LEAGUE_ID']}",timeout=10).json().get("scoring_settings",{})
+league_resp = requests.get(f"https://api.sleeper.app/v1/league/{os.environ['SLEEPER_LEAGUE_ID']}",timeout=10).json()
+if not isinstance(league_resp, dict):
+    raise SystemExit(f"seed_demo: league {os.environ['SLEEPER_LEAGUE_ID']} not found on Sleeper (check SLEEPER_LEAGUE_ID)")
+scoring = league_resp.get("scoring_settings", {})
 # build weekly projections for week 1 — use 2025 stats as history (most recent complete season)
 from collections import Counter
 game_counts = Counter(r.get("player_id") for r in stats_2025 if r.get("season_type") == "REG")
