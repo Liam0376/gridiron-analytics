@@ -1801,11 +1801,11 @@ class Handler(BaseHTTPRequestHandler):
             elif p.get("recent_team"):
                 agg[pid]["team"] = p["recent_team"]
 
-        # Interval factors mirror src/ffanalytics/projection.py v1
-        # (calibration honesty batch 2026-09-12). Change together plus
+        # Interval factors mirror src/ffanalytics/projection.py v2
+        # (QB/K recalibration 2026-09-15). Change together plus
         # the parity test. Widths frozen.
         def _pos_factor(pos):
-            m = {"QB": 1.45, "RB": 1.07, "WR": 1.12, "TE": 0.88, "K": 0.55, "DEF": 0.75}
+            m = {"QB": 1.55, "RB": 1.07, "WR": 1.12, "TE": 0.88, "K": 0.85, "DEF": 0.75}
             return m.get(pos, 1.0)
 
         def _point_factor(pts):

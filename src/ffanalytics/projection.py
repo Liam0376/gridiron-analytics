@@ -9,16 +9,18 @@ from ffanalytics.conformal import interval, qhat
 from ffanalytics.scoring import calculate_fantasy_points, apply_flex_adjustment, count_flex_slots
 import math
 
-# Canonical interval factors (calibration honesty batch 2026-09-12, v1).
+# Canonical interval factors (calibration honesty batch 2026-09-12, v1;
+# QB/K recalibration 2026-09-15, v2: measured 2025 holdout true-OOS rebuild
+# QB 0.7885->0.8154 at 1.55, K 0.5923->0.7882 at 0.85, overall 0.8229->0.8420).
 # decision.py and hub/server.py mirror these numbers with a version comment.
 # Change all three together plus the parity test. Widths frozen otherwise.
-POS_WIDTH_FACTORS = {"QB": 1.45, "RB": 1.07, "WR": 1.12, "TE": 0.88, "K": 0.55, "DEF": 0.75}
+POS_WIDTH_FACTORS = {"QB": 1.55, "RB": 1.07, "WR": 1.12, "TE": 0.88, "K": 0.85, "DEF": 0.75}
 POINT_FACTOR_CAP = 1.60
 POINT_FACTOR_SLOPE = 0.022
 POINT_FACTOR_BASE = 12.0
 WIDTH_MIN = 3.0
 WIDTH_MAX = 14.0
-INTERVAL_FACTORS_VERSION = 1
+INTERVAL_FACTORS_VERSION = 2
 
 # Opponent-rating adjustment gate — default OFF.
 # tested and REJECTED — evidence: stat_projector.py:22-24, opponent defense

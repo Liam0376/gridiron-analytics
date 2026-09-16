@@ -22,11 +22,11 @@ let rosMode = false; // RoS toggle: weekly ↔ rest-of-season
 let selectedWeek = null; // null = current week (server default); weekly mode only
 const PAGE_SIZE = 50;
 
-// Interval fallback mirrors src/ffanalytics/projection.py v1
-// (calibration honesty batch 2026-09-12). Change together. Widths frozen.
+// Interval fallback mirrors src/ffanalytics/projection.py v2
+// (QB/K recalibration 2026-09-15). Change together. Widths frozen.
 // Unknown players get the same scaled band as calibrated peers, never a
 // narrower fixed default that understates their uncertainty.
-const POS_W = { QB: 1.45, RB: 1.07, WR: 1.12, TE: 0.88, K: 0.55, DEF: 0.75 };
+const POS_W = { QB: 1.55, RB: 1.07, WR: 1.12, TE: 0.88, K: 0.85, DEF: 0.75 };
 function scaledFallbackWidth(pos, pts) {
   const pf = POS_W[(pos || 'UNK').toUpperCase()] ?? 1.0;
   const qf = pts > 12 ? Math.min(1.60, 1.0 + (pts - 12) * 0.022) : 1.0;

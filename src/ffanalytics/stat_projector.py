@@ -141,6 +141,10 @@ included, no longer K-zeroed as in early scratch backtest_final.py):
     TE 83.6%, RB 84.0%). Raw QB undercovers (fat tails); displayed QB
     improves via 1.45x but K undercovers via 0.55x narrow factor.
     Widths frozen for display stability — measure only.
+  - v2 (2026-09-15): rebuilt 2025 holdout true-OOS at candidate factors
+    (n=5239 pairs, reproduces v1 baseline within noise: QB 0.7885, K 0.5923).
+    Shipped QB 1.45->1.55 (coverage 0.8154), K 0.55->0.85 (0.7882),
+    overall 0.8420. See projection.py INTERVAL_FACTORS_VERSION=2.
 
   Statistician-audit finding (2026-09-10): the number above, however
   honestly it was derived (residuals fit on 2024, evaluated once on

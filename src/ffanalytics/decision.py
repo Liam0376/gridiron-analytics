@@ -23,10 +23,10 @@ POS_REPL_COUNTS = config.POS_REPL_COUNTS
 POS_WEIGHT_FALLBACK = config.POS_WEIGHT_FALLBACK
 STARTER_BUDGET_POOL = config.STARTER_BUDGET_POOL
 
-# Interval factors mirror projection.py v1 (calibration honesty batch
-# 2026-09-12). Change together plus the parity test. Widths frozen.
-POS_WIDTH_FACTORS = {"QB": 1.45, "RB": 1.07, "WR": 1.12, "TE": 0.88, "K": 0.55, "DEF": 0.75}
-INTERVAL_FACTORS_VERSION = 1
+# Interval factors mirror projection.py v2 (QB/K recalibration 2026-09-15).
+# Change together plus the parity test. Widths frozen.
+POS_WIDTH_FACTORS = {"QB": 1.55, "RB": 1.07, "WR": 1.12, "TE": 0.88, "K": 0.85, "DEF": 0.75}
+INTERVAL_FACTORS_VERSION = 2
 
 # Opponent-defense adjustment gate — default OFF (mirrors projection.py ENABLE_OPPONENT_RATING).
 # tested and REJECTED — evidence: stat_projector.py:22-24 opponent defense factors hurt
