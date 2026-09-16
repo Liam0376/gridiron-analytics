@@ -817,16 +817,17 @@ def run_refresh_with_data(
                         sleeper_players_map, data.get("injury_status")),
                 )
                 # Prune stale ROS/weekly rows for this season on success only
-                # (preserve last-good on compute failure). ROS has no week, so
-                # the only safe prune is season-scoped delete before insert.
-                # Weekly has per-week keys; delete the season's rows before
-                # repopulating from the fresh per_week maps.
+                # (preserve last-good on compute failure). ROS is a current
+                # snapshot, so season-scoped delete is correct. Weekly keeps
+                # history: only delete weeks >= current_week before repopulating
+                # future weeks, so past weekly projections are never lost as
+                # the season rolls (linkedin data-loss concern).
                 try:
                     conn.execute("DELETE FROM ros_projections WHERE season = ?", (season,))
                 except Exception:
                     pass
                 try:
-                    conn.execute("DELETE FROM weekly_projections WHERE season = ?", (season,))
+                    conn.execute("DELETE FROM weekly_projections WHERE season = ? AND week >= ?", (season, _cw))
                 except Exception:
                     pass
                 for rp in _ros:
