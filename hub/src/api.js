@@ -58,9 +58,16 @@ async function withCache(fnName, argsObj, fetcher) {
   const hit = _ttlCache.get(key);
   if (hit && now - hit.at < TTL_MS) return hit.value;
   const fresh = (async () => {
-    try { return await fetcher(); } finally {
+    try {
+      const value = await fetcher();
       // Single-flight: keep the cached entry alive for the full TTL window.
       _ttlCache.set(key, { at: Date.now(), value: fresh });
+      return value;
+    } catch (e) {
+      // Never cache rejections: one transient failure must not poison
+      // retries for the full TTL (setup lookup stayed dead for 60s).
+      if (_ttlCache.get(key)?.value === fresh) _ttlCache.delete(key);
+      throw e;
     }
   })();
   _ttlCache.set(key, { at: now, value: fresh });
