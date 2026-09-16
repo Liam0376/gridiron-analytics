@@ -110,12 +110,17 @@ def test_compute_ros_projections_per_week_is_independent_not_summed_snapshot():
     assert per_week[3]["opponent"] == "LV"
     assert per_week[4]["opponent"] == "DEN"
     assert per_week[3]["points"] != per_week[4]["points"]
-    # ros_points is the sum of the (real, independent) per-week points —
-    # never a naive point-estimate × remaining_games multiplier.
+    # ros_points is the sum of the non-BYE per-week points —
+    # BYE weeks are stored as 0 and never counted toward remaining_games.
     assert rp["ros_points"] == pytest.approx(
-        sum(wp["points"] for wp in per_week.values()), abs=0.01
+        sum(wp["points"] for wp in per_week.values() if wp["opponent"] != "BYE"), abs=0.01
     )
-    assert rp["remaining_games"] == len(per_week)
+    assert rp["remaining_games"] == sum(1 for wp in per_week.values() if wp["opponent"] != "BYE")
+    # BYE weeks are explicit 0 rows for hub display
+    bye_weeks = [wk for wk, wp in per_week.items() if wp["opponent"] == "BYE"]
+    assert len(bye_weeks) == 14  # 16 total weeks 3..18 minus 2 real games
+    for wk in bye_weeks:
+        assert per_week[wk]["points"] == 0.0
 
 
 def test_cross_season_week_filter_bypass():

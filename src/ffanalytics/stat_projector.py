@@ -812,7 +812,8 @@ def compute_ros_projections(
             pid = p.get("player_id", "")
             if not pid:
                 continue
-            pts = float(p.get("projected_points") or 0)
+            is_bye = (p.get("opponent_team") or p.get("opponent") or "") == "BYE"
+            pts = 0.0 if is_bye else float(p.get("projected_points") or 0)
             if pid not in totals:
                 totals[pid] = {
                     "player_id": pid,
@@ -823,6 +824,18 @@ def compute_ros_projections(
                     "per_week": {},
                     "remaining_games": 0,
                 }
+            # BYE weeks still stored per-week as 0 for hub display, but never
+            # summed into ROS and never counted as a remaining game.
+            if is_bye:
+                totals[pid]["per_week"][wk] = {
+                    "points": 0.0,
+                    "lower": 0.0,
+                    "upper": 0.0,
+                    "width": 0.0,
+                    "opponent": "BYE",
+                    "wind_mph": 0,
+                }
+                continue
             totals[pid]["ros_points"] += pts
             totals[pid]["per_week"][wk] = {
                 "points": round(pts, 2),

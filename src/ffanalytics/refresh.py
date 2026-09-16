@@ -122,9 +122,19 @@ def write_json_cache(path, rows: list) -> None:
     opponent for the hub (Team Hub, Matchups, Projections all read this
     file and can't refetch it themselves — isolation contract).
     """
-    if not rows:
-        logger.warning("refresh: cache write skipped for %s — empty payload, preserving last-good", path)
+    if not isinstance(rows, list) or not rows:
+        logger.warning("refresh: cache write skipped for %s — empty or non-list payload, preserving last-good", path)
         return
+    # Guard: tests inject Mock objects as nfl_module; a Mock's to_dicts()
+    # returns another Mock, which is truthy and serializes to "<Mock ...>"
+    # via default=str, poisoning the persistent cache until a clean refresh
+    # overwrites. Reject anything whose first element isn't a dict.
+    try:
+        if not isinstance(rows[0], dict):
+            logger.warning("refresh: cache write skipped for %s — first element not a dict (%s), preserving last-good", path, type(rows[0]).__name__)
+            return
+    except Exception:
+        pass
     try:
         tmp = Path(str(path) + ".tmp")
         tmp.write_text(json.dumps(rows, default=str))
@@ -806,6 +816,19 @@ def run_refresh_with_data(
                     out_pids=build_out_gsis_set(
                         sleeper_players_map, data.get("injury_status")),
                 )
+                # Prune stale ROS/weekly rows for this season on success only
+                # (preserve last-good on compute failure). ROS has no week, so
+                # the only safe prune is season-scoped delete before insert.
+                # Weekly has per-week keys; delete the season's rows before
+                # repopulating from the fresh per_week maps.
+                try:
+                    conn.execute("DELETE FROM ros_projections WHERE season = ?", (season,))
+                except Exception:
+                    pass
+                try:
+                    conn.execute("DELETE FROM weekly_projections WHERE season = ?", (season,))
+                except Exception:
+                    pass
                 for rp in _ros:
                     conn.execute(
                         """INSERT OR REPLACE INTO ros_projections
@@ -994,12 +1017,26 @@ def run_refresh_with_data(
         data["market_by_gsis"] = {}
         data["fpros_players"] = []
 
-    # Fetch news and trending
+    # Fetch news and trending — per-source isolation so one missing key
+    # doesn't nuke the others. fantasypros is optional ($0 install has no key)
+    # and must not fail the whole block.
     try:
         from ffanalytics.adapters import news, fantasypros
-        trending = news.get_trending_adds(session=sleeper_session)
-        detailed_injuries = news.get_injury_with_practice(stats_season, nfl_module=nfl_module)
-        fp_news = fantasypros.get_fantasypros_news(limit=25)
+        try:
+            trending = news.get_trending_adds(session=sleeper_session)
+        except Exception as _tr_exc:
+            logger.warning(f"trending fetch failed: {_tr_exc}")
+            trending = []
+        try:
+            detailed_injuries = news.get_injury_with_practice(stats_season, nfl_module=nfl_module)
+        except Exception as _di_exc:
+            logger.warning(f"detailed injuries fetch failed: {_di_exc}")
+            detailed_injuries = []
+        try:
+            fp_news = fantasypros.get_fantasypros_news(limit=25)
+        except Exception as _fp_exc:
+            logger.warning(f"fantasypros news fetch failed: {_fp_exc}")
+            fp_news = []
         data["trending"] = trending
         data["detailed_injuries"] = detailed_injuries
         data["fantasypros_news"] = fp_news
@@ -1146,6 +1183,14 @@ def run_refresh_with_data(
                    VALUES (?, ?, ?)""",
                 (season, 0, _safe_dumps(data["player_stats"])),
             )
+            # Prune demo week-1 blob (seed_demo.py) that outranks live week 0
+            # in hub queries (ORDER BY week DESC). Live refresh only writes week 0,
+            # so any non-zero weekly player_stats row is demo/shadow and safe to
+            # delete. Keeps the DB honest before linkedin's first impression.
+            try:
+                conn.execute("DELETE FROM player_stats WHERE season = ? AND week != 0", (season,))
+            except Exception as _demo_prune_exc:
+                logger.warning(f"player_stats demo prune failed: {_demo_prune_exc}")
             # Snapshot per-player projections for accuracy grading (DB1 fix).
             snap_at = now.isoformat()
             for ps in data["player_stats"]:
