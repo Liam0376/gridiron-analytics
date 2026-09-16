@@ -60,7 +60,7 @@ export async function openSetupModal({ onDone } = {}) {
     </div>` : ''}
     <label class="faint" for="setupInput" style="display:block; margin-bottom:4px">1 · Sleeper league ID <span class="faint">(or paste your league URL)</span></label>
     <div class="row" style="gap:8px; margin-bottom:12px">
-      <input id="setupInput" class="search-top" style="flex:1; border:1px solid var(--border); border-radius:8px; padding:8px 10px" placeholder="1397736035240173568" inputmode="numeric" value="${escapeAttr(current)}" />
+      <input id="setupInput" class="search-top" style="flex:1; border:1px solid var(--border); border-radius:8px; padding:8px 10px" placeholder="e.g. 123456789012345678" inputmode="numeric" value="${escapeAttr(current)}" />
       <button class="btn btn-primary btn-sm" id="setupValidate">Look up</button>
     </div>
     <div id="setupResult" aria-live="polite"></div>
