@@ -94,10 +94,9 @@ async function tryHub(path, opts = {}) {
 // takes an explicit id — tryHub would use the stored one). Short TTL keyed
 // by id; failures return null (caller shows Sleeper-unreachable copy).
 export async function fetchDraftInfo(explicitId) {
-  return withCache('fetchDraftInfo', { leagueId: explicitId || '' }, async () => {
-    const q = explicitId ? `?league_id=${encodeURIComponent(explicitId)}` : '';
+  return withCache('fetchDraftInfo', { leagueId: explicitId || getLeagueId() || '' }, async () => {
     try {
-      return await getJSON(`${HUB_API}/draft${q}`);
+      return await getJSON(hubPath('/draft', explicitId));
     } catch (_) {
       return null;
     }
@@ -275,14 +274,14 @@ export async function fetchRefreshLog() {
 // per scheduled game. Same model-direct/no-write pattern as props edges.
 // Routed through hub proxy (/hub-api) to avoid CORS (browser on 8001 → API on 8000).
 export async function fetchGamePredictions(args = {}) {
-  return withCache('fetchGamePredictions', args, async () => {
+  return withCache('fetchGamePredictions', { ...args, leagueId: getLeagueId() || '' }, async () => {
     const { week, season } = args;
     const qs = new URLSearchParams();
     if (week != null && week !== '') qs.set('week', String(week));
     if (season != null && season !== '') qs.set('season', String(season));
     const suffix = qs.toString() ? `?${qs}` : '';
     try {
-      const data = await getJSON(`${HUB_API}/games/predictions${suffix}`);
+      const data = await getJSON(hubPath(`/games/predictions${suffix}`));
       return { games: data.games || [], meta: { timestamp: data.timestamp, week: data.week, season: data.season } };
     } catch (_) {
       return { games: [], meta: { cold: true } };

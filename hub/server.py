@@ -1871,6 +1871,23 @@ class Handler(BaseHTTPRequestHandler):
 
         # PERF: compute once per request — never per-player.
         _opp_map = get_nfl_opponent_map(compute_nfl_week())
+        # Live weather for default projections: same STADIUM_COORDS+weather
+        # join as matchups handler, but keyed by opponent_team for O(1) lookup.
+        _wx_by_team = {}
+        try:
+            _wx_raw = {}
+            for w in conn.execute(
+                "SELECT lat, lon, wind_mph FROM weather ORDER BY fetched_at DESC"
+            ).fetchall():
+                key = (round(float(w["lat"]), 4), round(float(w["lon"]), 4))
+                if key not in _wx_raw:
+                    _wx_raw[key] = float(w["wind_mph"]) if w["wind_mph"] is not None else 0
+            for tm, coords in STADIUM_COORDS.items():
+                k = (round(coords[0], 4), round(coords[1], 4))
+                if k in _wx_raw:
+                    _wx_by_team[tm] = _wx_raw[k]
+        except Exception:
+            _wx_by_team = {}
 
         out = []
         for pid, a in agg.items():
@@ -1950,7 +1967,7 @@ class Handler(BaseHTTPRequestHandler):
                 "projection_width": width,
                 "injury_status": injuries.get(pid),
                 "trending": pid in trending_ids,
-                "wind_mph": None,
+                "wind_mph": _wx_by_team.get(_opp_map.get(a["team"]) or a["opponent_team"] or "", 0),
                 "weather_delta": 0,
                 "games": a["games"],
             })

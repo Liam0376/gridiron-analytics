@@ -80,9 +80,11 @@ export async function renderProjections(root) {
   rosterPlayerIds = new Set(); // Audit 22.0: reset for "My Roster" filter
   try {
     const rosterData = await fetchRoster({});
-    const allRosterPlayers = (rosterData.rosters || rosterData.leagueRosters || [])
-      .flatMap(r => (r.players || []).map(pid => ({ player_id: pid, team: r.team_name })))
-      .concat((rosterData.starters || []), (rosterData.bench || []), (rosterData.reserve || []));
+    const allRosterPlayers = [].concat(
+      rosterData.starters || [],
+      rosterData.bench || [],
+      rosterData.reserve || []
+    ).map(p => ({ player_id: p.player_id, team_name: p.team_name || '' }));
     for (const p of allRosterPlayers) {
       if (p.player_id) {
         rosterPlayerIds.add(String(p.player_id));
@@ -341,7 +343,7 @@ export async function renderProjections(root) {
           <button class="chip" data-chip="trending:true">Trending</button>
           <button class="chip" data-chip="roster:true">My Roster</button>
           <button class="chip" data-chip="wind>15">Wind &gt;15</button>
-          <button class="chip" data-chip="interval<3">Tight (±&lt;3)</button>
+          <button class="chip" data-chip="interval<4">Tight (±&lt;4)</button>
         </div>
         ${meta.cold ? `<div class="alert alert-warn">No fresh data. Refresh to populate.</div>` : ``}
         ${!allPlayers.length ? `<div class="alert alert-info">No projections yet. Search works once data loads.</div>` : ``}

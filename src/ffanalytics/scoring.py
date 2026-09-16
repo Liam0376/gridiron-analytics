@@ -35,12 +35,9 @@ def calculate_fantasy_points(stats: dict, scoring_settings: dict | None = None) 
         stats = {**stats, "interceptions": stats.get("passing_interceptions")}
     if "fumbles_lost_total" in stats and "fumbles_lost" not in stats:
         stats = {**stats, "fumbles_lost": stats.get("fumbles_lost_total")}
-    if "passing_interceptions" not in stats and "pass_int" in stats:
-        stats = {**stats, "interceptions": stats.get("pass_int")}
-    if "fumbles_lost_total" not in stats and "fum_lost" in stats:
-        stats = {**stats, "fumbles_lost": stats.get("fum_lost")}
 
     stat_to_scoring_key = {
+        # Long nflverse keys → canonical scoring keys
         "receptions": "rec",
         "receiving_yards": "rec_yd",
         "rushing_yards": "rush_yd",
@@ -71,6 +68,39 @@ def calculate_fantasy_points(stats: dict, scoring_settings: dict | None = None) 
         "fumble_recovery": "fum_rec",
         "fumble_recovery_td": "fum_rec_td",
         "forced_fumble": "ff",
+        # Short Sleeper keys → canonical scoring keys (stat_projector/hub emit these)
+        "rec": "rec",
+        "rec_yd": "rec_yd",
+        "rush_yd": "rush_yd",
+        "pass_yd": "pass_yd",
+        "pass_td": "pass_td",
+        "rush_td": "rush_td",
+        "rec_td": "rec_td",
+        "pass_int": "pass_int",
+        "fum_lost": "fum_lost",
+        "pass_2pt": "pass_2pt",
+        "rush_2pt": "rush_2pt",
+        "rec_2pt": "rec_2pt",
+        "pass_cmp_40p": "pass_cmp_40p",
+        "rush_40p": "rush_40p",
+        "rec_40p": "rec_40p",
+        "pass_td_40p": "pass_td_40p",
+        "rush_td_40p": "rush_td_40p",
+        "rec_td_40p": "rec_td_40p",
+        "fgm_0_19": "fgm_0_19",
+        "fgm_20_29": "fgm_20_29",
+        "fgm_30_39": "fgm_30_39",
+        "fgm_40_49": "fgm_40_49",
+        "fgm_50_59": "fgm_50_59",
+        "fgm_60p": "fgm_60p",
+        "fgmiss": "fgmiss",
+        "fgmiss_0_19": "fgmiss_0_19",
+        "fgmiss_20_29": "fgmiss_20_29",
+        "xpm": "xpm",
+        "xpmiss": "xpmiss",
+        "fum_rec": "fum_rec",
+        "fum_rec_td": "fum_rec_td",
+        "ff": "ff",
     }
 
     points = 0.0

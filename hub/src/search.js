@@ -51,7 +51,7 @@ export function parseQuery(raw) {
         chips[key] = { op, value: v };
         continue;
       }
-      if (['healthy','trending'].includes(key)) {
+      if (['healthy','trending','roster'].includes(key)) {
         chips[key] = { op: ':', value: v.toLowerCase() };
         continue;
       }

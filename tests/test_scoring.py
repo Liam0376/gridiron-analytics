@@ -57,6 +57,24 @@ def test_scoring_alias_interceptions_and_fumbles():
     assert calculate_fantasy_points(stats, DEFAULT_SCORING) == 12.0
 
 
+def test_scoring_short_sleeper_keys():
+    # Short Sleeper keys (rec, rec_yd, pass_yd, etc.) must score identically
+    # to long keys — stat_projector and hub emit short keys.
+    assert calculate_fantasy_points({"rec": 5}, DEFAULT_SCORING) == 5.0
+    assert calculate_fantasy_points({"rec_yd": 100}, DEFAULT_SCORING) == 10.0
+    assert calculate_fantasy_points({"rush_yd": 80}, DEFAULT_SCORING) == 8.0
+    assert calculate_fantasy_points({"pass_yd": 300}, DEFAULT_SCORING) == 12.0
+    assert calculate_fantasy_points({"pass_td": 2}, DEFAULT_SCORING) == 10.0
+    assert calculate_fantasy_points({"rush_td": 1}, DEFAULT_SCORING) == 6.0
+    assert calculate_fantasy_points({"rec_td": 1}, DEFAULT_SCORING) == 6.0
+    assert calculate_fantasy_points({"pass_int": 1}, DEFAULT_SCORING) == -1.0
+    assert calculate_fantasy_points({"fum_lost": 1}, DEFAULT_SCORING) == -2.0
+    # Mixed long + short
+    stats = {"pass_yd": 250, "pass_td": 1, "rec": 5, "rec_yd": 80, "rec_td": 1}
+    # 250*0.04=10 +5 +5 +8 +6 =34
+    assert calculate_fantasy_points(stats, DEFAULT_SCORING) == 34.0
+
+
 def test_scoring_nan_guard():
     assert calculate_fantasy_points({"passing_yards": float("nan")}, DEFAULT_SCORING) == 0.0
     assert calculate_fantasy_points({"receptions": float("inf")}, DEFAULT_SCORING) == 0.0

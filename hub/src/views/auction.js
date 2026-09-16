@@ -143,7 +143,7 @@ export async function renderAuction(root) {
       </div>
       <div class="kpi-card" style="border-top:1px solid var(--amber)">
         <div class="kpi-label" style="color:var(--amber)">Auction vs Market</div>
-        <div class="kpi-value" style="font-size:14px; line-height:1.2">VOR $ from Model<br><span style="font:600 11px Helvetica Neue, Helvetica,sans-serif; color:var(--text-muted); letter-spacing:0.04em; text-transform:uppercase">$${usedBudget} × ${math.posGroups.length} teams · ${compareAuctionEnabled ? 'Market Δ shown' : 'toggle Market to see Δ'}</span></div>
+        <div class="kpi-value" style="font-size:14px; line-height:1.2">VOR $ from Model<br><span style="font:600 11px Helvetica Neue, Helvetica,sans-serif; color:var(--text-muted); letter-spacing:0.04em; text-transform:uppercase">$${usedBudget} × ${league ? league.teams : 12} teams · ${compareAuctionEnabled ? 'Market Δ shown' : 'toggle Market to see Δ'}</span></div>
         <div style="display:flex; gap:6px; margin-top:8px"><button class="chip ${compareAuctionEnabled ? 'active' : ''}" id="toggleAuctionCompare" style="font-size:11px">${compareAuctionEnabled ? '✓ Market + ECR on' : 'Show Market + ECR'}</button><button class="chip" id="copyModelVsMarketCsv" style="font-size:11px">Copy Model vs Market CSV</button></div>
       </div>
     </div>
@@ -163,13 +163,13 @@ export async function renderAuction(root) {
       </div>
       <div class="kpi-card">
         <div class="kpi-label">My Roster</div>
-        <div class="kpi-value mono">${myRosterCount}/14</div>
+        <div class="kpi-value mono">${myRosterCount}/${league ? league.startersPerTeam + league.benchPerTeam : 14}</div>
         <div class="micro faint">${myRosterPlayers.map(p => (p.position || '').toUpperCase()).join(', ') || 'empty'}</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Draft Progress</div>
-        <div class="kpi-value mono">${draftedCount}/${12 * 14}</div>
-        <div class="kpi-bar"><div class="kpi-bar-fill ok" style="width:${(draftedCount / (12 * 14) * 100).toFixed(0)}%"></div></div>
+        <div class="kpi-value mono">${draftedCount}/${(league ? league.teams : 12) * (league ? league.startersPerTeam + league.benchPerTeam : 14)}</div>
+        <div class="kpi-bar"><div class="kpi-bar-fill ok" style="width:${(draftedCount / ((league ? league.teams : 12) * (league ? league.startersPerTeam + league.benchPerTeam : 14)) * 100).toFixed(0)}%"></div></div>
         <div class="micro faint">${availablePlayers.length} available</div>
       </div>
     </div>

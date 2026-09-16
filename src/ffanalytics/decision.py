@@ -300,10 +300,9 @@ def _replacement_levels(
         replacement_rank = int(slots * num_teams)
         projections = by_pos.get(pos, [])
         if replacement_rank < len(projections):
-            # 0-indexed: replacement_rank=N means player N+1 is the first
-            # below-replacement player, so the replacement level is the
-            # projection of player at index N-1 (the last above-replacement).
-            levels[pos] = projections[max(0, replacement_rank - 1)]
+            # replacement_rank = N means players 1..N are starters.
+            # Player N+1 (0-indexed N) is the first below-replacement.
+            levels[pos] = projections[replacement_rank]
         elif projections:
             levels[pos] = projections[-1]
         else:
