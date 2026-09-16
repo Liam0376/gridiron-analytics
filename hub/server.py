@@ -1333,6 +1333,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.handle_ratings(conn)
             elif path == "/hub-api/waiver":
                 self.handle_waiver(conn)
+            elif path == "/hub-api/trade":
+                self.handle_trade(conn, qs)
             elif path == "/hub-api/rosters":
                 self.handle_rosters_raw(conn)
             elif path == "/hub-api/comparison":
@@ -2363,6 +2365,73 @@ class Handler(BaseHTTPRequestHandler):
         recs.sort(key=lambda x: x["improvement_over_roster"], reverse=True)
         for i, r in enumerate(recs[:50]): r["waiver_priority"] = i+1
         self.json({"recommendations": recs[:50], "meta": {"source": "db:free_agents"}})
+
+    def handle_trade(self, conn, qs):
+        # Hub-side fallback for the Trade tab when :8000 is down (api.js
+        # fetchTrade falls back to /hub-api/trade). ROS-points comparison, NOT
+        # VBD dollars: sums ros_projections.ros_points per side via
+        # sleeper_xwalk. Same fair threshold (+/-5) as
+        # decision.evaluate_trade and same {winner, value_difference,
+        # recommendation} shape trade.js reads. meta.source says fallback so
+        # it never claims model dollars.
+        team_a = (qs.get("team_a_id", [None])[0] or "")
+        team_b = (qs.get("team_b_id", [None])[0] or "")
+        if not team_a or not team_b:
+            self.json({"error": "team_a_id and team_b_id required"}, status=400)
+            return
+        row = try_fetch_one(conn, "SELECT data FROM rosters ORDER BY rowid DESC LIMIT 1")
+        rosters = load_json_blob(row) or []
+
+        def find_roster(tid):
+            for r in (rosters if isinstance(rosters, list) else []):
+                if not isinstance(r, dict):
+                    continue
+                if str(r.get("roster_id") or "") == str(tid) or str(r.get("owner_id") or "") == str(tid):
+                    return r
+            return None
+
+        ra, rb = find_roster(team_a), find_roster(team_b)
+        if ra is None or rb is None:
+            self.json({"error": "unknown team id"}, status=404)
+            return
+        try:
+            xrows = conn.execute("SELECT sleeper_id, gsis_id FROM sleeper_xwalk").fetchall()
+            xwalk = {str(r["sleeper_id"]): str(r["gsis_id"]) for r in xrows if r["sleeper_id"] and r["gsis_id"]}
+        except Exception:
+            xwalk = {}
+        try:
+            rrows = conn.execute("SELECT player_id, ros_points FROM ros_projections").fetchall()
+            ros = {str(r["player_id"]): float(r["ros_points"] or 0) for r in rrows}
+        except Exception:
+            ros = {}
+        if not ros or not xwalk:
+            self.json({"error": "trade fallback cold: no ros/xwalk data"}, status=503)
+            return
+
+        def side_value(roster):
+            total, valued = 0.0, 0
+            for pid in (roster.get("players") or []):
+                g = xwalk.get(str(pid))
+                if g and g in ros:
+                    total += ros[g]
+                    valued += 1
+            return total, valued
+
+        a_pts, a_n = side_value(ra)
+        b_pts, b_n = side_value(rb)
+        diff = a_pts - b_pts
+        if abs(diff) < 5:
+            winner = "Fair"
+            rec = f"Roughly fair (hub fallback ROS diff {abs(diff):.1f} < 5)"
+        elif diff > 0:
+            winner = "Team A"
+            rec = f"Team A leads by {abs(diff):.1f} ROS pts (hub fallback, not VBD dollars)"
+        else:
+            winner = "Team B"
+            rec = f"Team B leads by {abs(diff):.1f} ROS pts (hub fallback, not VBD dollars)"
+        self.json({"winner": winner, "value_difference": round(abs(diff), 2),
+                   "recommendation": rec,
+                   "meta": {"source": "hub-fallback:ros-points", "team_a_valued": a_n, "team_b_valued": b_n}})
 
 def main():
     ap = argparse.ArgumentParser()

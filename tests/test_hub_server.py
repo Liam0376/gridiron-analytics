@@ -561,3 +561,51 @@ def test_rosters_full_week_override_matches_by_name_when_gsis_id_missing(tmp_pat
         except Exception:
             pass
         hubserver.Handler.db_path = orig_db
+
+
+def test_hub_trade_fallback_ros_points_shape(tmp_path):
+    # why: /hub-api/trade is the Trade tab fallback when :8000 is down; it
+    # 404'd (no route) so the tab showed "no result". Hub sums
+    # ros_projections.ros_points per side via sleeper_xwalk and returns the
+    # same {winner, value_difference, recommendation} shape trade.js reads.
+    import sqlite3
+    import urllib.error
+    from http.server import HTTPServer
+    db_path = tmp_path / "trade.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE rosters (season INT, week INT, data TEXT)")
+    conn.execute("INSERT INTO rosters VALUES (2026, 1, ?)", (json.dumps([
+        {"roster_id": 1, "owner_id": "owner1", "players": ["s1", "s2"]},
+        {"roster_id": 2, "owner_id": "owner2", "players": ["s3"]},
+    ]),))
+    conn.execute("CREATE TABLE sleeper_xwalk (sleeper_id TEXT, gsis_id TEXT)")
+    conn.executemany("INSERT INTO sleeper_xwalk VALUES (?, ?)", [("s1", "g1"), ("s2", "g2"), ("s3", "g3")])
+    conn.execute("CREATE TABLE ros_projections (season INT, player_id TEXT, player_name TEXT, position TEXT, team TEXT, ros_points REAL, remaining_games INT, per_game_neutral REAL, updated_at TEXT)")
+    conn.executemany("INSERT INTO ros_projections VALUES (2026, ?, ?, 'WR', 'KC', ?, 17, 0, '')",
+                     [("g1", "Alpha", 20.0), ("g2", "Beta", 10.0), ("g3", "Gamma", 12.0)])
+    conn.commit()
+    conn.close()
+    orig_db = hubserver.Handler.db_path
+    hubserver.Handler.db_path = db_path
+    port = get_free_port()
+    httpd = HTTPServer(('127.0.0.1', port), hubserver.Handler)
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/hub-api/trade?team_a_id=1&team_b_id=2", timeout=10) as r:
+            assert r.status == 200
+            body = json.loads(r.read().decode("utf-8"))
+        assert body["winner"] == "Team A"
+        assert body["value_difference"] == pytest.approx(18.0)
+        assert "hub fallback" in body["recommendation"]
+        assert body["meta"]["source"] == "hub-fallback:ros-points"
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/hub-api/trade?team_a_id=1&team_b_id=99", timeout=10)
+        assert exc.value.code == 404
+    finally:
+        httpd.shutdown()
+        try:
+            httpd.server_close()
+        except Exception:
+            pass
+        hubserver.Handler.db_path = orig_db
