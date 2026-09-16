@@ -71,6 +71,30 @@ DEFAULT_SCORING = {
 FLEX_ELIGIBLE = {"RB", "WR", "TE"}
 FLEX_SCARCITY_MULTIPLIER = 1.05
 
+# --- Vendored stadium coords (mirror of src/ffanalytics/adapters/weather.py
+# STADIUM_COORDS @ 2026-09-15; hub never imports ffanalytics). Keyed by home
+# team abbreviation. Used to join live Open-Meteo rows from the weather table
+# into the NFL slate — schedule wind/temp are observed post-game values, null
+# before kickoff, so without this join preseason slates show wind 0.
+STADIUM_COORDS = {
+    "ARI": (33.5276, -112.2626), "ATL": (33.7554, -84.4010),
+    "BAL": (39.2780, -76.6227), "BUF": (42.7738, -78.7870),
+    "CAR": (35.2258, -80.8528), "CHI": (41.8623, -87.6167),
+    "CIN": (39.0955, -84.5160), "CLE": (41.5061, -81.6995),
+    "DAL": (32.7473, -97.0945), "DEN": (39.7439, -105.0201),
+    "DET": (42.3400, -83.0456), "GB": (44.5013, -88.0622),
+    "HOU": (29.6847, -95.4107), "IND": (39.7601, -86.1639),
+    "JAX": (30.3239, -81.6373), "KC": (39.0489, -94.4839),
+    "LAC": (33.9535, -118.3392), "LAR": (33.9535, -118.3392),
+    "LV": (36.0909, -115.1833), "MIA": (25.9580, -80.2389),
+    "MIN": (44.9736, -93.2575), "NE": (42.0909, -71.2643),
+    "NO": (29.9511, -90.0812), "NYG": (40.8128, -74.0742),
+    "NYJ": (40.8128, -74.0742), "PHI": (39.9008, -75.1675),
+    "PIT": (40.4468, -80.0158), "SEA": (47.5952, -122.3316),
+    "SF": (37.4033, -121.9694), "TB": (27.9759, -82.5033),
+    "TEN": (36.1665, -86.7713), "WAS": (38.9076, -76.8645),
+}
+
 def count_flex_slots(roster_positions):
     return sum(1 for p in roster_positions if p == "FLEX")
 
@@ -1969,6 +1993,19 @@ class Handler(BaseHTTPRequestHandler):
         # Load real NFL slate for the target week
         nfl_slate = []
         target_wk = week if (week and week > 0) else 1
+        # Live forecast join: latest weather row per stadium. Schedule
+        # wind/temp are observed post-game (null before kickoff), so without
+        # this the slate shows wind 0 all preseason despite live rows.
+        wx_by_stadium = {}
+        try:
+            for w in conn.execute(
+                "SELECT lat, lon, temp_f, wind_mph, precip_prob, fetched_at FROM weather ORDER BY fetched_at DESC"
+            ).fetchall():
+                key = (round(float(w["lat"]), 4), round(float(w["lon"]), 4))
+                if key not in wx_by_stadium:
+                    wx_by_stadium[key] = w
+        except Exception:
+            wx_by_stadium = {}
         repo_root = Path(__file__).resolve().parent.parent
         sched_file = repo_root / "data" / "nfl_cache" / "schedule_2026.json"
         if not sched_file.exists():
@@ -1979,14 +2016,32 @@ class Handler(BaseHTTPRequestHandler):
                     sched_data = json.load(f)
                 games = [g for g in sched_data if g.get("week") == target_wk]
                 for g in games:
+                    home = g.get("home_team", "")
+                    wind_mph = float(g.get("wind") or 0)
+                    temp_f = g.get("temp")
+                    precip_prob = 0
+                    wx_source = "schedule"
+                    coords = STADIUM_COORDS.get(home)
+                    if coords:
+                        w = wx_by_stadium.get((round(coords[0], 4), round(coords[1], 4)))
+                        if w is not None:
+                            try:
+                                wind_mph = float(w["wind_mph"] if w["wind_mph"] is not None else wind_mph)
+                                temp_f = float(w["temp_f"]) if w["temp_f"] is not None else temp_f
+                                precip_prob = float(w["precip_prob"] or 0)
+                                wx_source = "forecast"
+                            except Exception:
+                                pass
                     nfl_slate.append({
-                        "home_team": g.get("home_team", "—"),
+                        "home_team": home or "—",
                         "away_team": g.get("away_team", "—"),
                         "stadium": g.get("stadium") or "Stadium",
                         "gameday": g.get("gameday") or "",
                         "gametime": g.get("gametime") or "",
-                        "wind_mph": float(g.get("wind") or 0),
-                        "precip_prob": 0,
+                        "wind_mph": wind_mph,
+                        "temp_f": temp_f,
+                        "precip_prob": precip_prob,
+                        "weather_source": wx_source,
                         "spread_line": g.get("spread_line"),
                         "total_line": g.get("total_line"),
                         "placeholder": False,

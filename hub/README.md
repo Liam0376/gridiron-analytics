@@ -54,7 +54,7 @@ Production build: `npm run build` → `hub/dist/`
 ## Tabs
 
 - **Dashboard** — season/week, lastUpdated staleness, refresh log, zero-token explainer
-- **Matchups** — week picker (1–18), league matchups + NFL slate, wind badges. Weather currently `⚠ placeholder` (coords 40.0,−74.0 in `refresh.py:256` until stadium map lands)
+- **Matchups** — week picker (1–18), league matchups + NFL slate, wind badges. Slate wind comes from live Open-Meteo forecasts per stadium (`weather` table via `STADIUM_COORDS` in `hub/server.py`); `weather_source: forecast` vs `schedule` is exposed per game. Falls back to schedule observed wind when no forecast row exists.
 - **Projections** — searchable table (all numbers mono). Interval bar shows `low — point — high` (model range, half-width scale; overlap ≈ toss-up, not a statistical test). Search chips: `pos:WR wind>15 healthy:true trending:true interval<3`
 - **Tierlists** — deterministic tiers by gap > `max(2.0, 0.7×medianWidth)` or cap=6. Tabs: QB/RB/WR/TE/FLEX
 - **My Roster** — starters vs bench with overlap confidence (bench ceiling ≥ starter point ⇒ TOSS-UP, LOW confidence; otherwise HIGH if projected > 12 else MEDIUM)
@@ -84,7 +84,7 @@ Zero-token, client-side, <5ms. Press `/` to focus. Examples:
 
 ## Weather
 
-Wind penalty is `−(wind−15)×WEATHER_WIND_PENALTY_PER_MPH` for QB/WR/K only (`projection.py:148`, `config.py:48`). Until the model stores real `lat/lon + gametime`, every badge shows `⚠ placeholder`. Penalty math is still visible for audit.
+Wind penalty is `−(wind−15)×WEATHER_WIND_PENALTY_PER_MPH` for QB/WR/K only (`projection.py:148`, `config.py:48`). Refresh stores real per-stadium forecasts in `weather`; slate badges use them when present and show `⚠ placeholder` only when the table is empty. Penalty math is still visible for audit.
 
 ## Troubleshooting
 

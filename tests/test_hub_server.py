@@ -609,3 +609,41 @@ def test_hub_trade_fallback_ros_points_shape(tmp_path):
         except Exception:
             pass
         hubserver.Handler.db_path = orig_db
+
+
+def test_hub_matchups_slate_uses_live_weather_table(tmp_path):
+    # why: slate wind came from the schedule cache, whose wind/temp are
+    # observed post-game values (null before kickoff) — preseason slates
+    # showed wind 0 despite live Open-Meteo rows in weather. handle_matchups
+    # now joins the latest weather row per home-team stadium coords.
+    import sqlite3
+    from http.server import HTTPServer
+    db_path = tmp_path / "wx.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE sleeper_matchups (season INT, week INT, roster_id INT, matchup_id INT, points REAL, starters TEXT)")
+    conn.execute("""CREATE TABLE weather (lat REAL, lon REAL, game_time_iso TEXT,
+                    temp_f REAL, wind_mph REAL, precip_prob REAL, fetched_at TEXT)""")
+    conn.execute("INSERT INTO weather VALUES (47.5952, -122.3316, '2026-09-15T12:00:00', 60.0, 25.0, 0.1, '2026-09-15T16:00:00')")
+    conn.commit()
+    conn.close()
+    orig_db = hubserver.Handler.db_path
+    hubserver.Handler.db_path = db_path
+    port = get_free_port()
+    httpd = HTTPServer(('127.0.0.1', port), hubserver.Handler)
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/hub-api/matchups?week=1", timeout=10) as r:
+            assert r.status == 200
+            body = json.loads(r.read().decode("utf-8"))
+        sea = [g for g in body["nflSlate"] if g.get("home_team") == "SEA"]
+        assert sea, "week-1 slate missing SEA home game"
+        assert sea[0]["wind_mph"] == pytest.approx(25.0)
+        assert sea[0]["weather_source"] == "forecast"
+    finally:
+        httpd.shutdown()
+        try:
+            httpd.server_close()
+        except Exception:
+            pass
+        hubserver.Handler.db_path = orig_db
