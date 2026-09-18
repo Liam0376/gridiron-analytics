@@ -31,10 +31,14 @@ export async function renderMatchups(root) {
   const isWeatherPlaceholder = (typeof meta?.weather_status === 'string' && meta.weather_status.toLowerCase() === 'placeholder')
     || meta?.weather_placeholder === true;
 
-  // Group league matchups by matchup_id to get head-to-head pairs
+  // Group league matchups by matchup_id to get head-to-head pairs.
+  // why String(): matchup_id arrives as int from SQLite (father backend)
+  // but as string from Sleeper JSON (serverless backend) — strict ===
+  // lookups below silently no-op on mixed types (user-caught live bug:
+  // matchup cards never opened). Normalize once, compare strings always.
   const matchupPairs = new Map();
   league.forEach(m => {
-    const mid = m.matchup_id;
+    const mid = m.matchup_id == null ? null : String(m.matchup_id);
     if (mid == null) return;
     if (!matchupPairs.has(mid)) matchupPairs.set(mid, []);
     matchupPairs.get(mid).push(m);
@@ -90,8 +94,12 @@ export async function renderMatchups(root) {
       const rawBench = rData.bench || [];
       const { starters, bench } = assignStarterSlots(rawStarters, rawBench, slotOpts);
       const starterFPTS = starters.reduce((s, p) => s + p.weekly, 0);
-      const totalGridiron = [...starters, ...bench].reduce((s, p) => s + p.gridironAuction, 0);
-      const totalMarket = [...starters, ...bench].reduce((s, p) => s + p.marketAuction, 0);
+      const totalGridiron = [...starters, ...bench].reduce((s, p) => s + (p.gridironAuction ?? 0), 0);
+      // Market consensus (FantasyPros) is absent in deployments without a
+      // market data source: enrichPlayer returns null honestly, never $0.
+      // Propagate null so badges render N/A instead of $NaN.
+      const marketVals = [...starters, ...bench].map(p => p.marketAuction);
+      const totalMarket = marketVals.every(v => v != null) ? marketVals.reduce((s, v) => s + v, 0) : null;
 
       processedTeams.set(rid, {
         roster_id: rid,
@@ -106,6 +114,11 @@ export async function renderMatchups(root) {
       });
     });
   }
+
+  // Whether any rostered player carries market consensus $ — when absent
+  // (no market data source), market UI is omitted entirely, never N/A.
+  const hasMarket = [...processedTeams.values()].some(t =>
+    [...t.starters, ...t.bench].some(p => p.marketAuction != null));
 
   // Build NFL slate lookup by team
   const slateByTeam = new Map();
@@ -129,7 +142,7 @@ export async function renderMatchups(root) {
   root.innerHTML = `
     <div class="hero reveal in">
       <h1>Matchups <span class="badge" style="background:var(--color-primary); color:white; vertical-align:middle" aria-live="polite">Week ${currentWeek || '—'}</span></h1>
-      <p>Head-to-head fantasy matchups with model projections vs market consensus. Click a matchup for slot breakdown.</p>
+      <p>Head-to-head fantasy matchups with model projections${hasMarket ? ' vs market consensus' : ''}. Click a matchup for slot breakdown.</p>
     </div>
     ${isDemoData ? `<div class="alert alert-warn reveal in" role="status" style="margin-top:12px">Demo data: run refresh to load live Sleeper data.</div>` : ''}
     <div class="card reveal in" style="margin-top:12px">
@@ -140,7 +153,7 @@ export async function renderMatchups(root) {
       ${sortedPairs.length > 0 ? sortedPairs.map(([mid, rosters]) => {
         const teamA = processedTeams.get(String(rosters[0]?.roster_id)) || null;
         const teamB = rosters[1] ? processedTeams.get(String(rosters[1]?.roster_id)) || null : null;
-        return renderMatchupCard(teamA, teamB, mid, rosters, slateByTeam);
+        return renderMatchupCard(teamA, teamB, mid, rosters, slateByTeam, hasMarket);
       }).join('') : `<div class="card reveal in"><div class="empty">No matchups loaded for week ${currentWeek || '—'}. Start the backend server and refresh data.</div></div>`}
     </div>
 
@@ -182,8 +195,8 @@ export async function renderMatchups(root) {
   // Matchup card click + keyboard → open modal with full breakdown
   root.querySelectorAll('[data-matchup-id]').forEach(card => {
     const openForCard = () => {
-      const mid = Number(card.getAttribute('data-matchup-id'));
-      const pair = sortedPairs.find(([m]) => m === mid);
+      const mid = String(card.getAttribute('data-matchup-id'));
+      const pair = sortedPairs.find(([m]) => String(m) === mid);
       if (!pair) return;
       const [, rosters] = pair;
       const teamA = processedTeams.get(String(rosters[0]?.roster_id)) || null;
@@ -228,7 +241,7 @@ export async function renderMatchups(root) {
   });
 }
 
-function renderMatchupCard(teamA, teamB, matchupId, rawRosters, slateByTeam) {
+function renderMatchupCard(teamA, teamB, matchupId, rawRosters, slateByTeam, showMarket = true) {
   if (!teamA) {
     return `<div class="card reveal in"><div class="empty">Matchup ${matchupId}: Missing roster data</div></div>`;
   }
@@ -298,14 +311,14 @@ function renderMatchupCard(teamA, teamB, matchupId, rawRosters, slateByTeam) {
           <div style="padding:8px 16px; display:flex; gap:16px; align-items:center; border-right:1px solid var(--border)">
             <span class="micro faint">Model $</span>
             <span class="badge badge-amber mono">$${teamA.totalGridiron}</span>
-            <span class="micro faint">Market $</span>
-            <span class="badge badge-sky mono">$${teamA.totalMarket}</span>
+            ${showMarket ? `<span class="micro faint">Market $</span>
+            <span class="badge badge-sky mono">$${teamA.totalMarket}</span>` : ''}
           </div>
           <div style="padding:8px 16px; display:flex; gap:16px; align-items:center; justify-content:flex-end">
             <span class="micro faint">Model $</span>
             <span class="badge badge-amber mono">$${teamB?.totalGridiron || 0}</span>
-            <span class="micro faint">Market $</span>
-            <span class="badge badge-sky mono">$${teamB?.totalMarket || 0}</span>
+            ${showMarket ? `<span class="micro faint">Market $</span>
+            <span class="badge badge-sky mono">$${teamB?.totalMarket}</span>` : ''}
           </div>
         </div>
 
@@ -332,6 +345,7 @@ function openMatchupModal(teamA, teamB, matchupId, slateByTeam, root, processedT
   const winProbA = teamB ? Math.round(100 * normalCdf(spread / totalWidth)) : 100;
   const winProbB = 100 - winProbA;
   const factors = gatherFactors(teamA, teamB, slateByTeam);
+  const showMkt = teamA.totalMarket != null || teamB?.totalMarket != null;
 
   container.innerHTML = `
     <div class="matchup-modal-backdrop" id="matchupModalBackdrop">
@@ -377,19 +391,19 @@ function openMatchupModal(teamA, teamB, matchupId, slateByTeam, root, processedT
           <div style="padding:10px 16px; display:flex; gap:12px; align-items:center; background:var(--surface-raised); border-right:1px solid var(--border)">
             <span class="micro faint">Model $</span>
             <span class="badge badge-amber mono">$${teamA.totalGridiron}</span>
-            <span class="micro faint">Market $</span>
-            <span class="badge badge-sky mono">$${teamA.totalMarket}</span>
+            ${showMkt ? `<span class="micro faint">Market $</span>
+            <span class="badge badge-sky mono">$${teamA.totalMarket}</span>` : ''}
           </div>
           <div style="padding:10px 16px; display:flex; gap:12px; align-items:center; justify-content:flex-end; background:var(--surface-raised)">
             <span class="micro faint">Model $</span>
             <span class="badge badge-amber mono">$${teamB?.totalGridiron || 0}</span>
-            <span class="micro faint">Market $</span>
-            <span class="badge badge-sky mono">$${teamB?.totalMarket || 0}</span>
+            ${showMkt ? `<span class="micro faint">Market $</span>
+            <span class="badge badge-sky mono">$${teamB?.totalMarket}</span>` : ''}
           </div>
         </div>
 
         <!-- Slot-by-slot breakdown -->
-        ${renderExpandedMatchup(teamA, teamB, factors)}
+        ${renderExpandedMatchup(teamA, teamB, factors, slateByTeam)}
 
         <div style="margin-top:16px; display:flex; justify-content:flex-end">
           <button class="btn btn-ghost" id="matchupDismissBtn">Close</button>
@@ -446,7 +460,17 @@ function openMatchupModal(teamA, teamB, matchupId, slateByTeam, root, processedT
   });
 }
 
-function renderExpandedMatchup(teamA, teamB, factors) {
+// Per-player wind with slate fallback: some backends ship player-level
+// wind, others only game-level slate wind. Prefer player-level, fall back
+// to the player's NFL team game — never fabricate.
+function slotWind(p, slateByTeam) {
+  if (p == null) return 0;
+  if (p.wind_mph > 0) return p.wind_mph;
+  const g = slateByTeam && slateByTeam.get(((p.team || '').toUpperCase()));
+  return (g && g.wind_mph) || 0;
+}
+
+function renderExpandedMatchup(teamA, teamB, factors, slateByTeam) {
   // Canonical slot order — ensures QB vs QB, RB1 vs RB1, etc., regardless of roster array order
   const slotOrder = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'TE', 'FLEX1', 'FLEX2', 'K', 'DEF'];
   const bySlotA = new Map(teamA.starters.map(p => [p.slot, p]));
@@ -475,7 +499,7 @@ function renderExpandedMatchup(teamA, teamB, factors) {
               const pB = bySlotB.get(slot) || null;
               // Only render rows where at least one team has that slot
               if (!pA && !pB) return '';
-              return renderSlotRow(pA, pB, slot, idx);
+              return renderSlotRow(pA, pB, slot, idx, slateByTeam);
             }).join('')}
             <tr style="background:var(--surface-raised); font-weight:700">
               <td>
@@ -516,7 +540,7 @@ function renderExpandedMatchup(teamA, teamB, factors) {
   `;
 }
 
-function renderSlotRow(pA, pB, slotLabel, idx) {
+function renderSlotRow(pA, pB, slotLabel, idx, slateByTeam) {
   const slot = pA?.slot || pB?.slot || slotLabel || (idx != null ? `S${idx + 1}` : 'S?');
   const diffPts = (pA?.weekly || 0) - (pB?.weekly || 0);
   const edgeCls = diffPts > 2 ? 'color:var(--emerald)' : diffPts < -2 ? 'color:var(--crimson)' : 'color:var(--text-muted)';
@@ -538,9 +562,9 @@ function renderSlotRow(pA, pB, slotLabel, idx) {
               </div>
               <div style="display:flex; gap:6px; align-items:center; margin-top:2px">
                 <span class="badge badge-amber mono" style="font-size:10px; padding:1px 5px" title="${pA.gridironUncapped!=null && pA.gridironUncapped!==pA.gridironAuction ? `Uncapped $${pA.gridironUncapped}`:''}">$${pA.gridironAuction}${pA.gridironUncapped!=null && pA.gridironUncapped!==pA.gridironAuction ? `<span style="font-size:9px; color:var(--text-faint)"> ($${pA.gridironUncapped})</span>`:''}</span>
-                <span class="badge badge-sky mono" style="font-size:10px; padding:1px 5px" title="${pA.marketUncapped!=null && pA.marketUncapped!==pA.marketAuction ? `Uncapped $${pA.marketUncapped}`:''}">$${pA.marketAuction}${pA.marketUncapped!=null && pA.marketUncapped!==pA.marketAuction ? `<span style="font-size:9px; color:var(--text-faint)"> ($${pA.marketUncapped})</span>`:''}</span>
+                ${pA.marketAuction != null ? `<span class="badge badge-sky mono" style="font-size:10px; padding:1px 5px" title="Market consensus auction value">$${pA.marketAuction}</span>` : ''}
                 ${pA.injury_status ? injuryBadge(pA.injury_status) : ''}
-                ${pA.wind_mph > 15 ? `<span class="micro" style="color:var(--crimson)">${Math.round(pA.wind_mph)}mph</span>` : ''}
+                ${slotWind(pA, slateByTeam) > 15 ? `<span class="micro" style="color:var(--crimson)">${Math.round(slotWind(pA, slateByTeam))}mph</span>` : ''}
               </div>
             </div>
           </div>
@@ -558,9 +582,9 @@ function renderSlotRow(pA, pB, slotLabel, idx) {
                 <span class="mono" style="font-weight:700; color:var(--sky); font-size:13px">${pB.weekly.toFixed(1)}</span>
               </div>
               <div style="display:flex; gap:6px; align-items:center; justify-content:flex-end; margin-top:2px">
-                ${pB.wind_mph > 15 ? `<span class="micro" style="color:var(--crimson)">${Math.round(pB.wind_mph)}mph</span>` : ''}
+                ${slotWind(pB, slateByTeam) > 15 ? `<span class="micro" style="color:var(--crimson)">${Math.round(slotWind(pB, slateByTeam))}mph</span>` : ''}
                 ${pB.injury_status ? injuryBadge(pB.injury_status) : ''}
-                <span class="badge badge-sky mono" style="font-size:10px; padding:1px 5px" title="${pB.marketUncapped!=null && pB.marketUncapped!==pB.marketAuction ? `Uncapped $${pB.marketUncapped}`:''}">$${pB.marketAuction}${pB.marketUncapped!=null && pB.marketUncapped!==pB.marketAuction ? `<span style="font-size:9px; color:var(--text-faint)"> ($${pB.marketUncapped})</span>`:''}</span>
+                ${pB.marketAuction != null ? `<span class="badge badge-sky mono" style="font-size:10px; padding:1px 5px" title="Market consensus auction value">$${pB.marketAuction}</span>` : ''}
                 <span class="badge badge-amber mono" style="font-size:10px; padding:1px 5px" title="${pB.gridironUncapped!=null && pB.gridironUncapped!==pB.gridironAuction ? `Uncapped $${pB.gridironUncapped}`:''}">$${pB.gridironAuction}${pB.gridironUncapped!=null && pB.gridironUncapped!==pB.gridironAuction ? `<span style="font-size:9px; color:var(--text-faint)"> ($${pB.gridironUncapped})</span>`:''}</span>
               </div>
             </div>
@@ -588,9 +612,10 @@ function gatherFactors(teamA, teamB, slateByTeam) {
 
   const checkWeather = (team, label) => {
     team.starters.forEach(p => {
-      if (p.wind_mph > 15) {
+      const w = slotWind(p, slateByTeam);
+      if (w > 15) {
         factors.push({
-          icon: '💨', text: `${p.player_name} (${label}): ${Math.round(p.wind_mph)}mph wind`,
+          icon: '💨', text: `${p.player_name} (${label}): ${Math.round(w)}mph wind`,
           bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.2)', color: 'var(--crimson)'
         });
       }
@@ -628,6 +653,9 @@ function gatherFactors(teamA, teamB, slateByTeam) {
   };
 
   const checkValueEdge = (teamA, teamB) => {
+    // No market data → no edge to compare against. Skip rather than
+    // fabricating a delta against $0/undefined.
+    if (teamA.totalMarket == null || teamB?.totalMarket == null) return;
     const deltaA = teamA.totalGridiron - teamA.totalMarket;
     const deltaB = (teamB?.totalGridiron || 0) - (teamB?.totalMarket || 0);
     if (Math.abs(deltaA) > 10 || Math.abs(deltaB) > 10) {

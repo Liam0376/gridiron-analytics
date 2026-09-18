@@ -3,7 +3,7 @@
 // and optionally a draft-type override. Everything else (name, teams,
 // season, draft type, scoring, rosters) is fetched from Sleeper per league.
 import { fetchDraftInfo, fetchMeta, fetchReady, setActiveLeague, triggerRefresh } from '../api.js';
-import { getLeagueId, setDraftTypeOverride, getDraftTypeOverride, parseLeagueInput, isValidLeagueId } from '../lib/league.js';
+import { getLeagueId, setDraftTypeOverride, getDraftTypeOverride, parseLeagueInput, isValidLeagueId, addKnownLeague } from '../lib/league.js';
 import { escapeHtml, escapeAttr } from '../lib/escape.js';
 import { trapFocus } from '../lib/focusTrap.js';
 
@@ -123,6 +123,7 @@ export async function openSetupModal({ onDone } = {}) {
         const dt = container.querySelector('#setupDraftType').value;
         setDraftTypeOverride(dt);
         setActiveLeague(id);
+        addKnownLeague(id, info.league_name, info.season);
         const checkEl = container.querySelector('#setupDataCheck');
         checkEl.innerHTML = `<div class="faint" style="margin-top:8px">Checking synced data…</div>`;
         const ready = await fetchReady().catch(() => null);

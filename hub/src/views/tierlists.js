@@ -37,10 +37,12 @@ export async function renderTierlists(root) {
     }
   }
 
-  // Season view: ROS = weekly × remaining weeks (week 10 → 9 games left incl. week 10 to 18)
-  // Uses live 2026 schedule week from meta (preseason 0 → assume week 10 for demo)
+  // Season view: ROS = weekly × remaining weeks. Remaining derives from
+  // the live season week in meta (not a hardcoded 9) — hardcoded weeks
+  // 10-18 silently understated every other point in the season.
+  const metaWeek = Number(data.meta?.week) || null;
+  const remaining = metaWeek ? Math.max(1, 18 - metaWeek + 1) : 9;
   if (view === 'season') {
-    const remaining = 9; // weeks 10-18 inclusive
     players = players.map(p => ({
       ...p,
       projected_points: Number(p.projected_points ?? 0) * remaining,
@@ -68,11 +70,11 @@ export async function renderTierlists(root) {
 
   root.innerHTML = `
     <div class="hero reveal in">
-      <h1>Tiers <span class="badge" style="background:var(--color-primary); color:white; margin-left:8px; vertical-align:middle">${view==='season' ? 'SEASON ROS' : 'WEEK 10'}</span></h1>
+      <h1>Tiers <span class="badge" style="background:var(--color-primary); color:white; margin-left:8px; vertical-align:middle">${view==='season' ? 'SEASON ROS' : (metaWeek ? `WEEK ${metaWeek}` : 'WEEK')}</span></h1>
       <p>Deterministic tiers by point estimate.</p>
       <details style="margin-top:8px" aria-label="How tiering works">
         <summary style="cursor:pointer; font-weight:600" title="Toggle tiering explainer">How tiering works</summary>
-        <p style="margin-top:8px">Deterministic: sorted by <code class="inline">point_estimate</code> then cut when gap &gt; <code class="inline">max(${gap}, 0.7×median width)</code> or tier hits <code class="inline">cap=${cap}</code>. No LLM. <strong>Week</strong> = next game (star-aware ±${view==='season'?'~15-35':'~6-10'}). <strong>Season</strong> = ROS ` + (view==='season' ? `9 games (weeks 10-18) × weekly, width ×√9` : `weekly`) + `: switch to <strong>FLEX</strong> for your 2-FLEX board (RB/WR/TE <code class="inline">×1.05</code>).</p>
+        <p style="margin-top:8px">Deterministic: sorted by <code class="inline">point_estimate</code> then cut when gap &gt; <code class="inline">max(${gap}, 0.7×median width)</code> or tier hits <code class="inline">cap=${cap}</code>. No LLM. <strong>Week</strong> = next game (star-aware ±${view==='season'?'~15-35':'~6-10'}). <strong>Season</strong> = ROS ` + (view==='season' ? `${remaining} games${metaWeek ? ` (weeks ${metaWeek}-18)` : ''} × weekly, width ×√${remaining}` : `weekly`) + `: switch to <strong>FLEX</strong> for your 2-FLEX board (RB/WR/TE <code class="inline">×1.05</code>).</p>
       </details>
     </div>
     <div class="card reveal in" style="margin-top:12px">

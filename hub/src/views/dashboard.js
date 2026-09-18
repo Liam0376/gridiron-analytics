@@ -78,7 +78,7 @@ export async function renderDashboard(root) {
       </div>
 
       <div class="card card-accent-sky">
-        <div class="card-header"><h3>Data Pipeline</h3><span class="kicker">SQLite WAL</span></div>
+        <div class="card-header"><h3>Data Pipeline</h3><span class="kicker">${sources.length ? 'SQLite WAL' : 'Scheduled snapshots'}</span></div>
         <div class="card-body" style="padding:0">
           ${sources.length ? `<table><thead><tr><th>Source</th><th>At</th><th>Status</th></tr></thead><tbody>
             ${sources.map(s => `<tr>
@@ -88,7 +88,7 @@ export async function renderDashboard(root) {
                 ? `<span class="badge badge-emerald">ok</span>`
                 : `<span class="badge badge-crimson">fail</span>`}</td>
             </tr>`).join('')}
-          </tbody></table>` : `<div class="empty">Local DB active</div>`}
+          </tbody></table>` : `<div class="empty">No refresh history yet — data updates on schedule</div>`}
         </div>
       </div>
     </div>

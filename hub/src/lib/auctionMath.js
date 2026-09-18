@@ -168,7 +168,12 @@ export function computeAuctionMath(players, compRaw, compById, compByNamePos, st
   const benchPlayers = rosPlayers.filter(p => !starters.includes(p));
   benchPlayers.forEach(p => p.auction = 1);
 
-  // Market $ — same weighted VOR on marketRos
+  // Market $ — same weighted VOR on marketRos.
+  // why gate on hasMarket: deployments without a market data source carry
+  // marketRos null for every player. Running the block anyway mints $1
+  // market values from nothing and flips edges to BUY/SELL on fabricated
+  // deltas (user-caught live bug). Null stays null: UI renders honest N/A.
+  const hasMarket = rosPlayers.some(pp => pp.marketRos != null);
   const marketByPos = { QB: [], RB: [], WR: [], TE: [], K: [], DEF: [] };
   rosPlayers.forEach(pp => {
     const pos = (pp.position || '').toUpperCase();
@@ -196,6 +201,11 @@ export function computeAuctionMath(players, compRaw, compById, compByNamePos, st
     else pp.marketAuction = Math.max(1, Math.round((pp.marketVor / totalMarketVor) * totalStarterBudget));
   });
   rosPlayers.filter(pp => !marketStarters.includes(pp)).forEach(pp => { pp.marketAuction = 1; });
+  if (!hasMarket) {
+    // Wipe the $1 placeholders minted above: with no market source they
+    // are fabricated, and downstream renders N/A for null.
+    rosPlayers.forEach(pp => { pp.marketAuction = null; });
+  }
 
   // Blend with StatsGuy 60/40 where available
   const topFpAuction = Math.max(...rosPlayers.map(x => x.marketAuction || 0)) || 45;
@@ -207,12 +217,20 @@ export function computeAuctionMath(players, compRaw, compById, compByNamePos, st
       pp.marketAuctionSG = sgAuction;
       pp.marketAuction = blended;
     }
-    pp.deltaAuction = pp.auction - (pp.marketAuction || 1);
-    if (pp.deltaAuction >= 5 && pp.edge !== 'BUY') pp.edge = 'BUY';
-    else if (pp.deltaAuction <= -5 && pp.edge !== 'SELL') pp.edge = 'SELL';
+    if (!hasMarket) {
+      pp.deltaAuction = null;
+    } else {
+      pp.deltaAuction = pp.auction - (pp.marketAuction || 1);
+      if (pp.deltaAuction >= 5 && pp.edge !== 'BUY') pp.edge = 'BUY';
+      else if (pp.deltaAuction <= -5 && pp.edge !== 'SELL') pp.edge = 'SELL';
+    }
   });
 
   const allRanked = [...starters, ...benchPlayers].sort((a, b) => b.auction - a.auction || b.ros - a.ros);
+
+  // NOTE: drafted flags (isDrafted/draftedBy/draftedPrice) are set at
+  // rosPlayers construction time from state.drafted — do NOT duplicate
+  // that mapping here (a redundant second pass was added and removed).
 
   // Assign tiers (positions in ranked list)
   allRanked.forEach((p, i) => {

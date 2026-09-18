@@ -65,6 +65,12 @@ function statDeltaBar(model, market, delta) {
 
 export async function renderProjections(root) {
   const params = new URLSearchParams(location.hash.split('?')[1] || '');
+  // Deep links (#projections?week=3) must work, not just picker clicks:
+  // the URL is the source of truth on navigation.
+  const urlWeek = params.get('week');
+  if (urlWeek != null && urlWeek !== '' && Number.isFinite(Number(urlWeek))) {
+    selectedWeek = Number(urlWeek);
+  }
   currentQuery = params.get('q') || document.getElementById('globalSearch')?.value || '';
   currentPage = 1;
   // Honor ?limit on projections (default 800, max 2000 like server).
@@ -266,44 +272,53 @@ export async function renderProjections(root) {
   const buyCount = [...compById.values()].filter(c => c.edge === 'BUY').length;
   const sellCount = [...compById.values()].filter(c => c.edge === 'SELL').length;
   const marketCovered = [...compById.values()].filter(c => c.market_points != null).length;
+  // Deployments without any market source (no market_points, no FP ECR/ADP)
+  // force compare mode off: every Market/ECR column would render empty.
+  // Father (data present) is unaffected — gates below reduce to the old logic.
+  const hasMarketPts = marketCovered > 0 || [...compById.values()].some(c => c.fp_ecr != null || c.fp_adp != null);
+  if (!hasMarketPts) compareEnabled = false;
 
   root.innerHTML = `
     <div class="hero reveal in">
       <h1>Projections</h1>
       <p>Weekly projections. Bars show the model range (floor–ceiling); overlap = toss-up (heuristic, not a statistical test).</p>
+      <p class="micro faint" style="margin-top:4px">Each week's projections are calculated after the previous week's games complete, from season-to-date stats blended with last season — early weeks lean on last season, later weeks on current form. Data refreshes daily.</p>
     </div>
+    ${!rosMode && meta.stale ? `<div class="alert alert-warn reveal in" role="status" style="margin-top:12px">${escapeHtml(meta.note || `No precomputed projections for week ${selectedWeek ?? meta.week} — showing nearest available data.`)}</div>` : ''}
 
     ${hasComparison ? `
     <div class="kpi-row reveal in" style="margin-top:4px">
       <div class="kpi-card" style="border-top:1px solid var(--emerald)">
-        <div class="kpi-label" style="color:var(--emerald)">BUY edges: market sleeping</div>
+        <div class="kpi-label" style="color:var(--emerald)">BUY edges${hasMarketPts ? ': market sleeping' : ''}</div>
         <div class="kpi-value" style="color:var(--emerald)">${buyCount}</div>
         <div class="kpi-bar"><div class="kpi-bar-fill good" style="width:${Math.min(100, Math.round((buyCount/ Math.max(1, Math.min(40, compById.size/6)))*100))}%"></div></div>
-        <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:6px">Model rank ≥12 better than FP ECR or +3.0 pts vs Sleeper market</div>
+        <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:6px">${hasMarketPts ? 'Model rank ≥12 better than FP ECR or +3.0 pts vs Sleeper market' : 'Model $/VOR ≥15% below pool average'}</div>
       </div>
       <div class="kpi-card" style="border-top:1px solid var(--crimson)">
-        <div class="kpi-label" style="color:var(--crimson)">SELL flags: market overvalued</div>
+        <div class="kpi-label" style="color:var(--crimson)">SELL flags${hasMarketPts ? ': market overvalued' : ''}</div>
         <div class="kpi-value" style="color:var(--crimson)">${sellCount}</div>
         <div class="kpi-bar"><div class="kpi-bar-fill bad" style="width:${Math.min(100, Math.round((sellCount/ Math.max(1, Math.min(40, compById.size/6)))*100))}%"></div></div>
-        <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:6px">Market rank ≥12 higher or −3.0 pts vs model</div>
+        <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:6px">${hasMarketPts ? 'Market rank ≥12 higher or −3.0 pts vs model' : 'Model $/VOR ≥15% above pool average'}</div>
       </div>
+      ${hasMarketPts ? `
       <div class="kpi-card" style="border-top:1px solid var(--sky)">
         <div class="kpi-label" style="color:var(--sky)">Market coverage: Sleeper + FantasyPros</div>
         <div class="kpi-value" style="color:var(--sky)">${marketCovered} / ${compById.size}</div>
         <div class="kpi-bar"><div class="kpi-bar-fill" style="background:var(--sky); width:${Math.round((marketCovered/Math.max(1, compById.size))*100)}%"></div></div>
         <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:6px">Sleeper pts+stats keyed by gsis_id · FP ECR/ADP via name+team+pos</div>
       </div>
+      ` : ''}
       <div class="kpi-card" style="border-top:1px solid var(--amber)">
         <div class="kpi-label" style="color:var(--amber)">Comparison source</div>
-        <div class="kpi-value" style="font-size:14px; line-height:1.3">Model vs Market<br><span style="font:600 11px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-muted); letter-spacing:0.04em; text-transform:uppercase">${compRaw.fetched_at ? new Date(compRaw.fetched_at).toLocaleString() : 'DB snapshot'} · ${compById.size} ranked</span></div>
-        <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:6px">Free, local: Sleeper projections + FP free ECR/ADP</div>
+        <div class="kpi-value" style="font-size:14px; line-height:1.3">${hasMarketPts ? 'Model vs Market' : 'Model values'}<br><span style="font:600 11px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-muted); letter-spacing:0.04em; text-transform:uppercase">${compRaw.fetched_at ? new Date(compRaw.fetched_at).toLocaleString() : 'DB snapshot'} · ${compById.size} ranked</span></div>
+        <div class="mono" style="font-size:11px; color:var(--text-muted); margin-top:6px">${hasMarketPts ? 'Free, local: Sleeper projections + FP free ECR/ADP' : 'VBD auction values from league scoring'}</div>
       </div>
     </div>
     <div class="card reveal in" style="margin-top:8px; border-top:1px solid var(--amber)">
       <div class="card-body" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between">
         <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center">
-          <span class="kicker">Compare vs Market</span>
-          <button class="chip ${compareEnabled ? 'active' : ''}" id="toggleCompare" title="Toggle market comparison">${compareEnabled ? 'Market + ECR on' : 'Show Market & ECR'}</button>
+          ${hasMarketPts ? `<span class="kicker">Compare vs Market</span>
+          <button class="chip ${compareEnabled ? 'active' : ''}" id="toggleCompare" title="Toggle market comparison">${compareEnabled ? 'Market + ECR on' : 'Show Market & ECR'}</button>` : `<span class="kicker">Value edges</span>`}
           <div style="display:flex; gap:6px; margin-left:8px; flex-wrap:wrap">
             <button class="chip ${edgeFilter==='ALL' ? 'active' : ''}" data-edge="ALL">All (${compById.size})</button>
             <button class="chip ${edgeFilter==='BUY' ? 'active' : ''}" data-edge="BUY" style="${edgeFilter==='BUY' ? 'background:var(--emerald-dim); border-color:rgba(16,185,129,0.35); color:var(--emerald)' : ''}">▲ BUY (${buyCount})</button>
@@ -483,7 +498,9 @@ export async function renderProjections(root) {
       p._onRoster = rosterPlayerIds.has(String(p.player_id));
     }
     let rows = filterPlayers(base, currentQuery);
-    if (compareEnabled && hasComparison && edgeFilter !== 'ALL') {
+    // Edge filter works on server-computed edges with or without market
+    // columns showing (deployments without market data force compare off).
+    if (hasComparison && edgeFilter !== 'ALL' && (compareEnabled || !hasMarketPts)) {
       rows = rows.filter(p => (p.edge || 'NEUTRAL') === edgeFilter);
     }
     return rows;
@@ -602,7 +619,7 @@ export async function renderProjections(root) {
             </div>
           `).join('');
           const opp = p.opponent_team ? `vs ${p.opponent_team}` : '';
-          return mainRow + `<tr class="expand-panel" data-expand-panel="${p.player_id}" style="display:none; background:var(--surface-raised)"><td colspan="${colSpan}" style="padding:12px 12px 12px 48px"><div style="display:flex; flex-direction:column; gap:6px"><div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap"><span class="kicker">Stat deltas: Model vs Market</span><span class="mono" style="font-size:11px; color:var(--text-faint)">${escapeHtml(p.player_name)} ${opp} · <span style="color:var(--amber)">amber=Model</span> <span style="color:var(--sky)">, blue=Market</span></span></div>${statRows || `<span class="mono" style="font-size:11px; color:var(--text-faint)">No market stats for this player yet (preseason).</span>`}<div class="mono" style="font-size:11px; color:var(--text-faint); margin-top:6px">FP ECR #${p.fp_ecr ?? '—'} ${p.fp_ecr_pos ? `(pos #${p.fp_ecr_pos})` : ''} · ADP #${p.fp_adp ?? '—'} · Model #${p.model_overall_rank ?? '—'} (pos #${p.model_pos_rank ?? '—'}) · ΔRk ${p.delta_rank != null ? (p.delta_rank > 0 ? '+' : '')+p.delta_rank : '—'}</div></div></td></tr>`;
+          return mainRow + `<tr class="expand-panel" data-expand-panel="${p.player_id}" style="display:none; background:var(--surface-raised)"><td colspan="${colSpan}" style="padding:12px 12px 12px 48px"><div style="display:flex; flex-direction:column; gap:6px"><div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap"><span class="kicker">Stat deltas: Model vs Market</span><span class="mono" style="font-size:11px; color:var(--text-faint)">${escapeHtml(p.player_name)} ${opp} · <span style="color:var(--amber)">amber=Model</span> <span style="color:var(--sky)">, blue=Market</span></span></div>${statRows || `<span class="mono" style="font-size:11px; color:var(--text-faint)">No market stats for this player yet (preseason).</span>`}<div class="mono" style="font-size:11px; color:var(--text-faint); margin-top:6px">${p.fp_ecr != null || p.fp_adp != null ? `FP ECR #${p.fp_ecr ?? '—'} ${p.fp_ecr_pos ? `(pos #${p.fp_ecr_pos})` : ''} · ADP #${p.fp_adp ?? '—'} · ` : ''}Model #${p.model_overall_rank ?? '—'} (pos #${p.model_pos_rank ?? '—'})${p.delta_rank != null ? ` · ΔRk ${(p.delta_rank > 0 ? '+' : '')+p.delta_rank}` : ''}${p.search_rank != null || p.depth_order != null ? ` · Sleeper #${p.search_rank ?? '—'}${p.depth_order != null ? ` (${p.depth_position || p.position} ${p.depth_order})` : ''}` : ''}</div></div></td></tr>`;
         }
         return mainRow;
       }).join('');
@@ -626,11 +643,11 @@ export async function renderProjections(root) {
         const baseCard = playerCard(p, { showInterval: true, showTeamLogo: true });
         if (!compareEnabled || !hasComparison) return baseCard;
         // inject comparison footer into card string (after pc-details)
-        const marketLine = p.market_points != null ? `Market ${Number(p.market_points).toFixed(1)} · <span style="color:${Number(p.delta_points) > 0.5 ? 'var(--emerald)' : Number(p.delta_points) < -0.5 ? 'var(--crimson)' : 'var(--text-muted)'}">${p.delta_points > 0 ? '+' : ''}${Number(p.delta_points).toFixed(1)}</span>` : `Market —`;
-        const rankLine = p.fp_ecr ? `ECR #${p.fp_ecr} · Δ ${p.delta_rank != null ? (p.delta_rank>0?'+':'')+p.delta_rank : '—'}` : 'ECR —';
+        const marketLine = p.market_points != null ? `<span class="mono" style="font-size:11px; color:var(--text-muted)">Market ${Number(p.market_points).toFixed(1)} · <span style="color:${Number(p.delta_points) > 0.5 ? 'var(--emerald)' : Number(p.delta_points) < -0.5 ? 'var(--crimson)' : 'var(--text-muted)'}">${p.delta_points > 0 ? '+' : ''}${Number(p.delta_points).toFixed(1)}</span></span>` : '';
+        const rankLine = p.fp_ecr ? `ECR #${p.fp_ecr} · Δ ${p.delta_rank != null ? (p.delta_rank>0?'+':'')+p.delta_rank : '—'}` : (p.search_rank != null || p.depth_order != null ? `Sleeper #${p.search_rank ?? '—'}${p.depth_order != null ? ` (${p.depth_position || p.position} ${p.depth_order})` : ''}` : 'ECR —');
         const edgeHtml = edgeBadge(p.edge);
         // Insert before closing card div
-        return baseCard.replace('</div>\n', `  <div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--border)"><span class="mono" style="font-size:11px; color:var(--text-muted)">${marketLine}</span><span class="mono" style="font-size:11px; color:var(--text-muted)">${rankLine}</span><span class="spacer"></span>${edgeHtml}</div></div>\n`);
+        return baseCard.replace('</div>\n', `  <div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--border)">${marketLine ? `<span class="mono" style="font-size:11px; color:var(--text-muted)">${marketLine}</span>` : ''}<span class="mono" style="font-size:11px; color:var(--text-muted)">${rankLine}</span><span class="spacer"></span>${edgeHtml}</div></div>\n`);
       }).join('');
     }
 

@@ -38,8 +38,12 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
   // matches the backend's own floor for a below-replacement player instead
   // of fabricating a number.
   const gridironAuction = Number(p.gridironAuction ?? p.auction ?? 1);
-  const marketAuction = Number(p.marketAuction ?? p.market_auction ?? gridironAuction);
-  const deltaAuction = Number(p.deltaAuction ?? (gridironAuction - marketAuction));
+  // why no gridiron fallback: market consensus (FantasyPros) is absent in
+  // deployments without a market data source. Falling back to the model
+  // value fabricates agreement (delta always $0) — null renders N/A.
+  const marketAuctionRaw = p.marketAuction ?? p.market_auction;
+  const marketAuction = marketAuctionRaw != null ? Number(marketAuctionRaw) : null;
+  const deltaAuction = p.deltaAuction ?? (marketAuction != null ? (gridironAuction - marketAuction) : null);
   const edge = (p.edge || 'NEUTRAL').toUpperCase();
   const edgeIcon = edge === 'BUY' ? '▲ ' : edge === 'SELL' ? '▼ ' : '';
 
@@ -119,7 +123,7 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
             ${injuryBadge(p.injury_status)}
             ${p.tier ? `<span class="badge badge-violet">Tier ${p.tier}</span>` : ''}
             <span class="badge ${edge === 'BUY' ? 'badge-emerald' : edge === 'SELL' ? 'badge-crimson' : 'badge-faint'}" aria-label="${escapeAttr(edge)}">${edgeIcon}${edge} EDGE</span>
-            <span class="mono faint micro">ECR #${p.ecr ?? '—'} · ADP #${p.adp ?? '—'}</span>
+            <span class="mono faint micro">${p.ecr != null || p.adp != null ? `ECR #${p.ecr ?? '—'} · ADP #${p.adp ?? '—'} · ` : ''}Sleeper #${p.search_rank ?? '—'}${p.depth_order != null ? ` (${p.depth_position || p.position} ${p.depth_order})` : ''}</span>
           </div>
         </div>
 
@@ -130,6 +134,7 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
             <span class="mono val-large" style="color:var(--amber)">$${gridironAuction}</span>
             <span class="micro faint">${weekly.toFixed(1)} projected pts/wk</span>
           </div>
+          ${marketAuction != null ? `
           <div class="modal-val-card">
             <span class="kicker">Market Consensus $</span>
             <span class="mono val-large" style="color:var(--sky)">$${marketAuction}</span>
@@ -138,10 +143,10 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
           <div class="modal-val-card">
             <span class="kicker">Value Delta (Δ $)</span>
             <span class="mono val-large ${deltaAuction > 0 ? 'text-good' : deltaAuction < 0 ? 'text-bad' : 'faint'}">
-              ${deltaAuction > 0 ? '+' : ''}$${deltaAuction}
+              ${deltaAuction != null ? `${deltaAuction > 0 ? '+' : ''}$${deltaAuction}` : '—'}
             </span>
-            <span class="micro faint">${deltaAuction > 0 ? 'Model Overweight (BUY)' : deltaAuction < 0 ? 'Model Underweight (SELL)' : 'Fair Market Price'}</span>
-          </div>
+            <span class="micro faint">${deltaAuction > 0 ? 'Model Overweight (BUY)' : deltaAuction < 0 ? 'Model Underweight (SELL)' : deltaAuction == null ? 'No market comparison' : 'Fair Market Price'}</span>
+          </div>` : ''}
         </div>
 
         <!-- Projection Confidence Interval & Floor/Ceiling -->

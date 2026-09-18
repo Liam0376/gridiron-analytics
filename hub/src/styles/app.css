@@ -129,9 +129,20 @@ button { font: inherit; }
 }
 @media (max-width: 640px) {
   .sidebar { display: none; }
-  .topbar { padding: 0 12px; gap: 8px; }
-  .search-top { max-width: none; }
+  .topbar {
+    padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
+    gap: 8px;
+  }
+  .search-top { max-width: none; min-height: 44px; }
+  /* 16px on mobile prevents iOS Safari auto-zoom on focus (ux skill). */
+  .search-top input { font-size: 16px; }
   .main::before { left: 0; }
+}
+/* Very narrow phones: keep the freshness dot, collapse the text label
+   so search + theme toggle keep room. Full label stays in title attr. */
+@media (max-width: 480px) {
+  #staleText { display: none; }
+  .topbar-right .chip { max-width: 128px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -530,40 +541,60 @@ tbody tr[data-team]:hover td { background: transparent !important; }
   display: none; position: fixed; bottom: 0; left: 0; right: 0;
   height: calc(var(--mobile-nav-height) + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
+  padding-left: max(8px, env(safe-area-inset-left));
+  padding-right: max(8px, env(safe-area-inset-right));
   background: var(--sidebar-bg);
   backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
   border-top: 1px solid rgba(255,255,255,0.06);
   box-shadow: 0 -1px 6px rgba(0,0,0,0.15);
   z-index: 100;
-  justify-content: space-around; align-items: center;
+  justify-content: space-evenly; align-items: stretch; gap: 8px;
 }
 @media (max-width: 640px) {
   .mobile-nav { display: flex; }
-  .page { padding-bottom: calc(var(--mobile-nav-height) + var(--safe-bottom) + 12px); }
+  .page {
+    padding-bottom: calc(var(--mobile-nav-height) + var(--safe-bottom) + 16px);
+    overflow-x: clip;
+  }
 }
+/* Touch & Interaction (ux skill): 48px+ targets, 8px gaps, 10px+ labels,
+   65% white inactive for 4.5:1 on dark navy. Icons 22px. */
 .mob-tab {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  padding: 6px 10px; background: none; border: none;
-  color: rgba(255,255,255,0.45); font: 600 9px var(--font-sans);
-  cursor: pointer; min-width: 48px; -webkit-tap-highlight-color: transparent;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  padding: 8px 10px; background: none; border: none; border-radius: 8px;
+  color: rgba(255,255,255,0.65); font: 600 10px/1.2 var(--font-sans);
+  letter-spacing: 0.02em;
+  cursor: pointer; min-width: 56px; min-height: 48px; -webkit-tap-highlight-color: transparent;
 }
-.mob-tab svg { width: 20px; height: 20px; }
+.mob-tab svg { width: 22px; height: 22px; }
 .mob-tab.active { color: #FFFFFF; position: relative; }
-.mob-tab.active::after { content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 20px; height: 2px; border-radius: 0 0 2px 2px; background: var(--primary-light); }
+.mob-tab.active::after { content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 24px; height: 3px; border-radius: 0 0 3px 3px; background: var(--primary-light); }
+.mob-tab:focus-visible, .more-drawer-item:focus-visible, #moreTabBtn:focus-visible {
+  outline: 2px solid var(--amber); outline-offset: 2px;
+}
 .more-drawer {
   position: fixed; bottom: calc(var(--mobile-nav-height) + var(--safe-bottom));
   left: 0; right: 0;
   background: var(--surface); border-top: 1px solid var(--border);
   border-radius: var(--card-radius) var(--card-radius) 0 0; padding: 10px 14px; z-index: 99;
-  transform: translateY(100%); transition: transform 200ms cubic-bezier(0.32,0.72,0,1);
+  transform: translateY(100%); transition: transform 200ms cubic-bezier(0.32,0.72,0,1), visibility 0s 200ms;
   box-shadow: var(--shadow-lg);
+  max-height: 60vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  /* Closed drawer overlaps the nav bar region: remove it from hit-testing
+     AND the a11y tree so taps reach the tabs beneath. */
+  visibility: hidden; pointer-events: none;
+}
+.more-drawer.open {
+  transform: translateY(0); visibility: visible; pointer-events: auto;
+  transition: transform 200ms cubic-bezier(0.32,0.72,0,1), visibility 0s 0s;
 }
 .more-drawer.open { transform: translateY(0); }
 .more-drawer-item {
   display: flex; align-items: center; gap: 10px;
-  padding: 12px 8px; border-bottom: 1px solid var(--border);
-  color: var(--text); font: 500 13px var(--font-sans);
+  padding: 14px 12px; border-bottom: 1px solid var(--border);
+  color: var(--text); font: 500 14px/1.4 var(--font-sans);
   cursor: pointer; background: none; border-left: none; border-right: none; border-top: none; width: 100%;
+  min-height: 48px; text-align: left; border-radius: 6px;
 }
 .more-drawer-item:last-child { border-bottom: none; }
 .more-drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 98; opacity: 0; pointer-events: none; transition: opacity 150ms ease; }
@@ -651,7 +682,8 @@ code.inline { background: var(--surface-raised); border: 1px solid var(--border)
    ═══════════════════════════════════════════════════════ */
 .clickable-row:focus-visible, .clickable-card:focus-visible, .matchup-card:focus-visible,
 [data-player-id]:focus-visible, [data-matchup-id]:focus-visible, .search-item:focus-visible,
-.props-game-row:focus-visible, .modal-close-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.props-game-row:focus-visible, .modal-close-btn:focus-visible,
+.mob-tab:focus-visible, .more-drawer-item:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 .search-item.active, .search-item[aria-selected="true"] { background: var(--surface-raised); outline: 1px solid var(--border-strong); }
 .week-picker-scroll { scrollbar-width: thin; }
 .week-picker-scroll::-webkit-scrollbar { height: 5px; }
@@ -664,17 +696,27 @@ code.inline { background: var(--surface-raised); border: 1px solid var(--border)
 @media (max-width: 640px) {
   .responsive-view .table-wrap { display: none; }
   .responsive-view .player-cards-grid { display: grid; }
-  .hero h1 { font-size: 18px; }
-  .hero p { font-size: 11px; }
+  .hero h1 { font-size: 20px; }
+  .hero p { font-size: 12px; }
   .kpi-row { grid-template-columns: repeat(2, 1fr) !important; }
   .kpi-card { grid-column: span 1 !important; }
-  .kpi-card .kpi-value { font-size: 16px; }
-  .filters { gap: 4px; }
-  .chip { padding: 4px 8px; font-size: 10px; }
+  .kpi-card .kpi-value { font-size: 17px; }
+  /* Filter chips become a one-row snap scroller with 8px touch spacing. */
+  .filters {
+    display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+  .filters::-webkit-scrollbar { display: none; }
+  .filters .chip { scroll-snap-align: start; flex-shrink: 0; }
+  .chip { padding: 6px 10px; font-size: 11px; }
   .card-header { flex-wrap: wrap; }
   .grid-2, .grid-3 { grid-template-columns: 1fr !important; }
   .btn { min-height: 44px; }
-  .chip { min-height: 44px; padding: 6px 10px; }
+  .chip { min-height: 44px; }
+  /* Non-card tables keep horizontal scroll, never break layout. */
+  .table-wrap { max-width: 100%; }
+  table { min-width: 640px; }
 }
 @media (min-width: 641px) {
   .responsive-view .player-cards-grid { display: none; }

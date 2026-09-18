@@ -63,23 +63,29 @@ function sortableTh(key, label, sortKey, sortDir, extraStyle = '') {
 }
 
 // Build full table headers (Model only vs with comparison toggle).
-export function tableHeaders(showCompare, sortKey, sortDir) {
+// hasMarket gates the market/ECR columns: deployments without a market
+// data source omit them entirely instead of rendering empty cells.
+export function tableHeaders(showCompare, sortKey, sortDir, hasMarket = true) {
   const compareHeaders = showCompare ? `
     ${sortableTh('weekly', 'Model Wk', sortKey, sortDir, 'color:var(--amber); border-bottom:2px solid var(--amber)')}
     ${sortableTh('ros', 'Model Season (17g)', sortKey, sortDir, 'color:var(--amber); border-bottom:2px solid var(--amber)')}
+    ${hasMarket ? `
     ${sortableTh('marketRos', 'Market Season (17g)', sortKey, sortDir, 'color:var(--sky); border-bottom:2px solid var(--sky)')}
     ${sortableTh('deltaRos', 'Season Δ', sortKey, sortDir, 'border-bottom:2px solid var(--border)')}
     ${sortableTh('fp_ecr', 'ECR', sortKey, sortDir)}
     ${sortableTh('fp_adp', 'ADP', sortKey, sortDir)}
     ${sortableTh('statsguy_rank', 'StatsGuy', sortKey, sortDir, 'color:var(--violet)')}
+    ` : ''}
   ` : `
     ${sortableTh('weekly', 'Model Wk', sortKey, sortDir)}
     ${sortableTh('ros', 'Season (17g)', sortKey, sortDir)}
   `;
 
   const marketCols = showCompare ? `
+    ${hasMarket ? `
     ${sortableTh('marketAuction', 'Market $', sortKey, sortDir, 'color:var(--sky)')}
     ${sortableTh('deltaAuction', 'Δ $', sortKey, sortDir)}
+    ` : ''}
     ${sortableTh('edge_score', 'Edge', sortKey, sortDir)}
   ` : '';
 
@@ -98,7 +104,7 @@ export function tableHeaders(showCompare, sortKey, sortDir) {
 }
 
 // Render the table body (top 120) + mobile card grid.
-export function tableBody(filteredPlayers, showCompare, escapeHtml) {
+export function tableBody(filteredPlayers, showCompare, escapeHtml, hasMarket = true) {
   const rows = filteredPlayers.slice(0, 120).map((p, i) => `
     <tr style="${p.isDrafted ? 'opacity:0.35; text-decoration:line-through' : ''};--team-accent:${getTeamColor((p.team || '').toUpperCase())}; ${p.edge === 'BUY' ? 'background:rgba(16,185,129,0.06)' : p.edge === 'SELL' ? 'background:rgba(239,68,68,0.06)' : ''}" data-pid="${p.player_id}" data-team="${p.team || ''}">
       <td class="mono-muted" style="font-size:11px">${i + 1}</td>
@@ -108,7 +114,7 @@ export function tableBody(filteredPlayers, showCompare, escapeHtml) {
       <td>${posBadge(p.position)}</td>
       <td class="mono" style="color:var(--amber)">${p.weekly.toFixed(1)}</td>
       <td class="mono" style="font-weight:700">${p.ros.toFixed(0)}</td>
-      ${showCompare ? `
+      ${showCompare && hasMarket ? `
         <td class="mono" style="color:var(--sky)">${p.marketRos != null ? p.marketRos.toFixed(0) : '—'}</td>
         <td>${deltaSeasonBadge(p.deltaRos)}</td>
         <td class="mono" style="font-size:11px; color:var(--text-muted)">${p.fp_ecr != null ? `#${p.fp_ecr}${p.fp_tier ? ` <span style="background:var(--violet-dim); color:var(--violet); border:1px solid rgba(168,85,247,0.18); border-radius:999px; padding:1px 5px; font:700 10px ui-monospace, SFMono-Regular,monospace">T${p.fp_tier}</span>` : ''}` : '—'}</td>
@@ -117,7 +123,7 @@ export function tableBody(filteredPlayers, showCompare, escapeHtml) {
       ` : ''}
       <td class="mono" style="color:${p.vor > 30 ? 'var(--emerald)' : p.vor > 15 ? 'var(--amber)' : 'var(--text-muted)'}">+${p.vor.toFixed(0)}</td>
       <td><span class="badge" style="background:${p.auction >= 15 ? 'var(--emerald)' : p.auction >= 5 ? 'var(--amber-dim)' : 'var(--surface-raised)'}; color:${p.auction >= 15 ? 'white' : p.auction >= 5 ? 'var(--amber)' : 'var(--text-muted)'}; border:1px solid ${p.auction >= 15 ? 'var(--emerald)' : 'var(--border)'}">$${p.auction}</span></td>
-      ${showCompare ? `<td class="mono" style="color:var(--sky)"><span class="badge" style="background:var(--sky-dim); color:var(--sky); border:1px solid rgba(56,189,248,0.2)">$${p.marketAuction}</span></td><td class="mono" style="font-weight:700; color:${p.deltaAuction > 4 ? 'var(--emerald)' : p.deltaAuction < -4 ? 'var(--crimson)' : 'var(--text-muted)'}">${p.deltaAuction > 0 ? '+' : ''}$${p.deltaAuction}</td>` : ''}
+      ${showCompare && hasMarket ? `<td class="mono" style="color:var(--sky)"><span class="badge" style="background:var(--sky-dim); color:var(--sky); border:1px solid rgba(56,189,248,0.2)">$${p.marketAuction}</span></td><td class="mono" style="font-weight:700; color:${p.deltaAuction > 4 ? 'var(--emerald)' : p.deltaAuction < -4 ? 'var(--crimson)' : 'var(--text-muted)'}">${p.deltaAuction != null ? `${p.deltaAuction > 0 ? '+' : ''}$${p.deltaAuction}` : '—'}</td>` : ''}
       ${showCompare ? `<td>${edgeBadgeAuction(p.edge)}</td>` : ''}
       <td class="mono-muted" style="font-size:11px">${(p.ros - p.widthRos).toFixed(0)}–${(p.ros + p.widthRos).toFixed(0)}</td>
       <td class="faint" style="font:600 11px Helvetica Neue, Helvetica,sans-serif">T${p.tier}</td>
@@ -138,10 +144,13 @@ export function tableBody(filteredPlayers, showCompare, escapeHtml) {
     if (!showCompare) return base;
     const seasonDelta = p.deltaRos != null
       ? `<span class="mono" style="font-size:10px; color:${Number(p.deltaRos) > 8 ? 'var(--emerald)' : Number(p.deltaRos) < -8 ? 'var(--crimson)' : 'var(--text-faint)'}">${Number(p.deltaRos) > 0 ? '+' : ''}${Number(p.deltaRos).toFixed(0)} season Δ</span>`
-      : `<span class="mono" style="font-size:10px; color:var(--text-faint)">season Δ —</span>`;
+      : '';
+    const mktSpan = hasMarket && p.marketRos != null
+      ? `<span class="mono" style="font-size:10px; color:var(--text-muted)">Mkt ${p.marketRos.toFixed(0)}</span>`
+      : '';
     return base.replace(
       '</div>\\n',
-      `  <div style="margin-top:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--border)"><button class="btn btn-ghost btn-sm focusBtn" data-pid="${p.player_id}" title="Focus for live advice" style="font-size:11px; padding:2px 6px">👁</button><span class="mono" style="font-size:10px; color:var(--text-muted)">Mkt ${p.marketRos != null ? p.marketRos.toFixed(0) : '—'}</span>${seasonDelta}<span class="spacer"></span>${edgeBadgeAuction(p.edge)}</div></div>\\n`
+      `  <div style="margin-top:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--border)"><button class="btn btn-ghost btn-sm focusBtn" data-pid="${p.player_id}" title="Focus for live advice" style="font-size:11px; padding:2px 6px">👁</button>${mktSpan}${seasonDelta}<span class="spacer"></span>${edgeBadgeAuction(p.edge)}</div></div>\\n`
     );
   }).join('');
 

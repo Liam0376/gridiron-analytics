@@ -302,12 +302,19 @@ export async function fetchGamePredictions(args = {}) {
 // lines. Same model-direct/no-write pattern as the other props reads.
 // Routed through hub proxy (/hub-api) to avoid CORS (browser on 8001 → API on 8000).
 export async function fetchPropsBoard(args = {}) {
-  return withCache('fetchPropsBoard', args, async () => {
+  // why league_id: the stateless (serverless) backend resolves everything
+  // per-request and returns an empty players list without it — the game
+  // modal then always showed "No projected players" (user-caught live bug).
+  // The stateful backend ignores the extra param. Cache key includes it so
+  // switching leagues can't serve the previous league's board.
+  const leagueId = getLeagueId() || '';
+  return withCache('fetchPropsBoard', { ...args, leagueId }, async () => {
     const { teams, week, season } = args;
     if (!teams) return { players: [], meta: {} };
     const qs = new URLSearchParams({ teams });
     if (week != null && week !== '') qs.set('week', String(week));
     if (season != null && season !== '') qs.set('season', String(season));
+    if (leagueId) qs.set('league_id', leagueId);
     try {
       const data = await getJSON(`${HUB_API}/props/board?${qs}`);
       return { players: data.players || [], meta: { timestamp: data.timestamp, week: data.week, season: data.season } };

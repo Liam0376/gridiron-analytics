@@ -1,7 +1,7 @@
 import './styles/app.css';
 import { allRoutes, getRoute } from './router.js';
 import { fetchHealth, fetchMeta, fetchReady, computeStaleness, fetchProjections, fetchComparison, fetchRoster, setActiveLeague, invalidateApiCache } from './api.js';
-import { getLeagueId, leagueTagline } from './lib/league.js';
+import { getLeagueId, leagueTagline, getKnownLeagues, addKnownLeague } from './lib/league.js';
 import { shimmer } from './components/shimmer.js';
 import { renderMobileNav, bindMobileNav } from './components/mobileNav.js';
 import { renderDashboard } from './views/dashboard.js';
@@ -11,6 +11,7 @@ import { userAvatar } from './components/userAvatar.js';
 import { posBadge } from './components/badges.js';
 import { teamLogo } from './components/teamLogo.js';
 import { openPlayerModal } from './components/playerModal.js';
+import { escapeHtml } from './lib/escape.js';
 
 // Lazy-loaded view modules — initial bundle stays small (~40% smaller),
 // heavy views (auction 940 lines, trade 390, etc.) load only on navigation.
@@ -616,16 +617,14 @@ async function renderLeagueSwitcher() {
     btn.textContent = `🏈 ${name} ▾`;
     btn.title = `Active: ${meta.leagueName || activeId || 'none'}`;
     updateSidebar(meta);
-    const leagues = meta.configuredLeagues || [];
-    if (leagues.length) {
-      populateDropdown(leagues, activeId, meta);
-    } else {
-      populateDropdown([], activeId, meta);
-    }
+    // Seed the active league so a stored league_id alone still yields an
+    // entry; the backend has no configured-leagues registry to read.
+    if (activeId) addKnownLeague(activeId, meta.leagueName, meta.season);
+    populateDropdown(getKnownLeagues(), activeId, meta);
   } catch (_) {
     btn.textContent = '🏈 League ▾';
     updateSidebar(null);
-    populateDropdown([], '', null);
+    populateDropdown(getKnownLeagues(), '', null);
   }
 }
 
@@ -638,7 +637,7 @@ async function maybeAutoSetup() {
   try {
     if (getLeagueId()) return;
     const meta = await fetchMeta();
-    if ((meta.configuredLeagues || []).length > 0) return;
+    if (getKnownLeagues().length > 0) return;
     if (meta.defaultLeagueId) return;
     const { openSetupModal } = await import('./views/setup.js');
     openSetupModal({ onDone: (saved) => { if (saved) location.reload(); } });

@@ -37,7 +37,11 @@ const MARKET_LABELS = {
 function marketChipHtml(r) {
   const label = MARKET_LABELS[r.market] || r.market;
   const isPoisson = r.market === 'anytime_td';
-  const fair = isPoisson ? `${(Number(r.p_yes) * 100).toFixed(0)}%` : Number(r.fair_line).toFixed(1);
+  // why null-guard: backends without touchdown modeling emit p_yes null —
+  // Number(null)*100 renders a fabricated "0%". Honest "—" instead.
+  const fair = isPoisson
+    ? (r.p_yes != null ? `${(Number(r.p_yes) * 100).toFixed(0)}%` : '—')
+    : Number(r.fair_line).toFixed(1);
   const actual = isPoisson
     ? (r.actual_p_yes == null ? null : (r.actual_p_yes > 0 ? 'YES' : 'NO'))
     : (r.actual == null ? null : Number(r.actual).toFixed(1));
@@ -228,8 +232,8 @@ export async function renderProps(root) {
                       <div style="margin-top:4px">${winPctChip(g.home_win_prob, homeFav)}</div>
                     </td>
                     <td class="mono">
-                      ${g.final ? `<span style="font-weight:700">${g.actual_away_score}</span>` : (g.predicted_away_score != null ? `${Number(g.predicted_away_score).toFixed(1)}` : '—')}<br>
-                      ${g.final ? `<span style="font-weight:700">${g.actual_home_score}</span>` : (g.predicted_home_score != null ? `${Number(g.predicted_home_score).toFixed(1)}` : '—')}
+                      ${g.final && g.actual_away_score != null ? `<span style="font-weight:700">${g.actual_away_score}</span><br><span class="faint" style="font-size:11px">pred ${g.predicted_away_score != null ? Number(g.predicted_away_score).toFixed(1) : '—'}</span>` : (g.predicted_away_score != null ? `${Number(g.predicted_away_score).toFixed(1)}` : '—')}<br>
+                      ${g.final && g.actual_home_score != null ? `<span style="font-weight:700">${g.actual_home_score}</span><br><span class="faint" style="font-size:11px">pred ${g.predicted_home_score != null ? Number(g.predicted_home_score).toFixed(1) : '—'}</span>` : (g.predicted_home_score != null ? `${Number(g.predicted_home_score).toFixed(1)}` : '—')}
                     </td>
                     <td>${gameStatusChip(g.final)}${pendingChip}</td>
                   </tr>`;
@@ -239,7 +243,7 @@ export async function renderProps(root) {
           </div>
           <div style="padding:10px 16px; font-size:11px; color:var(--text-faint)">
             Win% and predicted score are real market consensus (spread/total/moneyline, devigged) — not this app's own model.
-            Final games show the actual score in place of the prediction. Games whose books haven't posted lines yet show — but stay clickable for props.
+            Final games show the actual score alongside the prediction for comparison. Games whose books haven't posted lines yet show — but stay clickable for props.
           </div>` : `
           <div style="padding:20px; font-size:13px; color:var(--text-muted)">
             No schedule loaded for this week yet.

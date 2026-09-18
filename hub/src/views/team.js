@@ -78,6 +78,10 @@ export async function renderTeam(root) {
   );
   const bench = rawBenchEnriched;
   const allPlayers = [...starters, ...bench, ...reserve];
+  // Market/ECR columns exist only when some player actually carries the
+  // data — deployments without a market source omit them entirely.
+  const showMarketCols = allPlayers.some(p => p.marketAuction != null);
+  const showEcrCols = allPlayers.some(p => p.ecr != null || p.adp != null);
 
   // League rank via single bulk pass (no N+1 fan-out); graceful fallback when bulk misses.
   let rankText = `#— of ${league ? league.teams : '?'}`;
@@ -105,8 +109,11 @@ export async function renderTeam(root) {
   } catch (_) {}
 
   // Executive Header Metrics
-  const totalGridironValue = allPlayers.reduce((sum, p) => sum + p.gridironAuction, 0);
-  const totalMarketValue = allPlayers.reduce((sum, p) => sum + p.marketAuction, 0);
+  const totalGridironValue = allPlayers.reduce((sum, p) => sum + (p.gridironAuction ?? 0), 0);
+  // Market consensus may be absent (no market data source): null honest,
+  // never $0 — KPI renders N/A and the edge row is skipped below.
+  const marketVals = allPlayers.map(p => p.marketAuction);
+  const totalMarketValue = marketVals.every(v => v != null) ? marketVals.reduce((sum, v) => sum + v, 0) : null;
   const totalStarterFPTS = starters.reduce((sum, p) => sum + p.weekly, 0);
   const totalSeasonProj = starters.reduce((sum, p) => sum + p.season, 0);
 
@@ -216,13 +223,14 @@ export async function renderTeam(root) {
             <div class="mono kpi-val" style="color:var(--emerald)">$${totalGridironValue}</div>
             <span class="micro faint">Sum of VBD auction values</span>
           </div>
+          ${totalMarketValue != null ? `
           <div class="kpi-card">
             <span class="kicker">Total Market Consensus $</span>
             <div class="mono kpi-val" style="color:var(--sky)">$${totalMarketValue}</div>
             <div class="micro ${totalGridironValue >= totalMarketValue ? 'text-good' : 'text-bad'}">
               ${totalGridironValue >= totalMarketValue ? '+' : ''}$${totalGridironValue - totalMarketValue} Value Edge
             </div>
-          </div>
+          </div>` : ''}
           <div class="kpi-card">
             <span class="kicker">Starter pts/wk</span>
             <div class="mono kpi-val" style="color:var(--amber)">${totalStarterFPTS.toFixed(1)} <span class="kpi-unit">pts/wk</span></div>
@@ -326,11 +334,11 @@ export async function renderTeam(root) {
                   <th>Matchup</th>
                   <th style="color:var(--amber)">Projected FPTS (Wk/17G)</th>
                   <th style="color:var(--amber)">Model $</th>
-                  <th style="color:var(--sky)">Market $</th>
-                  <th>Δ $</th>
+                  ${showMarketCols ? `<th style="color:var(--sky)">Market $</th>
+                  <th>Δ $</th>` : ''}
                   <th>Edge</th>
-                  <th>ECR</th>
-                  <th>ADP</th>
+                  ${showEcrCols ? `<th>ECR</th>
+                  <th>ADP</th>` : ''}
                   <th>Tier</th>
                   <th>Conformal Interval</th>
                   <th>17G Stat Totals</th>
@@ -338,12 +346,12 @@ export async function renderTeam(root) {
                 </tr>
               </thead>
               <tbody>
-                ${starters.map(p => renderPlayerRow(p)).join('')}
+                ${starters.map(p => renderPlayerRow(p, false, showMarketCols, showEcrCols)).join('')}
               </tbody>
             </table>
           </div>
           <div class="player-cards-grid" style="padding:12px">
-            ${starters.map(p => renderPlayerCardItem(p)).join('')}
+            ${starters.map(p => renderPlayerCardItem(p, showMarketCols)).join('')}
           </div>
         </div>
       </div>
@@ -369,11 +377,11 @@ export async function renderTeam(root) {
                   <th>Matchup</th>
                   <th style="color:var(--amber)">Projected FPTS (Wk/17G)</th>
                   <th style="color:var(--amber)">Model $</th>
-                  <th style="color:var(--sky)">Market $</th>
-                  <th>Δ $</th>
+                  ${showMarketCols ? `<th style="color:var(--sky)">Market $</th>
+                  <th>Δ $</th>` : ''}
                   <th>Edge</th>
-                  <th>ECR</th>
-                  <th>ADP</th>
+                  ${showEcrCols ? `<th>ECR</th>
+                  <th>ADP</th>` : ''}
                   <th>Tier</th>
                   <th>Conformal Interval</th>
                   <th>17G Stat Totals</th>
@@ -381,12 +389,12 @@ export async function renderTeam(root) {
                 </tr>
               </thead>
               <tbody>
-                ${bench.map(p => renderPlayerRow(p)).join('')}
+                ${bench.map(p => renderPlayerRow(p, false, showMarketCols, showEcrCols)).join('')}
               </tbody>
             </table>
           </div>
           <div class="player-cards-grid" style="padding:12px">
-            ${bench.map(p => renderPlayerCardItem(p)).join('')}
+            ${bench.map(p => renderPlayerCardItem(p, showMarketCols)).join('')}
           </div>
         </div>
       </div>
@@ -413,16 +421,16 @@ export async function renderTeam(root) {
                     <th>Matchup</th>
                     <th>Projected FPTS</th>
                     <th>Model $</th>
-                    <th>Market $</th>
-                    <th>Δ $</th>
+                    ${showMarketCols ? `<th>Market $</th>
+                    <th>Δ $</th>` : ''}
                     <th>Edge</th>
-                    <th>ECR</th>
+                    ${showEcrCols ? `<th>ECR</th>` : ''}
                     <th>Conformal Interval</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${reserve.map(p => renderPlayerRow(p, true)).join('')}
+                  ${reserve.map(p => renderPlayerRow(p, true, showMarketCols, showEcrCols)).join('')}
                 </tbody>
               </table>
             </div>
@@ -475,7 +483,7 @@ export async function renderTeam(root) {
   });
 }
 
-function renderPlayerRow(p, isReserve = false) {
+function renderPlayerRow(p, isReserve = false, showMarket = true, showEcr = true) {
   const deltaCls = p.deltaAuction > 0 ? 'text-good' : p.deltaAuction < 0 ? 'text-bad' : 'faint';
   const deltaSign = p.deltaAuction > 0 ? '+' : '';
   const edgeCls = p.edge === 'BUY' ? 'badge-emerald' : p.edge === 'SELL' ? 'badge-crimson' : 'badge-faint';
@@ -505,11 +513,11 @@ function renderPlayerRow(p, isReserve = false) {
         <span class="micro faint"> / ${p.season.toFixed(0)}</span>
       </td>
       <td class="mono"><span class="badge badge-amber" title="${p.gridironUncapped!=null && p.gridironUncapped!==p.gridironAuction ? `Uncapped VOR $${p.gridironUncapped}` : ''}">$${p.gridironAuction}${p.gridironUncapped!=null && p.gridironUncapped!==p.gridironAuction ? ` <span class="micro faint">($${p.gridironUncapped})</span>` : ''}</span></td>
-      <td class="mono"><span class="badge badge-sky" title="${p.marketUncapped!=null && p.marketUncapped!==p.marketAuction ? `Uncapped $${p.marketUncapped}` : ''}">$${p.marketAuction}${p.marketUncapped!=null && p.marketUncapped!==p.marketAuction ? ` <span class="micro faint">($${p.marketUncapped})</span>` : ''}</span></td>
-      <td class="mono ${deltaCls}">${deltaSign}$${p.deltaAuction}</td>
+      ${showMarket ? `<td class="mono"><span class="badge badge-sky" title="Market consensus auction value">$${p.marketAuction}</span></td>
+      <td class="mono ${deltaCls}">${deltaSign}$${p.deltaAuction}</td>` : ''}
       <td><span class="badge ${edgeCls}" aria-label="${escapeAttr(p.edge)}">${edgeIcon}${p.edge}</span></td>
-      <td class="mono micro">${p.ecr ? `#${p.ecr}${p.ecrPos ? ` (${p.ecrPos})` : ''}` : '—'}</td>
-      <td class="mono micro faint">${p.adp ? `#${p.adp}` : '—'}</td>
+      ${showEcr ? `<td class="mono micro">${p.ecr ? `#${p.ecr}${p.ecrPos ? ` (${p.ecrPos})` : ''}` : '—'}</td>
+      <td class="mono micro faint">${p.adp ? `#${p.adp}` : '—'}</td>` : ''}
       <td>${p.tier ? `<span class="badge badge-violet">T${p.tier}</span>` : '—'}</td>
       <td>
         ${intervalBar({ point: p.weekly, low: p.lower, high: p.upper, width: p.width, min: 0, max: 35 })}
@@ -520,7 +528,7 @@ function renderPlayerRow(p, isReserve = false) {
   `;
 }
 
-function renderPlayerCardItem(p) {
+function renderPlayerCardItem(p, showMarket = true) {
   return `
     <div class="player-card clickable-card" data-player-id="${escapeHtml(p.player_id)}" tabindex="0" role="button" aria-label="Open details for ${escapeAttr(p.player_name || p.player_id)}" style="cursor:pointer">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px">
@@ -537,7 +545,7 @@ function renderPlayerCardItem(p) {
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; margin-bottom:8px" class="mono">
         <div><span class="faint">Model:</span> <strong style="color:var(--amber)">${p.weekly.toFixed(1)} wk</strong></div>
-        <div><span class="faint">Market:</span> <span style="color:var(--sky)">$${p.marketAuction}${p.marketUncapped!==p.marketAuction ? `<span style="font-size:10px; color:var(--text-faint)"> ($${p.marketUncapped})</span>`:''}</span></div>
+        ${showMarket ? `<div><span class="faint">Market:</span> <span style="color:var(--sky)">$${p.marketAuction}</span></div>` : ''}
         <div><span class="faint">ECR:</span> ${p.ecr ? `#${p.ecr}` : '—'}</div>
         <div><span class="faint">Edge:</span> <strong style="color:${p.edge==='BUY'?'var(--emerald)':p.edge==='SELL'?'var(--crimson)':'var(--text-muted)'}">${p.edge==='BUY'?'▲ ':p.edge==='SELL'?'▼ ':''}${p.edge}</strong></div>
       </div>

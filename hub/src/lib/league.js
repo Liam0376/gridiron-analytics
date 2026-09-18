@@ -69,6 +69,36 @@ export function teamStorageKey(leagueId) {
   return `${TEAM_KEY_PREFIX}${leagueId || 'default'}`;
 }
 
+// Known leagues: client-side list of leagues viewed on this machine, backing
+// the topbar switcher. The stateless backend has no configured-leagues
+// registry (the stateful father's SQLite scan has no equivalent here), so
+// the list is maintained locally: most-recent-first, capped, deduplicated.
+const KNOWN_LEAGUES_KEY = 'ffba-known-leagues';
+const MAX_KNOWN_LEAGUES = 20;
+
+export function getKnownLeagues() {
+  const store = storage();
+  try {
+    const raw = store && store.getItem(KNOWN_LEAGUES_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter(l => l && l.league_id) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+export function addKnownLeague(leagueId, leagueName, season) {
+  if (!leagueId) return;
+  const store = storage();
+  if (!store) return;
+  try {
+    const id = String(leagueId);
+    const rest = getKnownLeagues().filter(l => String(l.league_id) !== id);
+    rest.unshift({ league_id: id, league_name: leagueName || '', season: season || '' });
+    store.setItem(KNOWN_LEAGUES_KEY, JSON.stringify(rest.slice(0, MAX_KNOWN_LEAGUES)));
+  } catch (_) {}
+}
+
 // League economics: auction $/VOR math scaled to any league's size, roster
 // shape, and draft budget. Mirrors ffanalytics.config.league_economics —
 // same methodology, same 12x$200 reproduction (verified in test_config.py).
