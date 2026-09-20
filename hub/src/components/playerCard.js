@@ -7,7 +7,7 @@ import { intervalBar } from './intervalBar.js';
 import { escapeHtml } from '../lib/escape.js';
 
 export function playerCard(player, options = {}) {
-  const { showDraftBtn = false, showInterval = true, showTeamLogo = true, draftValue = null } = options;
+  const { showDraftBtn = false, showInterval = true, showTeamLogo = true, draftValue = null, statWeek = null } = options;
   const p = player;
   const pos = (p.position || p.position_group || 'UNK').toUpperCase();
   const proj = Number(p.projected_points ?? p.point_estimate ?? 0);
@@ -33,6 +33,28 @@ export function playerCard(player, options = {}) {
     ? `<button class="btn btn-primary btn-sm draftBtn pc-draft-btn" data-pid="${escapeHtml(p.player_id)}" data-name="${escapeHtml(p.player_name)}" data-val="${draftValue ?? p.auction ?? 1}">Draft $${draftValue ?? p.auction ?? 1}</button>`
     : '';
 
+  // Projected stat line from the weekly proj_* API fields. Only the
+  // position's own set renders; nothing renders when the data is absent
+  // (e.g. auction views), so shared callers are unaffected. Values belong
+  // to the week the card's data was fetched for (statWeek labels it).
+  const statBits = [];
+  const pushStat = (label, v) => { if (v != null) statBits.push(`${v} ${label}`); };
+  if (pos === 'QB') {
+    pushStat('PaYd', p.proj_pass_yd); pushStat('PaTD', p.proj_pass_td);
+    pushStat('RuYd', p.proj_rush_yd); pushStat('RuTD', p.proj_rush_td);
+  } else if (pos === 'RB') {
+    pushStat('RuYd', p.proj_rush_yd); pushStat('RuTD', p.proj_rush_td);
+    pushStat('Rec', p.proj_rec); pushStat('RecYd', p.proj_rec_yd);
+  } else if (pos === 'WR' || pos === 'TE') {
+    pushStat('Rec', p.proj_rec); pushStat('RecYd', p.proj_rec_yd);
+    pushStat('RecTD', p.proj_rec_td);
+  } else if (pos === 'K') {
+    pushStat('FGm', p.proj_fgm); pushStat('XP', p.proj_xpm);
+  }
+  const statSection = statBits.length
+    ? `<div class="pc-stats mono" style="font-size:11px; color:var(--text-muted); margin-top:6px">${statWeek != null ? `<span style="color:var(--text-faint)">Wk${escapeHtml(String(statWeek))} · </span>` : ''}${statBits.join(' · ')}</div>`
+    : '';
+
   return `
     <div class="player-card-v2" data-pid="${escapeHtml(p.player_id || '')}" style="--team-accent:${getTeamColor(team)}">
       <div class="pc-header">
@@ -43,9 +65,10 @@ export function playerCard(player, options = {}) {
         </div>
         <div class="pc-proj mono">${proj.toFixed(1)}</div>
       </div>
-      ${intervalSection || badgeRow.length || draftSection ? `
+      ${intervalSection || badgeRow.length || draftSection || statSection ? `
         <div class="pc-details">
           ${intervalSection}
+          ${statSection}
           ${badgeRow.length ? `<div class="pc-badges">${badgeRow.join(' ')}</div>` : ''}
           ${draftSection}
         </div>
