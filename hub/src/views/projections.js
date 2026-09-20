@@ -381,13 +381,22 @@ export async function renderProjections(root) {
     </details>
     ` : ''}
     <div class="table-wrap sticky-player reveal in" style="margin-top:16px; overflow-x:auto; max-width:100%">
-      <table id="projTable" style="min-width:${compareEnabled && hasComparison ? '1180px' : '760px'}">
+      <table id="projTable" style="min-width:${compareEnabled && hasComparison ? '1760px' : '1340px'}">
         <thead>
           <tr>
             <th data-sort="player_name" tabindex="0" role="button" aria-label="Sort by Player">Player</th>
             <th data-sort="position" tabindex="0" role="button" aria-label="Sort by Position">Pos</th>
             <th data-sort="team" tabindex="0" role="button" aria-label="Sort by Team">Team</th>
             <th data-sort="projected_points" tabindex="0" role="button" aria-label="Sort by Model Points" style="${compareEnabled && hasComparison ? 'color:var(--amber); border-bottom:2px solid var(--amber)' : ''}">${rosMode ? 'RoS' : 'Model'}<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:${compareEnabled && hasComparison ? 'var(--amber)' : 'var(--text-faint)'}; opacity:0.7">${rosMode ? 'total' : 'proj'}</span></th>
+            <th data-sort="proj_pass_yd" tabindex="0" role="button" aria-label="Sort by projected passing yards" title="Weekly projection (not RoS-scaled)">PaYd</th>
+            <th data-sort="proj_pass_td" tabindex="0" role="button" aria-label="Sort by projected passing TDs" title="Weekly projection (not RoS-scaled)">PaTD</th>
+            <th data-sort="proj_rush_yd" tabindex="0" role="button" aria-label="Sort by projected rushing yards" title="Weekly projection (not RoS-scaled)">RuYd</th>
+            <th data-sort="proj_rush_td" tabindex="0" role="button" aria-label="Sort by projected rushing TDs" title="Weekly projection (not RoS-scaled)">RuTD</th>
+            <th data-sort="proj_rec" tabindex="0" role="button" aria-label="Sort by projected receptions" title="Weekly projection (not RoS-scaled)">Rec</th>
+            <th data-sort="proj_rec_yd" tabindex="0" role="button" aria-label="Sort by projected receiving yards" title="Weekly projection (not RoS-scaled)">RecYd</th>
+            <th data-sort="proj_rec_td" tabindex="0" role="button" aria-label="Sort by projected receiving TDs" title="Weekly projection (not RoS-scaled)">RecTD</th>
+            <th data-sort="proj_fgm" tabindex="0" role="button" aria-label="Sort by projected field goals" title="Weekly projection (not RoS-scaled)">FGm</th>
+            <th data-sort="proj_xpm" tabindex="0" role="button" aria-label="Sort by projected extra points" title="Weekly projection (not RoS-scaled)">XP</th>
             ${compareEnabled && hasComparison ? `
             <th data-sort="market_points" tabindex="0" role="button" aria-label="Sort by Sleeper Market Points" style="color:var(--sky); border-bottom:2px solid var(--sky)">Market<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--sky); opacity:0.7">${rosMode ? 'Sleeper season' : 'Sleeper'}</span></th>
             <th data-sort="delta_points" tabindex="0" role="button" aria-label="Sort by Points Delta" style="border-bottom:2px solid var(--border)">Δ<br><span style="font:600 10px "Helvetica Neue", Helvetica,sans-serif; color:var(--text-faint)">Grid−Mkt</span></th>
@@ -569,7 +578,7 @@ export async function renderProjections(root) {
     }
 
     const tbody = root.querySelector('#projBody');
-    const colSpan = compareEnabled && hasComparison ? 15 : 9;
+    const colSpan = compareEnabled && hasComparison ? 24 : 17;
     if (!pagedRows.length) {
       tbody.innerHTML = `<tr><td colspan="${colSpan}"><div class="empty">No matches for <code class="inline">${escapeHtml(currentQuery || '—')}</code>${edgeFilter !== 'ALL' ? ` with edge ${edgeFilter}` : ''}. Try <code class="inline">pos:WR</code> or clear filters.</div></td></tr>`;
     } else {
@@ -589,12 +598,20 @@ export async function renderProjections(root) {
         const teamPill = p.team ? `<span class="badge" style="background:${tColor}1f; color:${tColor}; border:1px solid ${tColor}3d; font-weight:700">${teamLogo(p.team, 14)} ${escapeHtml(p.team)}</span>` : '—';
         const rowAccent = p.edge === 'BUY' ? 'var(--emerald)' : p.edge === 'SELL' ? 'var(--crimson)' : tColor;
         const expandBtn = compareEnabled && hasComparison ? `<button class="chip" data-expand="${p.player_id}" aria-label="Show stat deltas for ${escapeHtml(p.player_name)}" style="padding:4px 8px; font-size:11px">▶</button>` : '';
+        // Projected stat columns (weekly values; dash when off-position).
+        // Server rounds (1dp yards/rec, 2dp TDs); render as-is.
+        const sc = v => `<td class="mono">${v != null ? v : '—'}</td>`;
+        const statCells = sc(p.proj_pass_yd) + sc(p.proj_pass_td)
+          + sc(p.proj_rush_yd) + sc(p.proj_rush_td) + sc(p.proj_rec)
+          + sc(p.proj_rec_yd) + sc(p.proj_rec_td) + sc(p.proj_fgm)
+          + sc(p.proj_xpm);
         const mainRow = `
           <tr data-team="${p.team || ''}" data-pid="${p.player_id}" class="clickable-row" style="cursor:pointer; --team-accent:${rowAccent}; ${p.edge==='BUY' ? 'background:rgba(16,185,129,0.04)' : p.edge==='SELL' ? 'background:rgba(239,68,68,0.04)' : ''}">
             <td><div class="player-cell">${playerAvatar(p, 32)}<div class="player-cell-info"><div class="player-cell-name">${escapeHtml(p.player_name || p.player_id)}</div><div class="player-cell-sub">${teamLogo(p.team, 14)} ${escapeHtml(p.team || '—')} ${p.model_pos_rank ? `<span style="color:var(--text-faint)">· #${p.model_pos_rank} ${pos}</span>` : ''}</div></div></div></td>
             <td>${posBadge(pos)}</td>
             <td>${teamPill}</td>
             <td class="mono" style="font-weight:700; color:var(--amber)">${proj.toFixed(1)}</td>
+            ${statCells}
             ${compareEnabled && hasComparison ? `
             <td class="mono" style="color:var(--sky)">${market}</td>
             <td>${deltaPtsBadge(p.delta_points)}</td>
