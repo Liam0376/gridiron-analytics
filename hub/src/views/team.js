@@ -7,6 +7,7 @@ import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
 import { getTeamColor } from '../components/teamColors.js';
 import { openPlayerModal } from '../components/playerModal.js';
+import { playerCard } from '../components/playerCard.js';
 import { computeVbdParams } from '../components/vbdAuction.js';
 import { assignStarterSlots } from '../lib/slots.js';
 import { enrichPlayer } from '../lib/enrichPlayer.js';
@@ -351,7 +352,7 @@ export async function renderTeam(root) {
             </table>
           </div>
           <div class="player-cards-grid" style="padding:12px">
-            ${starters.map(p => renderPlayerCardItem(p, showMarketCols)).join('')}
+            ${starters.map(p => renderPlayerCardItem(p)).join('')}
           </div>
         </div>
       </div>
@@ -394,7 +395,7 @@ export async function renderTeam(root) {
             </table>
           </div>
           <div class="player-cards-grid" style="padding:12px">
-            ${bench.map(p => renderPlayerCardItem(p, showMarketCols)).join('')}
+            ${bench.map(p => renderPlayerCardItem(p)).join('')}
           </div>
         </div>
       </div>
@@ -481,6 +482,18 @@ export async function renderTeam(root) {
       });
     }
   });
+  // Shared playerCard() tiles carry data-pid (same as Projections tab).
+  root.querySelectorAll('[data-pid]').forEach(el => {
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const pid = el.getAttribute('data-pid');
+      const targetPlayer = allPlayers.find(p => String(p.player_id) === String(pid));
+      if (targetPlayer) {
+        openPlayerModal(targetPlayer, root);
+      }
+    });
+  });
 }
 
 function renderPlayerRow(p, isReserve = false, showMarket = true, showEcr = true) {
@@ -528,28 +541,18 @@ function renderPlayerRow(p, isReserve = false, showMarket = true, showEcr = true
   `;
 }
 
-function renderPlayerCardItem(p, showMarket = true) {
-  return `
-    <div class="player-card clickable-card" data-player-id="${escapeHtml(p.player_id)}" tabindex="0" role="button" aria-label="Open details for ${escapeAttr(p.player_name || p.player_id)}" style="cursor:pointer">
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px">
-        <div style="display:flex; align-items:center; gap:8px">
-          ${playerAvatar(p, 36)}
-          <div>
-            <div style="font-weight:700; color:var(--text)">${escapeHtml(p.player_name)}</div>
-            <div style="font-size:11px; color:var(--text-muted); display:flex; gap:4px; align-items:center">
-              ${posBadge(p.position)} · ${teamLogo(p.team, 14)} ${escapeHtml(p.team || '')} vs ${escapeHtml(p.opponent_team || '—')}
-            </div>
-          </div>
-        </div>
-        <span class="badge badge-amber mono" style="font-size:13px" title="${p.gridironUncapped!==p.gridironAuction ? `Uncapped $${p.gridironUncapped}`:''}">$${p.gridironAuction}${p.gridironUncapped!==p.gridironAuction ? `<span style="font-size:10px; color:var(--text-faint)"> ($${p.gridironUncapped})</span>`:''}</span>
-      </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; margin-bottom:8px" class="mono">
-        <div><span class="faint">Model:</span> <strong style="color:var(--amber)">${p.weekly.toFixed(1)} wk</strong></div>
-        ${showMarket ? `<div><span class="faint">Market:</span> <span style="color:var(--sky)">$${p.marketAuction}</span></div>` : ''}
-        <div><span class="faint">ECR:</span> ${p.ecr ? `#${p.ecr}` : '—'}</div>
-        <div><span class="faint">Edge:</span> <strong style="color:${p.edge==='BUY'?'var(--emerald)':p.edge==='SELL'?'var(--crimson)':'var(--text-muted)'}">${p.edge==='BUY'?'▲ ':p.edge==='SELL'?'▼ ':''}${p.edge}</strong></div>
-      </div>
-      <div>${intervalBar({ point: p.weekly, low: p.lower, high: p.upper, width: p.width, min: 0, max: 35 })}</div>
-    </div>
-  `;
+function renderPlayerCardItem(p) {
+  // Shared card component (same as Projections/Auction tabs): full-width
+  // v2 treatment with interval + gauges. The old bespoke tile used the
+  // tier-list `.player-card` class (max-width:200px, built for flex-wrap
+  // rows) which capped tiles inside the grid and looked cut off.
+  // Adapter maps Team Hub enrichment names onto playerCard's inputs.
+  return playerCard({
+    ...p,
+    projected_points: p.weekly,
+    point_estimate: p.weekly,
+    projection_lower: p.lower,
+    projection_upper: p.upper,
+    auction: p.gridironAuction,
+  }, { showInterval: true, showTeamLogo: true });
 }
