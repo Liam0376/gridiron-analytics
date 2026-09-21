@@ -1,6 +1,6 @@
 import { fetchProjections, fetchComparison, fetchRoster, fetchRosProjections } from '../api.js';
 import { filterPlayers } from '../search.js';
-import { posBadge, injuryBadge, windBadge, confBadge } from '../components/badges.js';
+import { posBadge, injuryBadge, confBadge } from '../components/badges.js';
 import { intervalBar } from '../components/intervalBar.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
@@ -343,7 +343,7 @@ export async function renderProjections(root) {
         <div class="row">
           <label class="search-mini" style="flex:1; min-width:260px">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-            <input id="localSearch" placeholder="pos:WR wind>15 healthy:true" autocomplete="off" />
+            <input id="localSearch" placeholder="pos:WR healthy:true" autocomplete="off" />
           </label>
           <span class="kicker" id="countLabel" style="white-space:nowrap"></span>
           <button class="chip" id="toggleProjSortDir" title="Flip sorting: highest ↔ lowest">↕ Highest → Lowest</button>
@@ -357,7 +357,6 @@ export async function renderProjections(root) {
           <button class="chip" data-chip="healthy:true">Healthy</button>
           <button class="chip" data-chip="trending:true">Trending</button>
           <button class="chip" data-chip="roster:true">My Roster</button>
-          <button class="chip" data-chip="wind>15">Wind &gt;15</button>
           <button class="chip" data-chip="interval<4">Tight (±&lt;4)</button>
         </div>
         ${meta.cold ? `<div class="alert alert-warn">No fresh data. Refresh to populate.</div>` : ``}
@@ -397,7 +396,7 @@ export async function renderProjections(root) {
             <th data-sort="edge_score" tabindex="0" role="button" aria-label="Sort by Edge">Edge</th>
             ` : ''}
             <th>Interval</th>
-            <th data-sort="wind_mph" tabindex="0" role="button" aria-label="Sort by Wind Speed">Wind</th>
+            <th data-sort="opponent_team" tabindex="0" role="button" aria-label="Sort by Matchup">Matchup</th>
             <th data-sort="width" tabindex="0" role="button" aria-label="Sort by Confidence Width">Conf</th>
             <th>Injury</th>
             ${compareEnabled && hasComparison ? `<th style="width:28px"></th>` : ''}
@@ -590,6 +589,7 @@ export async function renderProjections(root) {
         // primaries (CHI LV HOU GB …) are unreadable on the dark theme.
         const tDisplay = getTeamDisplayColor(p.team);
         const teamPill = p.team ? `<span class="badge" style="background:${tDisplay}1f; color:${tDisplay}; border:1px solid ${tDisplay}3d; font-weight:700">${teamLogo(p.team, 14)} ${escapeHtml(p.team)}</span>` : '—';
+        const oppPill = p.opponent_team ? `<span class="mono" style="font-size:11px; color:var(--text-faint)">vs</span> ${teamLogo(p.opponent_team, 14)} <span class="mono" style="font-size:11px; font-weight:700">${escapeHtml(p.opponent_team)}</span>` : '<span class="mono" style="color:var(--text-faint)">—</span>';
         const rowAccent = p.edge === 'BUY' ? 'var(--emerald)' : p.edge === 'SELL' ? 'var(--crimson)' : tColor;
         const expandBtn = compareEnabled && hasComparison ? `<button class="chip" data-expand="${p.player_id}" aria-label="Show stat deltas for ${escapeHtml(p.player_name)}" style="padding:4px 8px; font-size:11px">▶</button>` : '';
         const mainRow = `
@@ -607,7 +607,7 @@ export async function renderProjections(root) {
             <td>${edgeCell}</td>
             ` : ''}
             <td>${intervalBar({ point: proj, low, high, width, min: 0, max: 35 })}</td>
-            <td>${windBadge(p.wind_mph)}</td>
+            <td>${oppPill}</td>
             <td>${confBadge(width)}</td>
             <td>${injuryBadge(p.injury_status)} ${p.trending ? `<span class="badge" style="background:var(--sky-dim); color:var(--sky); margin-left:6px">↗ trending</span>`:''}</td>
             ${compareEnabled && hasComparison ? `<td>${expandBtn}</td>` : ''}
