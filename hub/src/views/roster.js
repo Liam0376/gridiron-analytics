@@ -232,8 +232,6 @@ export async function renderRoster(root) {
         ${inspectorMode === 'single' ? renderSingleTeamInspector(teamA) : renderCompareTeamsInspector(teamA, teamB)}
       </div>
     </div>
-
-    <div id="playerModalContainer"></div>
   `;
 
   // Bind Leaderboard row inspection clicks

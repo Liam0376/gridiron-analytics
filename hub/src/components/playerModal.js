@@ -16,6 +16,14 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
     container.id = 'playerModalContainer';
     document.body.appendChild(container);
   }
+  // why body-level (team-hub top-clip bug): #app (.page) is
+  // position:relative + z-index:1, i.e. a stacking context. A container
+  // nested in there traps the modal's z-2000 backdrop below the sticky
+  // topbar (z-40), so the card top slides under the opaque topbar and the
+  // avatar + close button clip. Reparent to body (a move, not a copy).
+  if (container.parentElement !== document.body) {
+    document.body.appendChild(container);
+  }
 
   const isPasser = p.position === 'QB';
   const isRunner = p.position === 'RB' || p.position === 'QB';

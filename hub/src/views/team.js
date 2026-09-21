@@ -440,7 +440,6 @@ export async function renderTeam(root) {
       </div>
     ` : ''}
 
-    <div id="playerModalContainer"></div>
   `;
 
   // Bind Team Selector
