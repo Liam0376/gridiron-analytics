@@ -26,15 +26,15 @@ export function statGauge(label, v, delayMs = 0) {
   const pct = Math.max(0, Math.min(100, (Number(v) / st.max) * 100));
   const gid = `gg${__gid++}`;
   const sr = `${label} ${v} of ${st.max} scale`;
-  return `<div class="modal-val-card pc-gauge-card" role="img" aria-label="${sr}" title="${sr}" style="min-width:76px;padding:8px 6px;text-align:center">`
+  return `<div class="modal-val-card pc-gauge-card" role="img" aria-label="${sr}" title="${sr}" style="min-width:100px;padding:10px 8px;text-align:center">`
     + `<span class="kicker">${label}</span>`
-    + `<svg viewBox="0 0 44 30" width="52" height="35" aria-hidden="true" focusable="false" style="margin:2px auto;display:block">`
+    + `<svg viewBox="0 0 60 40" width="70" height="46" aria-hidden="true" focusable="false" style="margin:3px auto;display:block">`
     + `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="0">`
     + `<stop offset="0" stop-color="${st.from}"/><stop offset="1" stop-color="${st.to}"/>`
     + `</linearGradient></defs>`
-    + `<path d="M4 24 A18 18 0 0 1 40 24" fill="none" stroke="var(--border)" stroke-width="5" stroke-linecap="round"/>`
-    + `<path class="gauge-arc" style="--p:${pct.toFixed(1)} 100;animation-delay:${delayMs}ms" d="M4 24 A18 18 0 0 1 40 24" fill="none" stroke="url(#${gid})" stroke-width="5" stroke-linecap="round" pathLength="100" stroke-dasharray="${pct.toFixed(1)} 100"/>`
-    + `</svg><span class="mono val-large" style="color:${st.from}">${v}</span></div>`;
+    + `<path d="M5 33 A25 25 0 0 1 55 33" fill="none" stroke="var(--border)" stroke-width="6" stroke-linecap="round"/>`
+    + `<path class="gauge-arc" style="--p:${pct.toFixed(1)} 100;animation-delay:${delayMs}ms" d="M5 33 A25 25 0 0 1 55 33" fill="none" stroke="url(#${gid})" stroke-width="6" stroke-linecap="round" pathLength="100" stroke-dasharray="${pct.toFixed(1)} 100"/>`
+    + `</svg><span class="mono val-large" style="color:${st.from};font-size:20px">${v}</span></div>`;
 }
 
 export function statGaugesForPosition(pos, p) {
