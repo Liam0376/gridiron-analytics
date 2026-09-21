@@ -33,26 +33,43 @@ export function playerCard(player, options = {}) {
     ? `<button class="btn btn-primary btn-sm draftBtn pc-draft-btn" data-pid="${escapeHtml(p.player_id)}" data-name="${escapeHtml(p.player_name)}" data-val="${draftValue ?? p.auction ?? 1}">Draft $${draftValue ?? p.auction ?? 1}</button>`
     : '';
 
-  // Projected stat line from the weekly proj_* API fields. Only the
-  // position's own set renders; nothing renders when the data is absent
-  // (e.g. auction views), so shared callers are unaffected. Values belong
-  // to the week the card's data was fetched for (statWeek labels it).
-  const statBits = [];
-  const pushStat = (label, v) => { if (v != null) statBits.push(`${v} ${label}`); };
+  // Projected-stat speedometers from the weekly proj_* API fields.
+  // Compact semicircular SVG gauges (one per stat in the position's set),
+  // value beside the dial per accessible-chart practice: color is
+  // supplementary, the number carries the meaning. Nothing renders when
+  // the data is absent (e.g. auction views), so shared callers are
+  // unaffected. Static SVG (no animation) keeps card grids cheap.
+  // Scale caps are fixed per stat so fills stay comparable week to week.
+  const GAUGE_MAX = { PaYd: 350, PaTD: 5, RuYd: 150, RuTD: 3, Rec: 12,
+                      RecYd: 150, RecTD: 3, FGm: 5, XP: 6 };
+  const gauge = (label, v) => {
+    if (v == null) return '';
+    const max = GAUGE_MAX[label] || 100;
+    const pct = Math.max(0, Math.min(100, (Number(v) / max) * 100));
+    const sr = `${label} ${v} of ${max} scale`;
+    return `<span class="pc-gauge" role="img" aria-label="${sr}" title="${sr}" style="display:inline-flex;flex-direction:column;align-items:center;width:52px">`
+      + `<svg viewBox="0 0 44 26" width="44" height="26" aria-hidden="true" focusable="false">`
+      + `<path d="M4 22 A18 18 0 0 1 40 22" fill="none" stroke="var(--border)" stroke-width="5" stroke-linecap="round"/>`
+      + `<path d="M4 22 A18 18 0 0 1 40 22" fill="none" stroke="var(--amber)" stroke-width="5" stroke-linecap="round" pathLength="100" stroke-dasharray="${pct.toFixed(1)} 100"/>`
+      + `</svg><span class="pc-gauge-val mono" style="font-size:11px;font-weight:700">${v}</span>`
+      + `<span class="pc-gauge-label" style="font-size:9px;color:var(--text-faint)">${label}</span></span>`;
+  };
+  const dials = [];
+  const pushGauge = (label, v) => { const g = gauge(label, v); if (g) dials.push(g); };
   if (pos === 'QB') {
-    pushStat('PaYd', p.proj_pass_yd); pushStat('PaTD', p.proj_pass_td);
-    pushStat('RuYd', p.proj_rush_yd); pushStat('RuTD', p.proj_rush_td);
+    pushGauge('PaYd', p.proj_pass_yd); pushGauge('PaTD', p.proj_pass_td);
+    pushGauge('RuYd', p.proj_rush_yd); pushGauge('RuTD', p.proj_rush_td);
   } else if (pos === 'RB') {
-    pushStat('RuYd', p.proj_rush_yd); pushStat('RuTD', p.proj_rush_td);
-    pushStat('Rec', p.proj_rec); pushStat('RecYd', p.proj_rec_yd);
+    pushGauge('RuYd', p.proj_rush_yd); pushGauge('RuTD', p.proj_rush_td);
+    pushGauge('Rec', p.proj_rec); pushGauge('RecYd', p.proj_rec_yd);
   } else if (pos === 'WR' || pos === 'TE') {
-    pushStat('Rec', p.proj_rec); pushStat('RecYd', p.proj_rec_yd);
-    pushStat('RecTD', p.proj_rec_td);
+    pushGauge('Rec', p.proj_rec); pushGauge('RecYd', p.proj_rec_yd);
+    pushGauge('RecTD', p.proj_rec_td);
   } else if (pos === 'K') {
-    pushStat('FGm', p.proj_fgm); pushStat('XP', p.proj_xpm);
+    pushGauge('FGm', p.proj_fgm); pushGauge('XP', p.proj_xpm);
   }
-  const statSection = statBits.length
-    ? `<div class="pc-stats mono" style="font-size:11px; color:var(--text-muted); margin-top:6px">${statWeek != null ? `<span style="color:var(--text-faint)">Wk${escapeHtml(String(statWeek))} · </span>` : ''}${statBits.join(' · ')}</div>`
+  const statSection = dials.length
+    ? `<div class="pc-gauges" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;align-items:flex-start">${statWeek != null ? `<span class="mono" style="font-size:11px;color:var(--text-faint);align-self:center">Wk${escapeHtml(String(statWeek))}</span>` : ''}${dials.join('')}</div>`
     : '';
 
   return `
