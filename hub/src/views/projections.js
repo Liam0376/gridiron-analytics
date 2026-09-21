@@ -1,6 +1,6 @@
 import { fetchProjections, fetchComparison, fetchRoster, fetchRosProjections } from '../api.js';
 import { filterPlayers } from '../search.js';
-import { posBadge, injuryBadge, confBadge } from '../components/badges.js';
+import { posBadge, injuryBadge, confBadge, matchupBadge } from '../components/badges.js';
 import { intervalBar } from '../components/intervalBar.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
@@ -607,7 +607,7 @@ export async function renderProjections(root) {
             <td>${edgeCell}</td>
             ` : ''}
             <td>${intervalBar({ point: proj, low, high, width, min: 0, max: 35 })}</td>
-            <td>${oppPill}</td>
+            <td>${oppPill}${matchupBadge(p.matchup_difficulty, p.matchup_rank, p.matchup_pts_allowed)}</td>
             <td>${confBadge(width)}</td>
             <td>${injuryBadge(p.injury_status)} ${p.trending ? `<span class="badge" style="background:var(--sky-dim); color:var(--sky); margin-left:6px">↗ trending</span>`:''}</td>
             ${compareEnabled && hasComparison ? `<td>${expandBtn}</td>` : ''}

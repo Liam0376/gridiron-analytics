@@ -24,3 +24,13 @@ export function confBadge(width) {
   const cls = w < 6 ? 'medium' : 'low';
   return `<span class="badge" style="background:${cls==='medium'?'var(--amber-dim)':'rgba(var(--text-rgb,0,0,0),0.05)'}; color:${cls==='medium'?'var(--amber)':'var(--text-muted)'}; border:1px solid ${cls==='medium'?'rgba(245,158,11,0.2)':'var(--border)'}">${label} · ±${w.toFixed(1)}</span>`;
 }
+export function matchupBadge(diff, rank, ptsAllowed) {
+  // Difficulty of the offensive matchup from the opponent's positional
+  // points-allowed rank (1 = allows fewest = hardest defense). Rank is
+  // repeated in the tooltip so the polarity is never ambiguous.
+  if (!diff || rank == null) return '';
+  const c = diff === 'EASY' ? 'var(--emerald)' : diff === 'HARD' ? 'var(--crimson)' : 'var(--amber)';
+  const pts = ptsAllowed != null ? `allows ${Number(ptsAllowed).toFixed(1)}/g` : 'no allowance data';
+  const title = `${pts} — ranked #${rank} of 32 defenses (1 = toughest)`.replace(/"/g, '&quot;');
+  return `<span class="badge" title="${title}" style="background:color-mix(in srgb, ${c} 12%, transparent); color:${c}; border:1px solid color-mix(in srgb, ${c} 25%, transparent); margin-left:6px">${diff} #${rank}</span>`;
+}
