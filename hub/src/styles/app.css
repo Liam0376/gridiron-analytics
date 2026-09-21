@@ -355,6 +355,10 @@ tbody tr[data-team]:hover td { background: transparent !important; }
 .interval-fill { position: absolute; left: 0; top: 0; height: 100%; width: 100%; background: linear-gradient(90deg, var(--amber) 0%, #F59E0B 100%); border-radius: 999px; opacity: 0.9; transform-origin: left center; transition: transform 200ms cubic-bezier(0.23,1,0.32,1); }
 .interval-dot { width: 7px; height: 7px; background: var(--amber); border: 1.5px solid var(--surface); border-radius: 50%; position: absolute; top: 50%; transform: translate(-50%,-50%); box-shadow: 0 0 6px var(--amber-glow); }
 .interval-label { font: 600 10px var(--font-mono); color: var(--text-muted); min-width: 28px; text-align: right; flex-shrink: 0; }
+/* Stat speedometer dials: attribute holds the final fill so no-JS and
+   reduced-motion render complete; animation sweeps from empty on mount. */
+.gauge-arc { animation: gaugeFill 700ms cubic-bezier(0.23,1,0.32,1) both; }
+@keyframes gaugeFill { from { stroke-dasharray: 0 100; } to { stroke-dasharray: var(--p) 100; } }
 
 /* ═══════════════════════════════════════════════════════
    Buttons
@@ -513,6 +517,7 @@ tbody tr[data-team]:hover td { background: transparent !important; }
   .more-drawer, .player-modal-backdrop, .player-modal-card, .more-drawer-backdrop { transition: none; transform: none; }
   .more-drawer.open, .player-modal-card.show { transform: none; }
   .kpi-bar-fill, .bullet-fill, .interval-fill { transition: none; }
+  .gauge-arc { animation: none; }
   .player-avatar, .user-avatar, .team-logo, .sidebar-tab, .btn, .card, .matchup-card, .team-select-dropdown, .search-top, .skip-link { transition: opacity 0.01ms, color 0.01ms, background-color 0.01ms, border-color 0.01ms; }
   .player-avatar:hover, .user-avatar:hover, .team-logo:hover, .btn-primary:hover { transform: none; }
 }

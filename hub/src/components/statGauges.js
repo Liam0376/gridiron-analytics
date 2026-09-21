@@ -1,29 +1,45 @@
 // Shared projected-stat speedometers (weekly proj_* API fields).
-// Compact semicircular SVG dials, one per stat in the position's set.
-// Value beside each dial carries the meaning (color supplementary);
-// role="img" labels + titles for assistive tech. Static SVG keeps card
-// grids cheap. Scale caps are fixed per stat so fills stay comparable
-// week to week. Pure string building — no DOM — so it renders inside
-// cards, modals, or anywhere else. Returns '' when data is absent.
-const GAUGE_MAX = { PaYd: 350, PaTD: 5, RuYd: 150, RuTD: 3, Rec: 12,
-                    RecYd: 150, RecTD: 3, FGm: 5, XP: 6 };
+// Each stat renders as a Model-$-style mini card: kicker label, gradient
+// dial, big value. Colors mirror the modal's stat bars (passing sky,
+// rushing emerald, receiving amber, TDs/kicking violet, XP slate) so the
+// two views read as one system. Scale caps are fixed per stat so fills
+// stay comparable week to week. Static final state in the attribute;
+// CSS animates the fill on mount (disabled under reduced-motion).
+// Pure string building — no DOM. Returns '' when data is absent.
+const GAUGE_STYLE = {
+  PaYd:  { max: 350, from: '#0EA5E9', to: '#38BDF8' },
+  PaTD:  { max: 5,   from: '#0284C7', to: '#38BDF8' },
+  RuYd:  { max: 150, from: '#059669', to: '#10B981' },
+  RuTD:  { max: 3,   from: '#059669', to: '#6EE7B7' },
+  Rec:   { max: 12,  from: '#D97706', to: '#F59E0B' },
+  RecYd: { max: 150, from: '#D97706', to: '#FBBF24' },
+  RecTD: { max: 3,   from: '#B45309', to: '#F59E0B' },
+  FGm:   { max: 5,   from: '#7C3AED', to: '#A855F7' },
+  XP:    { max: 6,   from: '#64748B', to: '#94A3B8' },
+};
 
-export function statGauge(label, v) {
-  if (v == null) return '';
-  const max = GAUGE_MAX[label] || 100;
-  const pct = Math.max(0, Math.min(100, (Number(v) / max) * 100));
-  const sr = `${label} ${v} of ${max} scale`;
-  return `<span class="pc-gauge" role="img" aria-label="${sr}" title="${sr}" style="display:inline-flex;flex-direction:column;align-items:center;width:52px">`
-    + `<svg viewBox="0 0 44 26" width="44" height="26" aria-hidden="true" focusable="false">`
-    + `<path d="M4 22 A18 18 0 0 1 40 22" fill="none" stroke="var(--border)" stroke-width="5" stroke-linecap="round"/>`
-    + `<path d="M4 22 A18 18 0 0 1 40 22" fill="none" stroke="var(--amber)" stroke-width="5" stroke-linecap="round" pathLength="100" stroke-dasharray="${pct.toFixed(1)} 100"/>`
-    + `</svg><span class="pc-gauge-val mono" style="font-size:11px;font-weight:700">${v}</span>`
-    + `<span class="pc-gauge-label" style="font-size:9px;color:var(--text-faint)">${label}</span></span>`;
+let __gid = 0;
+
+export function statGauge(label, v, delayMs = 0) {
+  const st = GAUGE_STYLE[label];
+  if (v == null || !st) return '';
+  const pct = Math.max(0, Math.min(100, (Number(v) / st.max) * 100));
+  const gid = `gg${__gid++}`;
+  const sr = `${label} ${v} of ${st.max} scale`;
+  return `<div class="modal-val-card pc-gauge-card" role="img" aria-label="${sr}" title="${sr}" style="min-width:76px;padding:8px 6px">`
+    + `<span class="kicker">${label}</span>`
+    + `<svg viewBox="0 0 44 30" width="52" height="35" aria-hidden="true" focusable="false" style="margin:2px auto">`
+    + `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="0">`
+    + `<stop offset="0" stop-color="${st.from}"/><stop offset="1" stop-color="${st.to}"/>`
+    + `</linearGradient></defs>`
+    + `<path d="M4 24 A18 18 0 0 1 40 24" fill="none" stroke="var(--border)" stroke-width="5" stroke-linecap="round"/>`
+    + `<path class="gauge-arc" style="--p:${pct.toFixed(1)} 100;animation-delay:${delayMs}ms" d="M4 24 A18 18 0 0 1 40 24" fill="none" stroke="url(#${gid})" stroke-width="5" stroke-linecap="round" pathLength="100" stroke-dasharray="${pct.toFixed(1)} 100"/>`
+    + `</svg><span class="mono val-large" style="color:${st.from}">${v}</span></div>`;
 }
 
 export function statGaugesForPosition(pos, p) {
   const dials = [];
-  const push = (label, v) => { const g = statGauge(label, v); if (g) dials.push(g); };
+  const push = (label, v) => { const g = statGauge(label, v, dials.length * 90); if (g) dials.push(g); };
   if (pos === 'QB') {
     push('PaYd', p.proj_pass_yd); push('PaTD', p.proj_pass_td);
     push('RuYd', p.proj_rush_yd); push('RuTD', p.proj_rush_td);
@@ -43,5 +59,5 @@ export function statGaugesRow(pos, p, weekLabel = null) {
   const dials = statGaugesForPosition(pos, p);
   if (!dials.length) return '';
   const wk = weekLabel != null ? `<span class="mono" style="font-size:11px;color:var(--text-faint);align-self:center">Wk${weekLabel}</span>` : '';
-  return `<div class="pc-gauges" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start">${wk}${dials.join('')}</div>`;
+  return `<div class="pc-gauges" style="display:flex;gap:8px;flex-wrap:wrap;align-items:stretch">${wk}${dials.join('')}</div>`;
 }
