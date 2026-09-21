@@ -6,7 +6,7 @@ import { intervalBar } from './intervalBar.js';
 import { escapeHtml, escapeAttr } from '../lib/escape.js';
 import { trapFocus } from '../lib/focusTrap.js';
 
-export function openPlayerModal(p, root = document.getElementById('app') || document.body) {
+export function openPlayerModal(p, root = document.getElementById('app') || document.body, weekLabel = null) {
   // Capture trigger for focus return before DOM mutation.
   const triggerEl = (document.activeElement instanceof HTMLElement) ? document.activeElement : null;
   let container = document.getElementById('playerModalContainer');
@@ -164,6 +164,31 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
             <span><span class="faint">Ceiling:</span> <strong style="color:var(--emerald)">${upper.toFixed(1)} pts</strong></span>
           </div>
         </div>
+
+        <!-- Week Projected Stat Breakdown (weekly proj_* fields; hidden when absent) -->
+        ${(() => {
+          const bits = [];
+          const push = (label, v) => { if (v != null) bits.push(`<span><span class="faint">${label}:</span> <strong class="mono">${v}</strong></span>`); };
+          if (p.position === 'QB') {
+            push('PaYd', p.proj_pass_yd); push('PaTD', p.proj_pass_td);
+            push('RuYd', p.proj_rush_yd); push('RuTD', p.proj_rush_td);
+          } else if (p.position === 'RB') {
+            push('RuYd', p.proj_rush_yd); push('RuTD', p.proj_rush_td);
+            push('Rec', p.proj_rec); push('RecYd', p.proj_rec_yd);
+          } else if (p.position === 'WR' || p.position === 'TE') {
+            push('Rec', p.proj_rec); push('RecYd', p.proj_rec_yd);
+            push('RecTD', p.proj_rec_td);
+          } else if (p.position === 'K') {
+            push('FGm', p.proj_fgm); push('XP', p.proj_xpm);
+          }
+          if (!bits.length) return '';
+          return `<div class="modal-section" style="margin-top:16px">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+              <span class="kicker">Week${weekLabel != null ? ` ${weekLabel}` : ''} Projected Stats</span>
+            </div>
+            <div style="display:flex; gap:14px; flex-wrap:wrap; font-size:12px">${bits.join('')}</div>
+          </div>`;
+        })()}
 
         <!-- 17-Game Stat Breakdown Bars -->
         <div class="modal-section" style="margin-top:16px">

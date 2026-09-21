@@ -659,7 +659,7 @@ export async function renderProjections(root) {
         const pid = el.getAttribute('data-pid');
         const targetPlayer = allPlayers.find(p => String(p.player_id) === String(pid));
         if (targetPlayer) {
-          openPlayerModal(targetPlayer, root);
+          openPlayerModal(targetPlayer, root, selectedWeek ?? undefined);
         }
       });
     });
