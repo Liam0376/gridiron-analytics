@@ -5,7 +5,7 @@ import { intervalBar } from '../components/intervalBar.js';
 import { playerAvatar } from '../components/playerAvatar.js';
 import { teamLogo } from '../components/teamLogo.js';
 import { playerCard } from '../components/playerCard.js';
-import { getTeamColor } from '../components/teamColors.js';
+import { getTeamColor, getTeamDisplayColor } from '../components/teamColors.js';
 import { openPlayerModal } from '../components/playerModal.js';
 import { escapeHtml } from '../lib/escape.js';
 import { relevanceTier, backupDemote, buildAheadMap } from '../lib/relevance.js';
@@ -586,7 +586,10 @@ export async function renderProjections(root) {
         const adp = p.fp_adp != null ? `#${p.fp_adp}` : '—';
         const edgeCell = compareEnabled && hasComparison ? edgeBadge(p.edge) : '';
         const tColor = getTeamColor(p.team);
-        const teamPill = p.team ? `<span class="badge" style="background:${tColor}1f; color:${tColor}; border:1px solid ${tColor}3d; font-weight:700">${teamLogo(p.team, 14)} ${escapeHtml(p.team)}</span>` : '—';
+        // Pill text uses the luminance-floored display color: raw dark
+        // primaries (CHI LV HOU GB …) are unreadable on the dark theme.
+        const tDisplay = getTeamDisplayColor(p.team);
+        const teamPill = p.team ? `<span class="badge" style="background:${tDisplay}1f; color:${tDisplay}; border:1px solid ${tDisplay}3d; font-weight:700">${teamLogo(p.team, 14)} ${escapeHtml(p.team)}</span>` : '—';
         const rowAccent = p.edge === 'BUY' ? 'var(--emerald)' : p.edge === 'SELL' ? 'var(--crimson)' : tColor;
         const expandBtn = compareEnabled && hasComparison ? `<button class="chip" data-expand="${p.player_id}" aria-label="Show stat deltas for ${escapeHtml(p.player_name)}" style="padding:4px 8px; font-size:11px">▶</button>` : '';
         const mainRow = `

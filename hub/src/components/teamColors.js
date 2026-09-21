@@ -38,3 +38,34 @@ export function getTeamColor(abbr) {
   const t = TEAM_COLORS[(abbr || '').toUpperCase()];
   return t ? t.primary : '#6B7280';
 }
+
+// Dark-theme readability: mix a hex color toward white by amt (0-1).
+export function brighten(hex, amt = 0.55) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const mix = c => Math.round(c + (255 - c) * amt);
+  const r = mix((n >> 16) & 255), g = mix((n >> 8) & 255), b = mix(n & 255);
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+}
+
+// Relative luminance 0-1 (WCAG weights).
+export function luminance(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return 1;
+  const n = parseInt(m[1], 16);
+  const lin = c => {
+    c /= 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+}
+
+// Display color for dark backgrounds (badges, pills, fallback squares).
+// Primaries below the floor come back brightened but still recognizable;
+// bright primaries pass through untouched. getTeamColor (raw identity)
+// stays for large surfaces that carry their own contrast.
+export function getTeamDisplayColor(abbr) {
+  const raw = getTeamColor(abbr);
+  return luminance(raw) < 0.12 ? brighten(raw) : raw;
+}
