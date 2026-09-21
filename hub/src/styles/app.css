@@ -611,7 +611,8 @@ tbody tr[data-team]:hover td { background: transparent !important; }
 .player-modal-backdrop {
   position: fixed; inset: 0; z-index: 2000;
   background: rgba(0,0,0,0.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  display: flex; align-items: center; justify-content: center; padding: 12px;
+  display: flex; align-items: flex-start; justify-content: center; padding: 24px 12px;
+  overflow-y: auto;
   opacity: 0; transition: opacity 180ms ease;
 }
 .player-modal-backdrop.show { opacity: 1; }
@@ -620,7 +621,8 @@ tbody tr[data-team]:hover td { background: transparent !important; }
   width: 100%; max-width: 560px;
   background: var(--surface); border: 1px solid var(--border-strong);
   border-radius: var(--card-radius); padding: 20px; position: relative;
-  box-shadow: var(--shadow-xl); max-height: 90vh; overflow-y: auto;
+  box-shadow: var(--shadow-xl); max-height: calc(100vh - 48px); overflow-y: auto;
+  margin: auto;
   opacity: 0; transform: translateY(6px) scale(0.97);
   transition: opacity 200ms cubic-bezier(0.23,1,0.32,1), transform 200ms cubic-bezier(0.23,1,0.32,1);
 }
@@ -634,8 +636,8 @@ tbody tr[data-team]:hover td { background: transparent !important; }
 .modal-val-card { background: var(--surface-raised); padding: 10px; border-radius: 8px; border: 1px solid var(--border); text-align: center; transition: border-color 120ms ease; }
 .modal-val-card:hover { border-color: var(--border-strong); }
 .val-large { font-size: 18px; font-weight: 700; display: block; margin-top: 2px; }
-.matchup-modal-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; padding: 12px; }
-.matchup-modal-card { width: 100%; max-width: 920px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 14px; padding: 20px; position: relative; box-shadow: var(--shadow-xl); max-height: 90vh; overflow-y: auto; }
+.matchup-modal-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.5); display: flex; align-items: flex-start; justify-content: center; padding: 24px 12px; overflow-y: auto; }
+.matchup-modal-card { width: 100%; max-width: 920px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 14px; padding: 20px; position: relative; box-shadow: var(--shadow-xl); max-height: calc(100vh - 48px); overflow-y: auto; margin: auto; }
 @media (max-width: 680px) { .matchup-modal-card { padding: 12px; max-width: 100%; } }
 
 /* ═══════════════════════════════════════════════════════
