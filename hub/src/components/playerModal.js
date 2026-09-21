@@ -3,6 +3,7 @@ import { playerAvatar } from './playerAvatar.js';
 import { posBadge, injuryBadge } from './badges.js';
 import { teamLogo } from './teamLogo.js';
 import { intervalBar } from './intervalBar.js';
+import { statGaugesRow } from './statGauges.js';
 import { escapeHtml, escapeAttr } from '../lib/escape.js';
 import { trapFocus } from '../lib/focusTrap.js';
 
@@ -165,29 +166,14 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
           </div>
         </div>
 
-        <!-- Week Projected Stat Breakdown (weekly proj_* fields; hidden when absent) -->
+        <!-- Week Projected Stat Gauges (weekly proj_* fields; hidden when absent) -->
         ${(() => {
-          const bits = [];
-          const push = (label, v) => { if (v != null) bits.push(`<span><span class="faint">${label}:</span> <strong class="mono">${v}</strong></span>`); };
-          if (p.position === 'QB') {
-            push('PaYd', p.proj_pass_yd); push('PaTD', p.proj_pass_td);
-            push('RuYd', p.proj_rush_yd); push('RuTD', p.proj_rush_td);
-          } else if (p.position === 'RB') {
-            push('RuYd', p.proj_rush_yd); push('RuTD', p.proj_rush_td);
-            push('Rec', p.proj_rec); push('RecYd', p.proj_rec_yd);
-          } else if (p.position === 'WR' || p.position === 'TE') {
-            push('Rec', p.proj_rec); push('RecYd', p.proj_rec_yd);
-            push('RecTD', p.proj_rec_td);
-          } else if (p.position === 'K') {
-            push('FGm', p.proj_fgm); push('XP', p.proj_xpm);
-          }
-          if (!bits.length) return '';
+          const row = statGaugesRow(p.position, p);
+          if (!row) return '';
           return `<div class="modal-section" style="margin-top:16px">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+            <div style="margin-bottom:8px">
               <span class="kicker">Week${weekLabel != null ? ` ${weekLabel}` : ''} Projected Stats</span>
-            </div>
-            <div style="display:flex; gap:14px; flex-wrap:wrap; font-size:12px">${bits.join('')}</div>
-          </div>`;
+            </div>${row}</div>`;
         })()}
 
         <!-- 17-Game Stat Breakdown Bars -->
