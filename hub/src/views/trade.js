@@ -125,12 +125,23 @@ export async function renderTrade(root) {
   }
 
   // -- Trade stat helpers (client-side only, no new endpoints) --
-  // Roster items carry full-SEASON stat totals (pass_yds, rush_yds, ...),
-  // never weekly proj_*. Per-game = season / 17, labeled "avg" everywhere
-  // it renders — never presented as model weeklies (no weekly stat source
-  // exists; weekly_projections persists points only, pipeline frozen).
+  // Two roster shapes: parent hub items carry full-SEASON stat totals
+  // (pass_yds, rush_yds, ...) while FantasyHub items carry native WEEKLY
+  // proj_* fields. Prefer native weeklies when present; otherwise divide
+  // season totals by 17 for an honest per-game average labeled "avg" —
+  // never presented as model weeklies (no weekly stat source exists on
+  // the parent; weekly_projections persists points only, pipeline frozen).
   const _num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
   function perGameAvgs(p) {
+    if (p.proj_pass_yd != null || p.proj_rush_yd != null
+        || p.proj_rec_yd != null || p.proj_rec != null) {
+      return {
+        proj_pass_yd: _num(p.proj_pass_yd), proj_pass_td: _num(p.proj_pass_td),
+        proj_rush_yd: _num(p.proj_rush_yd), proj_rush_td: _num(p.proj_rush_td),
+        proj_rec: _num(p.proj_rec), proj_rec_yd: _num(p.proj_rec_yd),
+        proj_rec_td: _num(p.proj_rec_td),
+      };
+    }
     return {
       proj_pass_yd: _num(p.pass_yds) / 17, proj_pass_td: _num(p.pass_tds) / 17,
       proj_rush_yd: _num(p.rush_yds) / 17, proj_rush_td: _num(p.rush_tds) / 17,
@@ -157,23 +168,27 @@ export async function renderTrade(root) {
     if (toks.some((t) => ['doubtful', 'out', 'ir', 'pup', 'nfi', 'suspended'].includes(t))) return 0.6;
     return 1.0;
   }
-  // why ?? 1 (no discount on unknown): remaining_games null means the ros
-  // row is missing, not that a full season remains — but discounting on
-  // unknown invents precision. No discount; ROS sums exclude such players.
+  // why ?? 1 on null AND <= 0: parent emits null for unknown (ros row
+  // missing); FantasyHub defaults to 0 for the same case. Both mean
+  // "unknown", never "no games left" for display purposes — discounting on
+  // unknown invents precision, and zeroing on it blanks the banner. ROS
+  // sums exclude such players instead (see rosStats).
   function remWeight(p) {
     if (p.remaining_games == null) return 1;
     const n = Number(p.remaining_games);
-    if (!Number.isFinite(n) || n < 0) return 1;
+    if (!Number.isFinite(n) || n <= 0) return 1;
     return Math.min(1, n / 17);
   }
-  // ROS stat totals for a selected package. Players without remaining_games
-  // are EXCLUDED from sums (counted in excluded) — never scaled by invented
-  // weeks. Returns { tot, excluded }.
+  // ROS stat totals for a selected package. Players without known remaining
+  // games (null on parent, 0-default on FantasyHub) are EXCLUDED from sums
+  // (counted in excluded) — never scaled by invented weeks.
+  // Returns { tot, excluded }.
   function rosStats(list) {
     const tot = { pass_yd: 0, pass_td: 0, rush_yd: 0, rush_td: 0, rec: 0, rec_yd: 0, rec_td: 0 };
     let excluded = 0;
     for (const p of list) {
-      if (p.remaining_games == null || !Number.isFinite(Number(p.remaining_games))) { excluded++; continue; }
+      const rem = Number(p.remaining_games);
+      if (p.remaining_games == null || !Number.isFinite(rem) || rem <= 0) { excluded++; continue; }
       const g = perGameAvgs(p);
       const w = Number(p.remaining_games);
       tot.pass_yd += g.proj_pass_yd * w; tot.pass_td += g.proj_pass_td * w;
@@ -195,7 +210,7 @@ export async function renderTrade(root) {
       proj_rec: g.proj_rec || null, proj_rec_yd: g.proj_rec_yd || null,
       proj_rec_td: g.proj_rec_td || null, proj_fgm: null, proj_xpm: null,
     });
-    const pts = Number(p.gridiron_points ?? p.model_points ?? p.projected_points ?? 0);
+    const pts = Number(p.gridiron_points ?? p.model_points ?? p.projected_points ?? p.weekly ?? 0);
     const lo = Number(p.projection_lower ?? p.lower ?? Math.max(0, pts - 5));
     const hi = Number(p.projection_upper ?? p.upper ?? pts + 5);
     const w = Number(p.width ?? (hi - lo) / 2);
@@ -268,8 +283,8 @@ export async function renderTrade(root) {
         ${players.map(p => {
           const pid = String(p.player_id || p.id);
           const isChecked = selectedSet.has(pid);
-          const gridironPts = Number(p.gridiron_points ?? p.model_points ?? p.projected_points ?? 0).toFixed(1);
-          const rosPts = Number(p.model_season_points ?? (gridironPts * 17)).toFixed(0);
+          const gridironPts = Number(p.gridiron_points ?? p.model_points ?? p.projected_points ?? p.weekly ?? 0).toFixed(1);
+          const rosPts = Number(p.model_season_points ?? p.ros ?? (gridironPts * 17)).toFixed(0);
           const auctionPrice = p.auction_price_paid ?? p.auction ?? p.marketAuction ?? 0;
           const preview = statPreview(p);
           const expKey = `${side}:${pid}`;
@@ -400,7 +415,9 @@ export async function renderTrade(root) {
     // why finite-choke here too: NaN weekly poisons sort order and renders
     // as "NaN" via toFixed. Same _num discipline as the banner helpers.
     const pw = (p) => {
-      const n = Number(p.gridiron_points ?? p.model_points ?? p.projected_points ?? 0);
+      // why p.weekly last: FantasyHub roster items carry weekly/ros instead
+      // of gridiron_points/model_season_points. Same chain everywhere.
+      const n = Number(p.gridiron_points ?? p.model_points ?? p.projected_points ?? p.weekly ?? 0);
       return Number.isFinite(n) ? n : 0;
     };
     const sentIds = sentSet || new Set();
@@ -480,12 +497,14 @@ export async function renderTrade(root) {
     const dollarsFor = (p) => {
       if (!p) return 0;
       let base;
-      const auc = Number(p.auction);
-      if (p.auction != null && Number.isFinite(auc) && auc !== 0) {
+      // why auction_value fallback: FantasyHub items carry auction_value and
+      // ros instead of auction/model_season_points. Same alias chain as rows.
+      const auc = Number(p.auction ?? p.auction_value);
+      if ((p.auction ?? p.auction_value) != null && Number.isFinite(auc) && auc !== 0) {
         base = auc;
       } else {
         const pos = (p.position || '').toUpperCase();
-        const season = Number(p.model_season_points ?? ((p.gridiron_points ?? p.model_points ?? p.projected_points ?? 0) * 17));
+        const season = Number(p.model_season_points ?? p.ros ?? ((p.gridiron_points ?? p.model_points ?? p.projected_points ?? p.weekly ?? 0) * 17));
         if (vbdParams) {
           const capped = vbdAuction(season, pos, vbdParams);
           const uncapped = vbdAuctionUncapped(season, pos, vbdParams);
@@ -495,7 +514,7 @@ export async function renderTrade(root) {
           else base = capped;
         } else {
           // Fallback if params not ready: use paid price or $1 bench
-          base = Number(p.auction_price_paid ?? p.auction ?? 1);
+          base = Number(p.auction_price_paid ?? p.amount_paid ?? p.auction ?? p.auction_value ?? 1);
         }
       }
       // why finite-choke: server numerics can arrive as non-numeric strings;
