@@ -647,3 +647,64 @@ def test_hub_matchups_slate_uses_live_weather_table(tmp_path):
         except Exception:
             pass
         hubserver.Handler.db_path = orig_db
+
+
+def test_hub_roster_items_carry_remaining_games(tmp_path, monkeypatch):
+    # why (trade slot plan, Phase 5): the trade tab's ROS stat table and
+    # dollarsFor remaining-games weight need per-player remaining_games.
+    # ros_projections is the only store carrying it. Present row → int;
+    # absent row → None (unknown, never 0 — 0 means no games left).
+    import sqlite3
+    from http.server import HTTPServer
+    db_path = tmp_path / "rosgames.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE rosters (season INT, week INT, data TEXT)")
+    conn.execute(
+        "INSERT INTO rosters VALUES (2026, 1, ?)",
+        (json.dumps([{"roster_id": 1, "owner_id": "owner1",
+                      "players": ["6904", "6905"], "starters": ["6904"]}]),),
+    )
+    conn.execute("CREATE TABLE player_stats (season INT, week INT, data TEXT)")
+    conn.execute("INSERT INTO player_stats VALUES (2026, 1, '[]')")
+    conn.execute(
+        "CREATE TABLE ros_projections (season INT, player_id TEXT, "
+        "player_name TEXT, position TEXT, team TEXT, ros_points REAL, "
+        "remaining_games INT, per_game_neutral REAL, updated_at TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO ros_projections VALUES "
+        "(2026, '00-0036389', 'Jalen Hurts', 'QB', 'PHI', 300.0, 12, 25.0, '')"
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(hubserver, "get_sleeper_players_cached", lambda: {
+        "6904": {"full_name": "Jalen Hurts", "position": "QB", "team": "PHI",
+                 "gsis_id": "00-0036389"},
+        "6905": {"full_name": "No Ros Row", "position": "WR", "team": "KC",
+                 "gsis_id": "00-9999999"},
+    })
+    orig_db = hubserver.Handler.db_path
+    hubserver.Handler.db_path = db_path
+    port = get_free_port()
+    httpd = HTTPServer(('127.0.0.1', port), hubserver.Handler)
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    try:
+        with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/hub-api/rosters-full", timeout=10) as r:
+            assert r.status == 200
+            body = json.loads(r.read().decode("utf-8"))
+        all_items = []
+        for team in body["rosters"].values():
+            all_items += team.get("starters", []) + team.get("bench", [])
+        by_pid = {p["player_id"]: p for p in all_items}
+        assert by_pid["6904"]["remaining_games"] == 12
+        assert isinstance(by_pid["6904"]["remaining_games"], int)
+        assert by_pid["6905"]["remaining_games"] is None
+    finally:
+        httpd.shutdown()
+        try:
+            httpd.server_close()
+        except Exception:
+            pass
+        hubserver.Handler.db_path = orig_db

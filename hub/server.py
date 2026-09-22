@@ -804,6 +804,19 @@ def _norm_n(name: str) -> str:
     n = re.sub(r"[^a-z0-9 ]", "", n)
     return re.sub(r"\s+", " ", n).strip()
 
+
+def _ros_remaining(ros_map: dict, gsis, pid):
+    """remaining_games from a ros_projections map, GSIS key first then raw
+    pid (dual-key discipline mirrors wk_map). int-or-None: missing row is
+    unknown, 0 is no games left — callers must not conflate them."""
+    v = ros_map.get(str(gsis)) if str(gsis) in ros_map else ros_map.get(str(pid))
+    if v is None:
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
 def build_league_analytics(conn, league_id: str | None = None, week: int | None = None):
     row = try_fetch_one(conn, "SELECT data FROM rosters ORDER BY rowid DESC LIMIT 1")
     rosters = load_json_blob(row) or []
@@ -901,6 +914,23 @@ def build_league_analytics(conn, league_id: str | None = None, week: int | None 
                 draft_prices[str(r["player_id"])] = float(r["amount"])
     except Exception:
         pass
+
+    # ROS map for remaining_games on roster items (trade slot plan, Phase 5):
+    # ros_projections is the only store carrying per-player remaining games.
+    # Missing table/rows → {} and items carry None (None = unknown; 0 would
+    # falsely mean "no games left"). Lookup tries GSIS then raw pid — same
+    # dual-key discipline as wk_map above.
+    ros_map = {}
+    try:
+        for r in conn.execute(
+            "SELECT player_id, remaining_games FROM ros_projections "
+            "WHERE season = (SELECT season FROM ros_projections "
+            "ORDER BY rowid DESC LIMIT 1)"
+        ).fetchall():
+            if r["player_id"] is not None:
+                ros_map[str(r["player_id"])] = r["remaining_games"]
+    except Exception:
+        ros_map = {}
 
     pmap = {}
     for p in (players if isinstance(players, list) else []):
@@ -1062,6 +1092,9 @@ def build_league_analytics(conn, league_id: str | None = None, week: int | None 
                 "injury_status": injuries.get(str(pid)) or sp.get("injury_status"),
                 "opponent_team": wk_opponent or _opponent_map.get(team) or st.get("opponent_team") or "",
                 "slot": slot_label,
+                # why int-or-None (not `or 0`): a missing ros row means
+                # unknown; 0 means no games left. Dual-key mirrors wk_map.
+                "remaining_games": _ros_remaining(ros_map, gsis, pid),
                 "pass_yds": pass_yds,
                 "pass_tds": pass_tds,
                 "rush_yds": rush_yds,
