@@ -685,6 +685,12 @@ def test_hub_roster_items_carry_remaining_games(tmp_path, monkeypatch):
     })
     orig_db = hubserver.Handler.db_path
     hubserver.Handler.db_path = db_path
+    # why reset (module-global 60s rosters-full cache, not keyed by db):
+    # earlier rosters-full tests would otherwise serve their payload here.
+    # Same save/reset/restore discipline as the projections-cache tests.
+    orig_rf = hubserver._ROSTERS_FULL_CACHE
+    hubserver._ROSTERS_FULL_CACHE = {"at": 0.0, "payload": None,
+                                     "last_modified": ""}
     port = get_free_port()
     httpd = HTTPServer(('127.0.0.1', port), hubserver.Handler)
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -708,3 +714,4 @@ def test_hub_roster_items_carry_remaining_games(tmp_path, monkeypatch):
         except Exception:
             pass
         hubserver.Handler.db_path = orig_db
+        hubserver._ROSTERS_FULL_CACHE = orig_rf
