@@ -28,6 +28,7 @@ from ffanalytics.decision import (
     get_start_sit_recommendations,
     get_waiver_priority,
     evaluate_trade,
+    evaluate_trade_gated,
     calculate_roster_value
 )
 from ffanalytics import shadow
@@ -1259,17 +1260,26 @@ def get_trade_evaluation(
                     "opponent_team": p.get("opponent_team"),
                 }, injury_status or {}))
 
-        result = evaluate_trade(
-            team_a_players, team_b_players, scoring_settings, roster_positions,
-            current_week=current_week,
-            market_consensus=market_consensus,
-            all_league_players=all_league_players,
-            league_econ=_league_econ_from_settings(league_settings),
-            traded_a_ids=traded_a_ids,
-            traded_b_ids=traded_b_ids,
-            rostered_ids=rostered_ids,
-            waiver_pool=waiver_pool,
-        )
+        # why gated (trade slot plan, Phase 3): slot uplift folds into the
+        # verdict only behind shadow trust (>=20 resolved trade rows).
+        # _league_conn degrades to None on missing DBs; gated(None) ==
+        # baseline evaluate_trade, so this cannot 500 where the direct call
+        # succeeded (outer handler covers the rest).
+        with _league_conn(league_id) as tconn:
+            result = evaluate_trade_gated(
+                tconn,
+                team_a_players, team_b_players, scoring_settings,
+                roster_positions,
+                current_week=current_week,
+                market_consensus=market_consensus,
+                all_league_players=all_league_players,
+                league_econ=_league_econ_from_settings(league_settings),
+                traded_a_ids=traded_a_ids,
+                traded_b_ids=traded_b_ids,
+                rostered_ids=rostered_ids,
+                waiver_pool=waiver_pool,
+                kind="trade",
+            )
 
         _batch_log_recommendations("trade", [result], league_id)
 

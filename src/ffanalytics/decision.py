@@ -685,6 +685,44 @@ def calculate_rest_of_season_value(
     return ros_pts
 
 
+def _trade_dollars(diff_points: float, a_ros: float, b_ros: float,
+                   use_market: bool, dollar_per_vor: float):
+    """VBD→dollar conversion shared by baseline and gated-experimental paths.
+    Extracted verbatim (behavior identical — pinned by the points-not-dollars
+    gate test). Only real dollars when derived from market consensus; else
+    honest points with suffix (user-caught mislabeling class, 2026-09-10)."""
+    has_dollars = bool(use_market and dollar_per_vor and dollar_per_vor != 0)
+    if has_dollars:
+        diff_dollars = diff_points * dollar_per_vor
+        a_dollars = a_ros * dollar_per_vor
+        b_dollars = b_ros * dollar_per_vor
+    else:
+        diff_dollars = diff_points
+        a_dollars = a_ros
+        b_dollars = b_ros
+    unit = "$" if has_dollars else ""
+    suffix = "" if has_dollars else " pts (no market data — raw VOR, not dollars)"
+    return diff_dollars, a_dollars, b_dollars, unit, suffix, has_dollars
+
+
+def _trade_verdict(diff_dollars: float, diff_points: float,
+                   unit: str, suffix: str, slot_note: str = "") -> Tuple[str, str]:
+    """Winner + recommendation. slot_note="" reproduces the baseline strings
+    byte-identically; experimental appends the bracketed slot breakdown."""
+    if abs(diff_dollars) < 5:
+        winner = "Fair"
+        recommendation = f"Trade is roughly fair (weighted VOR diff {unit}{abs(diff_dollars):.1f}{suffix} < 5)"
+    elif diff_dollars > 0:
+        winner = "Team A"
+        recommendation = f"Team A wins by {unit}{abs(diff_dollars):.1f}{suffix} ({abs(diff_points):.1f} weighted VOR ROS)"
+    else:
+        winner = "Team B"
+        recommendation = f"Team B wins by {unit}{abs(diff_dollars):.1f}{suffix} ({abs(diff_points):.1f} weighted VOR ROS)"
+    if slot_note:
+        recommendation += f" [slot uplift {slot_note}]"
+    return winner, recommendation
+
+
 def evaluate_trade(
     team_a_players: List[Dict],
     team_b_players: List[Dict],
@@ -816,35 +854,20 @@ def evaluate_trade(
     # fallback (2-4 players) still yields nonzero dollar_per_vor via pool /
     # tiny total VOR (e.g. $11.43/VOR), which mislabels points as dollars.
     # Gate on use_market so fallback reports honest points with suffix.
-    has_dollars = bool(use_market and dollar_per_vor and dollar_per_vor != 0)
-    if has_dollars:
-        diff_dollars = diff_points * dollar_per_vor
-        a_dollars = a_ros * dollar_per_vor
-        b_dollars = b_ros * dollar_per_vor
-    else:
-        # why label as points, not $ (user-caught live bug class, 2026-09-10):
-        # with no market data to derive a real $/VOR rate, this used to reuse
-        # raw VOR points as "dollars" — the recommendation string and the
-        # team_a/b_ros_dollars fields both claimed real dollar amounts that
-        # were actually unconverted points. Same fabrication-by-mislabeling
-        # class as the season-yards/auction-$ bugs fixed elsewhere this
-        # session, just here it's honest values with a dishonest unit label.
-        diff_dollars = diff_points
-        a_dollars = a_ros
-        b_dollars = b_ros
+    # why label as points, not $ (user-caught live bug class, 2026-09-10):
+    # with no market data to derive a real $/VOR rate, this used to reuse
+    # raw VOR points as "dollars" — the recommendation string and the
+    # team_a/b_ros_dollars fields both claimed real dollar amounts that
+    # were actually unconverted points. Same fabrication-by-mislabeling
+    # class as the season-yards/auction-$ bugs fixed elsewhere this
+    # session, just here it's honest values with a dishonest unit label.
+    (diff_dollars, a_dollars, b_dollars, unit, suffix,
+     has_dollars) = _trade_dollars(diff_points, a_ros, b_ros,
+                                   use_market, dollar_per_vor)
 
-    unit = "$" if has_dollars else ""
-    suffix = "" if has_dollars else " pts (no market data — raw VOR, not dollars)"
     # Fair threshold +/- 5 (dollars when available, else 5 raw VOR points)
-    if abs(diff_dollars) < 5:
-        winner = "Fair"
-        recommendation = f"Trade is roughly fair (weighted VOR diff {unit}{abs(diff_dollars):.1f}{suffix} < 5)"
-    elif diff_dollars > 0:
-        winner = "Team A"
-        recommendation = f"Team A wins by {unit}{abs(diff_dollars):.1f}{suffix} ({abs(diff_points):.1f} weighted VOR ROS)"
-    else:
-        winner = "Team B"
-        recommendation = f"Team B wins by {unit}{abs(diff_dollars):.1f}{suffix} ({abs(diff_points):.1f} weighted VOR ROS)"
+    winner, recommendation = _trade_verdict(diff_dollars, diff_points,
+                                            unit, suffix)
 
     return {
         "winner": winner,
@@ -868,6 +891,87 @@ def evaluate_trade(
         "slot_waiver_b": slot_waiver_b,
         "slot_rule": "baseline",
     }
+
+
+def evaluate_trade_gated(
+    conn,
+    team_a_players: List[Dict],
+    team_b_players: List[Dict],
+    scoring_settings: Dict[str, float],
+    roster_positions: List[str],
+    current_week: int = 1,
+    total_weeks: int = 18,
+    all_league_players: List[Dict] | None = None,
+    market_consensus: List[Dict] | None = None,
+    league_econ: dict | None = None,
+    traded_a_ids: List[str] | None = None,
+    traded_b_ids: List[str] | None = None,
+    rostered_ids: List[str] | None = None,
+    waiver_pool: List[Dict] | None = None,
+    kind: str = "trade",
+) -> Dict:
+    """Trade evaluation with shadow trust gate (non-breaking).
+
+    Mirrors get_start_sit_gated / get_waiver_priority_gated:
+    - conn=None → baseline (slot fields informational, winner excludes
+      uplift), slot_rule=baseline.
+    - conn + untrusted (<MIN_SHADOW_SAMPLES resolved trade rows) → baseline.
+    - conn + trusted (>=20 resolved) → experimental: slot uplift folded into
+      diff, team ROS fields, and verdict, slot_rule=experimental.
+
+    why the fold waits for trust: uplift math is net-safe but uncalibrated
+    OOS — folding before 20 resolved samples would flip live winners on an
+    unproven heuristic (stats audit BLOCKED exactly this).
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    baseline = evaluate_trade(
+        team_a_players, team_b_players, scoring_settings, roster_positions,
+        current_week=current_week, total_weeks=total_weeks,
+        all_league_players=all_league_players,
+        market_consensus=market_consensus, league_econ=league_econ,
+        traded_a_ids=traded_a_ids, traded_b_ids=traded_b_ids,
+        rostered_ids=rostered_ids, waiver_pool=waiver_pool)
+    if conn is None:
+        return baseline
+    try:
+        from ffanalytics import shadow as _shadow
+
+        trusted = _shadow.is_trusted(conn, kind)
+    except Exception:
+        trusted = False
+    if not trusted:
+        logger.info(
+            f"shadow {kind} untrusted (<MIN_SHADOW_SAMPLES resolved) — "
+            "trade verdict excludes slot uplift")
+        return baseline
+
+    # Experimental: fold slot uplift into both sides so value_difference
+    # agrees with the team ROS fields (never fold into diff alone).
+    a_ros_exp = baseline["team_a_ros_vbd"] + baseline["slot_uplift_a"]
+    b_ros_exp = baseline["team_b_ros_vbd"] + baseline["slot_uplift_b"]
+    diff_exp = a_ros_exp - b_ros_exp
+    use_market = bool(baseline["ros_dollars_are_real_dollars"])
+    (diff_dollars, a_dollars, b_dollars, unit, suffix,
+     _) = _trade_dollars(diff_exp, a_ros_exp, b_ros_exp,
+                         use_market, baseline["dollar_per_vor"])
+    slot_note = (f"A +{baseline['slot_uplift_a']:.1f} / "
+                 f"B +{baseline['slot_uplift_b']:.1f}")
+    winner, recommendation = _trade_verdict(diff_dollars, diff_exp,
+                                            unit, suffix, slot_note)
+    result = dict(baseline)
+    result.update({
+        "winner": winner,
+        "value_difference": round(abs(diff_dollars), 2),
+        "team_a_ros_vbd": round(a_ros_exp, 2),
+        "team_b_ros_vbd": round(b_ros_exp, 2),
+        "team_a_ros_dollars": round(a_dollars, 2),
+        "team_b_ros_dollars": round(b_dollars, 2),
+        "recommendation": recommendation,
+        "slot_rule": "experimental",
+    })
+    return result
 
 
 def get_decision_layer_recommendations(

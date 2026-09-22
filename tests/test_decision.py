@@ -468,3 +468,65 @@ def test_evaluate_trade_no_packages_backward_compat():
     assert r2["ros_dollars_are_real_dollars"] is False
     assert "pts (no market data" in r2["recommendation"]
     assert "$" not in r2["recommendation"]
+
+
+def test_trade_gated_falls_back_untrusted():
+    # why (trade slot plan, Phase 3): the uplift fold must not flip live
+    # winners before 20 resolved trade samples. Fixture: A sends RB20+WR15,
+    # receives RB19 → A gains 1 slot; post-A WR slot empty → waiver WR10
+    # fills it: 10/wk x 18 wk = 180.0. Base diff: (20-19)x18x1.10 = 19.8.
+    import sqlite3
+    from ffanalytics.decision import evaluate_trade_gated
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        """CREATE TABLE shadow_recommendations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL, season INTEGER NOT NULL, week INTEGER NOT NULL,
+            player_id TEXT, recommendation TEXT NOT NULL,
+            logged_at TEXT NOT NULL, actual_outcome TEXT
+        )"""
+    )
+    rp = ["QB", "RB", "WR", "TE", "FLEX"]
+    team_a = [_slot_p("RB", "a1", 20.0), _slot_p("WR", "a2", 15.0)]
+    team_b = [_slot_p("RB", "b1", 19.0)]
+    fa = [_slot_p("WR", "w1", 10.0, "Waiver WR1")]
+    kw = dict(scoring_settings={}, roster_positions=rp, current_week=1,
+              all_league_players=team_a + team_b + fa,
+              traded_a_ids=["a1", "a2"], traded_b_ids=["b1"],
+              rostered_ids=["a1", "a2", "b1"], kind="trade")
+    # conn=None → baseline, winner from base diff only.
+    r_none = evaluate_trade_gated(None, team_a, team_b, **kw)
+    assert r_none["slot_rule"] == "baseline"
+    assert r_none["winner"] == "Team A"
+    assert r_none["value_difference"] == 19.8
+    assert r_none["slot_uplift_a"] == 180.0
+    # 0 rows → baseline.
+    r0 = evaluate_trade_gated(conn, team_a, team_b, **kw)
+    assert r0["slot_rule"] == "baseline"
+    assert r0["value_difference"] == 19.8
+    # 19 resolved → still baseline.
+    for i in range(19):
+        conn.execute(
+            "INSERT INTO shadow_recommendations (kind, season, week, player_id, recommendation, logged_at, actual_outcome) VALUES (?,?,?,?,?,?,?)",
+            ("trade", 2025, 4, f"t{i}", '{"a":1}', "2025-09-01T00:00:00", '{"won": true}'),
+        )
+    conn.commit()
+    r19 = evaluate_trade_gated(conn, team_a, team_b, **kw)
+    assert r19["slot_rule"] == "baseline"
+    assert r19["value_difference"] == 19.8
+    # 20th resolved → experimental: uplift folded, fields consistent.
+    conn.execute(
+        "INSERT INTO shadow_recommendations (kind, season, week, player_id, recommendation, logged_at, actual_outcome) VALUES (?,?,?,?,?,?,?)",
+        ("trade", 2025, 4, "t19", '{"a":1}', "2025-09-01T00:00:00", '{"won": true}'),
+    )
+    conn.commit()
+    r20 = evaluate_trade_gated(conn, team_a, team_b, **kw)
+    assert r20["slot_rule"] == "experimental"
+    assert r20["value_difference"] == 199.8
+    assert r20["winner"] == "Team A"
+    assert "[slot uplift" in r20["recommendation"]
+    # Consistency: folded diff agrees with folded team fields.
+    assert r20["team_a_ros_vbd"] == r_none["team_a_ros_vbd"] + 180.0
+    assert r20["team_b_ros_vbd"] == r_none["team_b_ros_vbd"]
+    conn.close()
