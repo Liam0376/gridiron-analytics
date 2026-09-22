@@ -430,3 +430,103 @@ def test_waiver_attaches_sleeper_id_for_headshots():
         assert recs["00-2222222"]["sleeper_id"] == "222"
     finally:
         _restore_cache(snap)
+
+
+def _trade_slot_cache():
+    # why shared builder: package + backward-compat tests need the identical
+    # cache; rosters in Sleeper space, stats in GSIS space, xwalk bridging.
+    # G202 (RB25, rostered star) is the tripwire: if both-spaces exclusion
+    # fails it dominates the waiver pool and blows up the uplift number.
+    stats = [
+        {"player_id": "00-0000101", "short_name": "A QB",
+         "position": "QB", "position_group": "QB", "projected_points": 20.0},
+        {"player_id": "00-0000102", "short_name": "A RB",
+         "position": "RB", "position_group": "RB", "projected_points": 18.0},
+        {"player_id": "00-0000103", "short_name": "A WR",
+         "position": "WR", "position_group": "WR", "projected_points": 16.0},
+        {"player_id": "00-0000104", "short_name": "A TE",
+         "position": "TE", "position_group": "TE", "projected_points": 9.0},
+        {"player_id": "00-0000201", "short_name": "B QB",
+         "position": "QB", "position_group": "QB", "projected_points": 19.0},
+        {"player_id": "00-0000202", "short_name": "B Star RB",
+         "position": "RB", "position_group": "RB", "projected_points": 25.0},
+        {"player_id": "00-0000203", "short_name": "B WR",
+         "position": "WR", "position_group": "WR", "projected_points": 8.0},
+        {"player_id": "00-0000901", "short_name": "FA WR",
+         "position": "WR", "position_group": "WR", "projected_points": 13.0},
+    ]
+    filler_pos = ["RB", "WR", "TE", "QB", "RB", "WR", "TE", "RB", "WR", "TE",
+                  "RB", "WR"]
+    for i, pos in enumerate(filler_pos):
+        stats.append({"player_id": f"00-00009{i + 10:02d}",
+                      "short_name": f"Filler {i}",
+                      "position": pos, "position_group": pos,
+                      "projected_points": 1.0 + (i % 3)})
+    assert len(stats) >= 20  # endpoint player_stats branch needs >= 20
+    return {
+        "league_settings": {
+            "scoring_settings": {},
+            "roster_positions": ["QB", "RB", "WR", "TE", "FLEX", "K", "DEF"],
+            "users": [],
+        },
+        "rosters": [
+            {"owner_id": "1", "roster_id": 1,
+             "players": ["101", "102", "103", "104"]},
+            {"owner_id": "2", "roster_id": 2, "players": ["201", "202", "203"]},
+        ],
+        "sleeper_xwalk": {
+            "101": "00-0000101", "102": "00-0000102",
+            "103": "00-0000103", "104": "00-0000104",
+            "201": "00-0000201", "202": "00-0000202",
+            "203": "00-0000203",
+        },
+        "player_stats": stats,
+        "injury_status": {},
+        "season": 2025,
+        "week": 1,
+        "last_updated": "2026-01-01T00:00:00",
+    }
+
+
+def test_trade_package_params_slot_keys_survive():
+    # why end-to-end (trade slot plan, Phase 2): unit tests prove the math;
+    # this proves the id-space plumbing — Sleeper package ids against GSIS
+    # waiver pool with xwalk exclusion. Post-A = WR16+TE9+QB19; FLEX empty;
+    # FA WR13 fills it: 13/wk x 18 wk = 234.0. Rostered RB25 must NOT leak.
+    snap = _snapshot_cache()
+    try:
+        _CACHE.update(_trade_slot_cache())
+        resp = client.get("/recommendations/trade", params={
+            "team_a_id": "1", "team_b_id": "2",
+            "traded_a": "101,102", "traded_b": "201"})
+        assert resp.status_code == 200
+        ev = resp.json()["trade_evaluation"]
+        assert ev["slots_gained_a"] == 1
+        assert ev["slots_gained_b"] == 0
+        assert ev["slot_uplift_a"] == 234.0
+        assert ev["slot_waiver_a"] == ["FA WR"]
+        assert ev["slot_uplift_b"] == 0.0
+        assert ev["slot_rule"] == "baseline"
+        assert ev["winner"] in ("Team A", "Team B", "Fair")
+    finally:
+        _restore_cache(snap)
+
+
+def test_trade_no_package_params_backward_compat():
+    # why: same cache, no traded_* params → slot fields zero, verdict shaped
+    # exactly as before (Phase 1 no-behavior-change claim, through the API).
+    snap = _snapshot_cache()
+    try:
+        _CACHE.update(_trade_slot_cache())
+        resp = client.get("/recommendations/trade", params={
+            "team_a_id": "1", "team_b_id": "2"})
+        assert resp.status_code == 200
+        ev = resp.json()["trade_evaluation"]
+        assert ev["slots_gained_a"] == 0 and ev["slots_gained_b"] == 0
+        assert ev["slot_uplift_a"] == 0 and ev["slot_uplift_b"] == 0
+        assert ev["slot_waiver_a"] == [] and ev["slot_waiver_b"] == []
+        assert ev["slot_rule"] == "baseline"
+        assert "winner" in ev and "value_difference" in ev
+        assert "recommendation" in ev
+    finally:
+        _restore_cache(snap)

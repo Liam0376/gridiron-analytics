@@ -698,6 +698,7 @@ def evaluate_trade(
     traded_a_ids: List[str] | None = None,
     traded_b_ids: List[str] | None = None,
     rostered_ids: List[str] | None = None,
+    waiver_pool: List[Dict] | None = None,
 ) -> Dict:
     # why league_econ: auction $ scale with league size/budget — pass
     # config.league_economics(...); None keeps legacy 12x$200 behavior.
@@ -706,6 +707,11 @@ def evaluate_trade(
     # bench depth, not open slots. Explicit package IDs scope slot math to the
     # actual trade. All three default None → slot fields zero and winner logic
     # byte-identical to the pre-slot behavior (see backward-compat test).
+    # why waiver_pool separate from all_league_players: the endpoint skips
+    # building all_league_players whenever market_consensus has >=20 rows
+    # (the VBD-$ gate), which in production is the common case — scoping the
+    # waiver pool to that gate would leave slot uplift permanently at zero.
+    # waiver_pool=None falls back to all_league_players (unit-test path).
     # Determine comparison list for VBD auction params
     comp_list = None
     use_market = False
@@ -786,7 +792,9 @@ def evaluate_trade(
                 # would include teammates and overprice the slot.
                 rostered = ({str(p.get("player_id") or "") for p in (team_a_players or [])}
                             | {str(p.get("player_id") or "") for p in (team_b_players or [])})
-            waiver = [p for p in (all_league_players or [])
+            waiver_source = (waiver_pool if waiver_pool is not None
+                             else all_league_players or [])
+            waiver = [p for p in waiver_source
                       if str(p.get("player_id") or "") not in rostered
                       and str(p.get("player_id") or "") not in pkg_ids]
             post_a = ([p for p in (team_a_players or [])

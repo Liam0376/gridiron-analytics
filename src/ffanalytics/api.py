@@ -1077,12 +1077,44 @@ def get_waiver(owner_id: str = Query(..., max_length=64, pattern=r"^\d+$"), leag
         raise HTTPException(status_code=500, detail="internal error")
 
 
+def _parse_trade_ids(raw: str | None) -> list[str] | None:
+    """Comma-separated package IDs from query string. None = param absent
+    (backward-compat path: slot fields zero). Empty string = present-but-empty
+    (matches nothing, slots zero). IDs stay in raw roster space; matching
+    happens against team dicts built from the same roster lists."""
+    if raw is None:
+        return None
+    return [s for s in (x.strip() for x in raw.split(",")) if s]
+
+
+def _rostered_ids_both_spaces(rosters: list, xwalk: dict) -> list[str]:
+    """Every rostered id in both id spaces (raw + xwalk-mapped, both
+    directions). why both: rosters carry Sleeper ids, all_league_players
+    carries GSIS ids (player_stats space) — a single-space exclusion set
+    misses either side (same bug class as the waiver cross-xwalk fix)."""
+    rostered: set[str] = set()
+    for roster in rosters or []:
+        for pid in roster.get("players", []) or []:
+            rostered.add(str(pid))
+    for pid in list(rostered):
+        m = xwalk.get(pid)
+        if m is not None:
+            rostered.add(str(m))
+    inv = {str(v): str(k) for k, v in (xwalk or {}).items()}
+    for pid in list(rostered):
+        if pid in inv:
+            rostered.add(inv[pid])
+    return sorted(rostered)
+
+
 @app.get("/recommendations/trade")
 @app.get("/v1/recommendations/trade")
 def get_trade_evaluation(
     team_a_id: str = Query(..., max_length=64, pattern=r"^\d+$"),
     team_b_id: str = Query(..., max_length=64, pattern=r"^\d+$"),
     league_id: str | None = _league_query(),
+    traded_a: str | None = Query(default=None, max_length=2048),
+    traded_b: str | None = Query(default=None, max_length=2048),
 ) -> dict:
     cache = _cache_for(league_id)
     if not cache["league_settings"] or not cache["rosters"] or not cache["player_stats"]:
@@ -1197,12 +1229,46 @@ def get_trade_evaluation(
         if current_week is None:
             current_week = 1
 
+        # why explicit package params (trade slot plan): team_a/b_players are
+        # FULL ROSTERS, so evaluate_trade cannot infer open slots from len()
+        # deltas. traded_a/b carry the checked package IDs (same id space as
+        # the roster `players` lists); rostered_ids covers both id spaces
+        # (raw roster ids + xwalk-mapped GSIS) so waiver exclusion hits
+        # regardless of which space all_league_players uses.
+        traded_a_ids = _parse_trade_ids(traded_a)
+        traded_b_ids = _parse_trade_ids(traded_b)
+        rostered_ids = _rostered_ids_both_spaces(rosters, xwalk or {})
+        # why separate waiver pool (not all_league_players): that list is
+        # skipped whenever market_consensus has >=20 rows (production norm),
+        # which would pin slot uplift at zero. player_stats is the full
+        # weekly-projection universe either way. Built only when packages are
+        # present so the no-package path stays byte-identical and free.
+        waiver_pool = None
+        if traded_a_ids is not None and traded_b_ids is not None:
+            waiver_pool = []
+            for p in player_stats or []:
+                pid = str(p.get("player_id") or p.get("id") or "")
+                if not pid:
+                    continue
+                waiver_pool.append(_build_player_dict(pid, {
+                    "short_name": p.get("short_name") or p.get("player_name"),
+                    "position_group": p.get("position_group"),
+                    "position": p.get("position"),
+                    "projected_points": p.get("projected_points") or 0,
+                    "recent_team": p.get("team") or p.get("recent_team"),
+                    "opponent_team": p.get("opponent_team"),
+                }, injury_status or {}))
+
         result = evaluate_trade(
             team_a_players, team_b_players, scoring_settings, roster_positions,
             current_week=current_week,
             market_consensus=market_consensus,
             all_league_players=all_league_players,
             league_econ=_league_econ_from_settings(league_settings),
+            traded_a_ids=traded_a_ids,
+            traded_b_ids=traded_b_ids,
+            rostered_ids=rostered_ids,
+            waiver_pool=waiver_pool,
         )
 
         _batch_log_recommendations("trade", [result], league_id)
