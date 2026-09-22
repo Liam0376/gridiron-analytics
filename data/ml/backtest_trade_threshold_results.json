@@ -1,0 +1,143 @@
+{
+  "season": 2025,
+  "week": 8,
+  "seed": 0,
+  "n_pool": 545,
+  "shapes": {
+    "1v1": {
+      "n": 100,
+      "thresholds": {
+        "3.0": {
+          "acc_base": 0.5,
+          "acc_fold": 0.5,
+          "se": 0.05,
+          "promote": false
+        },
+        "5.0": {
+          "acc_base": 0.45,
+          "acc_fold": 0.45,
+          "se": 0.0497,
+          "promote": false
+        },
+        "8.0": {
+          "acc_base": 0.43,
+          "acc_fold": 0.43,
+          "se": 0.0495,
+          "promote": false
+        },
+        "10.0": {
+          "acc_base": 0.42,
+          "acc_fold": 0.42,
+          "se": 0.0494,
+          "promote": false
+        }
+      },
+      "mae_base": 123.291,
+      "mae_fold": 123.291,
+      "uplift_mae": null,
+      "uplift_bias": null
+    },
+    "2v1": {
+      "n": 100,
+      "thresholds": {
+        "3.0": {
+          "acc_base": 0.62,
+          "acc_fold": 0.79,
+          "se": 0.0485,
+          "promote": true
+        },
+        "5.0": {
+          "acc_base": 0.62,
+          "acc_fold": 0.79,
+          "se": 0.0485,
+          "promote": true
+        },
+        "8.0": {
+          "acc_base": 0.6,
+          "acc_fold": 0.79,
+          "se": 0.049,
+          "promote": true
+        },
+        "10.0": {
+          "acc_base": 0.6,
+          "acc_fold": 0.79,
+          "se": 0.049,
+          "promote": true
+        }
+      },
+      "mae_base": 298.712,
+      "mae_fold": 233.904,
+      "uplift_mae": 64.668,
+      "uplift_bias": 52.344,
+      "uplift_n": 83
+    },
+    "2v2": {
+      "n": 100,
+      "thresholds": {
+        "3.0": {
+          "acc_base": 0.55,
+          "acc_fold": 0.55,
+          "se": 0.0497,
+          "promote": false
+        },
+        "5.0": {
+          "acc_base": 0.53,
+          "acc_fold": 0.53,
+          "se": 0.0499,
+          "promote": false
+        },
+        "8.0": {
+          "acc_base": 0.53,
+          "acc_fold": 0.53,
+          "se": 0.0499,
+          "promote": false
+        },
+        "10.0": {
+          "acc_base": 0.51,
+          "acc_fold": 0.51,
+          "se": 0.05,
+          "promote": false
+        }
+      },
+      "mae_base": 146.553,
+      "mae_fold": 146.553,
+      "uplift_mae": null,
+      "uplift_bias": null
+    },
+    "3v2": {
+      "n": 100,
+      "thresholds": {
+        "3.0": {
+          "acc_base": 0.66,
+          "acc_fold": 0.77,
+          "se": 0.0474,
+          "promote": true
+        },
+        "5.0": {
+          "acc_base": 0.64,
+          "acc_fold": 0.77,
+          "se": 0.048,
+          "promote": true
+        },
+        "8.0": {
+          "acc_base": 0.62,
+          "acc_fold": 0.76,
+          "se": 0.0485,
+          "promote": true
+        },
+        "10.0": {
+          "acc_base": 0.62,
+          "acc_fold": 0.76,
+          "se": 0.0485,
+          "promote": true
+        }
+      },
+      "mae_base": 305.707,
+      "mae_fold": 243.747,
+      "uplift_mae": 60.681,
+      "uplift_bias": 47.639,
+      "uplift_n": 77
+    }
+  },
+  "slot_name_misses": 0
+}
