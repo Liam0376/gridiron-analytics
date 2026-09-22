@@ -256,10 +256,18 @@ export async function fetchWaiver(args = {}) {
   });
 }
 
-export async function fetchTrade(teamA, teamB) {
+export async function fetchTrade(teamA, teamB, pkgs = {}) {
   if (!teamA || !teamB) return null;
+  const traded = [];
+  if (Array.isArray(pkgs.tradedA) && pkgs.tradedA.length) {
+    traded.push(`traded_a=${encodeURIComponent(pkgs.tradedA.join(","))}`);
+  }
+  if (Array.isArray(pkgs.tradedB) && pkgs.tradedB.length) {
+    traded.push(`traded_b=${encodeURIComponent(pkgs.tradedB.join(","))}`);
+  }
+  const pkg_qs = traded.length ? `&${traded.join("&")}` : "";
   try {
-    const data = await getJSON(modelUrl(`/recommendations/trade?team_a_id=${encodeURIComponent(teamA)}&team_b_id=${encodeURIComponent(teamB)}`));
+    const data = await getJSON(modelUrl(`/recommendations/trade?team_a_id=${encodeURIComponent(teamA)}&team_b_id=${encodeURIComponent(teamB)}${pkg_qs}`));
     return data.trade_evaluation || data;
   } catch (_) {
     const hub = await tryHub(`/trade?team_a_id=${encodeURIComponent(teamA)}&team_b_id=${encodeURIComponent(teamB)}`);
