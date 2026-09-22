@@ -317,6 +317,113 @@ def _vbd(player: Dict, replacement_levels: Dict[str, float]) -> float:
     return pts - replacement_levels.get(pos, 0.0)
 
 
+def _norm_trade_pos(player: Dict) -> str:
+    """Position key shared by slot math. Mirrors side_value's DST→DEF
+    normalization (evaluate_trade) so slot and VBD paths agree."""
+    pos = (player.get("position") or player.get("position_group") or "UNK").upper()
+    return "DEF" if pos == "DST" else pos
+
+
+def _safe_pts(player: Dict) -> float:
+    """Weekly points as float, quarantining NaN/inf to 0.0.
+    why: nflverse/Polars can hand back NaN for a missing stat; float(nan)
+    is truthy so `or 0` chains miss it, and NaN sort keys make waiver
+    ordering undefined. Same guard as api._build_player_dict."""
+    try:
+        pts = float(player.get("projected_points", 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    if pts != pts or abs(pts) == float("inf"):
+        return 0.0
+    return pts
+
+
+def _lineup_points(starters: List[Dict]) -> float:
+    return sum(_safe_pts(s) for s in starters)
+
+
+def slot_uplift_value(
+    post_trade_roster: List[Dict],
+    waiver_pool: List[Dict],
+    roster_positions: List[str],
+    current_week: int,
+    total_weeks: int = 18,
+    max_slots: int = 3,
+) -> Tuple[float, List[str]]:
+    """Marginal _optimal_lineup uplift from filling open slots with waivers.
+
+    Returns (uplift_ros_points, waiver_player_names). Pure and deterministic:
+    waiver pool sorted by (-points, player_id); greedy best-fit per slot with
+    diminishing returns (each fill re-runs the optimizer).
+
+    why marginal uplift, not replacement x weeks (stats audit): a waiver at
+    exactly replacement level has VOR 0 by definition, so crediting gross
+    replacement double-counts the baseline already subtracted in side_value.
+    Uplift is net by construction — difference of two lineup totals in the
+    same points space — and is exactly 0.0 when the pickup rides the bench.
+
+    why scalar weeks (known limitation): player dicts carry no bye_week
+    (api._build_player_dict drops it), so per-week bye filtering is not
+    possible here. Same convention as calculate_rest_of_season_value
+    (weeks_remaining includes current week, no bye subtraction). Bye-aware
+    per-week uplift is a documented follow-up, not a blocker: this matches
+    the existing ROS math it complements.
+
+    why max_slots=3: bounds compute (_optimal_lineup per candidate per slot)
+    and matches realistic trade imbalance (3-for-1 is the extreme).
+    """
+    weeks = max(0, total_weeks - current_week + 1)
+    if weeks == 0:
+        return 0.0, []
+
+    # Normalize positions on copies (DST→DEF) so the slot optimizer agrees
+    # with side_value's grouping. Copies only — callers' dicts untouched.
+    def _nc(p: Dict) -> Dict:
+        q = dict(p)
+        q["position"] = _norm_trade_pos(p)
+        q["position_group"] = _norm_trade_pos(p)
+        return q
+
+    post_norm = [_nc(p) for p in (post_trade_roster or [])]
+    pool_norm = [_nc(p) for p in (waiver_pool or [])]
+
+    # Candidate pool: skip empty projections (mirror _replacement_levels),
+    # quarantine NaN before sort.
+    cands = []
+    for p in pool_norm:
+        if p.get("is_empty_projection"):
+            continue
+        cands.append((_safe_pts(p), str(p.get("player_id") or ""), p))
+    cands.sort(key=lambda t: (-t[0], t[1]))
+
+    uplift_weekly = 0.0
+    names: List[str] = []
+    working = list(post_norm)
+    used = set()
+    for _ in range(min(max_slots, 3, len(cands))):
+        working_total = _lineup_points(_optimal_lineup(working, roster_positions)[0])
+        best_gain = 0.0
+        best_cand = None
+        for _, _, c in cands:
+            pid = str(c.get("player_id") or "")
+            if pid in used:
+                continue
+            trial_starters, _ = _optimal_lineup(working + [c], roster_positions)
+            gain = _lineup_points(trial_starters) - working_total
+            if gain > best_gain:
+                best_gain = gain
+                best_cand = c
+        if best_cand is None or best_gain <= 0.0:
+            break
+        used.add(str(best_cand.get("player_id") or ""))
+        working = working + [best_cand]
+        uplift_weekly += best_gain
+        names.append(str(best_cand.get("player_name")
+                         or f"Player {best_cand.get('player_id')}"))
+
+    return round(uplift_weekly * weeks, 2), names
+
+
 def calculate_roster_value(
     players: List[Dict],
     scoring_settings: Dict[str, float],
@@ -588,9 +695,17 @@ def evaluate_trade(
     all_league_players: List[Dict] | None = None,
     market_consensus: List[Dict] | None = None,
     league_econ: dict | None = None,
+    traded_a_ids: List[str] | None = None,
+    traded_b_ids: List[str] | None = None,
+    rostered_ids: List[str] | None = None,
 ) -> Dict:
     # why league_econ: auction $ scale with league size/budget — pass
     # config.league_economics(...); None keeps legacy 12x$200 behavior.
+    # why traded_a/b_ids + rostered_ids (slot uplift): the production endpoint
+    # passes FULL ROSTERS as team_a/b_players, so len() deltas there measure
+    # bench depth, not open slots. Explicit package IDs scope slot math to the
+    # actual trade. All three default None → slot fields zero and winner logic
+    # byte-identical to the pre-slot behavior (see backward-compat test).
     # Determine comparison list for VBD auction params
     comp_list = None
     use_market = False
@@ -640,6 +755,53 @@ def evaluate_trade(
     a_weekly, a_ros = side_value(team_a_players)
     b_weekly, b_ros = side_value(team_b_players)
 
+    # Slot uplift (informational in this phase — NOT folded into diff/winner).
+    # why separate: stats audit proved gross-replacement credit double-counts;
+    # marginal lineup uplift is net-safe but still uncalibrated OOS. Phase 3
+    # gates the fold behind shadow trust; until then these fields are context
+    # only and the verdict below is exactly the pre-slot behavior.
+    slots_gained_a = 0
+    slots_gained_b = 0
+    slot_uplift_a = 0.0
+    slot_uplift_b = 0.0
+    slot_waiver_a: List[str] = []
+    slot_waiver_b: List[str] = []
+    if traded_a_ids is not None and traded_b_ids is not None:
+        ids_a = {str(i) for i in traded_a_ids}
+        ids_b = {str(i) for i in traded_b_ids}
+        pkg_a = [p for p in (team_a_players or [])
+                 if str(p.get("player_id") or "") in ids_a]
+        pkg_b = [p for p in (team_b_players or [])
+                 if str(p.get("player_id") or "") in ids_b]
+        slots_gained_a = max(0, len(pkg_a) - len(pkg_b))
+        slots_gained_b = max(0, len(pkg_b) - len(pkg_a))
+        if slots_gained_a or slots_gained_b:
+            pkg_ids = ({str(p.get("player_id") or "") for p in pkg_a}
+                       | {str(p.get("player_id") or "") for p in pkg_b})
+            if rostered_ids is not None:
+                rostered = {str(i) for i in rostered_ids}
+            else:
+                # why fallback: at minimum exclude the two sides' own players
+                # from the waiver pool; without any roster knowledge the pool
+                # would include teammates and overprice the slot.
+                rostered = ({str(p.get("player_id") or "") for p in (team_a_players or [])}
+                            | {str(p.get("player_id") or "") for p in (team_b_players or [])})
+            waiver = [p for p in (all_league_players or [])
+                      if str(p.get("player_id") or "") not in rostered
+                      and str(p.get("player_id") or "") not in pkg_ids]
+            post_a = ([p for p in (team_a_players or [])
+                       if str(p.get("player_id") or "") not in ids_a] + pkg_b)
+            post_b = ([p for p in (team_b_players or [])
+                       if str(p.get("player_id") or "") not in ids_b] + pkg_a)
+            if slots_gained_a:
+                slot_uplift_a, slot_waiver_a = slot_uplift_value(
+                    post_a, waiver, roster_positions, current_week, total_weeks,
+                    max_slots=slots_gained_a)
+            if slots_gained_b:
+                slot_uplift_b, slot_waiver_b = slot_uplift_value(
+                    post_b, waiver, roster_positions, current_week, total_weeks,
+                    max_slots=slots_gained_b)
+
     diff_points = a_ros - b_ros
     # Dollar conversion: only real dollars when derived from market consensus.
     # why use_market gate (correctness batch 2026-09-12): the small-set
@@ -688,6 +850,15 @@ def evaluate_trade(
         "ros_dollars_are_real_dollars": has_dollars,
         "dollar_per_vor": round(dollar_per_vor, 4) if dollar_per_vor else 0.0,
         "recommendation": recommendation,
+        # Slot uplift context (informational — not in winner/diff until the
+        # Phase 3 shadow gate promotes slot_rule to experimental).
+        "slots_gained_a": slots_gained_a,
+        "slots_gained_b": slots_gained_b,
+        "slot_uplift_a": slot_uplift_a,
+        "slot_uplift_b": slot_uplift_b,
+        "slot_waiver_a": slot_waiver_a,
+        "slot_waiver_b": slot_waiver_b,
+        "slot_rule": "baseline",
     }
 
 

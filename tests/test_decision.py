@@ -5,6 +5,7 @@ from ffanalytics.decision import (
     evaluate_trade,
     get_decision_layer_recommendations,
     calculate_rest_of_season_value,
+    slot_uplift_value,
     ENABLE_OPPONENT_ADJUSTMENT,
     get_start_sit_gated,
     get_waiver_priority_gated,
@@ -296,3 +297,174 @@ def test_ensure_intervals_floors_negative_lower():
     assert out["projection_lower"] == 0.0
     assert out["projection_upper"] > 2.0
     assert out["projection_lower"] <= 2.0 <= out["projection_upper"]
+
+
+# ---------------------------------------------------------------- slot uplift
+# why these tests (trade slot plan, Phase 1): unequal trades (2-for-1, 3-for-2)
+# hand the receiver an open roster slot. slot_uplift_value prices it as the
+# marginal _optimal_lineup gain from the best waiver fill — net by
+# construction, exactly 0.0 when the pickup rides the bench. Phase 1 keeps the
+# verdict byte-identical (slot fields informational); Phase 3 gates the fold.
+
+def _slot_p(pos, pid, pts, name=None):
+    d = {"player_id": pid, "position": pos, "position_group": pos,
+         "projected_points": pts,
+         "player_name": name or f"Player {pid}"}
+    return d
+
+
+def test_slot_uplift_bench_rider_is_zero():
+    # FLEX already held by WR12; waiver best is WR5 (plus a NaN-points decoy
+    # that must neither crash sorting nor be selected) → uplift exactly 0.0.
+    post = [_slot_p("QB", "qb", 20.0), _slot_p("RB", "rb", 15.0),
+            _slot_p("WR", "wr", 14.0), _slot_p("WR", "wr2", 12.0),
+            _slot_p("TE", "te", 9.0)]
+    pool = [_slot_p("WR", "w1", 5.0), _slot_p("RB", "w2", 4.0),
+            {"player_id": "wn", "position": "WR", "position_group": "WR",
+             "projected_points": float("nan"), "player_name": "NaN WR"}]
+    up, names = slot_uplift_value(
+        post, pool, ["QB", "RB", "WR", "TE", "FLEX"],
+        current_week=1, total_weeks=18)
+    assert up == 0.0
+    assert names == []
+
+
+def test_slot_uplift_flex_upgrade_positive():
+    # FLEX empty (no remaining RB/WR/TE) → WR7 fills it: 7/wk x 9 wk = 63.0.
+    post = [_slot_p("QB", "qb", 20.0), _slot_p("RB", "rb", 10.0),
+            _slot_p("WR", "wr", 10.0), _slot_p("TE", "te", 5.0)]
+    pool = [_slot_p("WR", "w1", 7.0, "Waiver WR1")]
+    up, names = slot_uplift_value(
+        post, pool, ["QB", "RB", "WR", "TE", "FLEX"],
+        current_week=10, total_weeks=18)
+    assert up == 63.0
+    assert names == ["Waiver WR1"]
+
+
+def test_evaluate_trade_equal_count_no_slot():
+    # 1v1 and 2v2 → zero slot delta → uplift dust-free zero (epsilon, since
+    # the value flows through float ROS scaling).
+    rp = ["QB", "RB", "WR", "TE"]
+    a1 = [_slot_p("RB", "a1", 20.0)]
+    b1 = [_slot_p("RB", "b1", 18.0)]
+    r = evaluate_trade(a1, b1, {}, rp, traded_a_ids=["a1"], traded_b_ids=["b1"],
+                       rostered_ids=["a1", "b1"],
+                       all_league_players=a1 + b1)
+    assert r["slots_gained_a"] == 0 and r["slots_gained_b"] == 0
+    assert abs(r["slot_uplift_a"]) < 1e-9 and abs(r["slot_uplift_b"]) < 1e-9
+    assert r["slot_waiver_a"] == [] and r["slot_waiver_b"] == []
+    assert r["slot_rule"] == "baseline"
+    a2 = a1 + [_slot_p("WR", "a2", 15.0)]
+    b2 = b1 + [_slot_p("WR", "b2", 12.0)]
+    r2 = evaluate_trade(a2, b2, {}, rp, traded_a_ids=["a1", "a2"],
+                        traded_b_ids=["b1", "b2"],
+                        rostered_ids=["a1", "a2", "b1", "b2"],
+                        all_league_players=a2 + b2)
+    assert r2["slots_gained_a"] == 0 and r2["slots_gained_b"] == 0
+    assert abs(r2["slot_uplift_a"]) < 1e-9 and abs(r2["slot_uplift_b"]) < 1e-9
+
+
+def test_evaluate_trade_2for1_package_params():
+    # A sends RB18+WR11, receives RB17 → A gains 1 slot. Post-A WR2 is a_b2
+    # (5); waiver WR13 takes that slot: (13-5)/wk x 18 wk = 144.0.
+    # (Not the FLEX swap: FLEX stays RB6 either way.)
+    rp = ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF"]
+    team_a = [_slot_p("QB", "a_qb", 20.0), _slot_p("RB", "a_rb1", 18.0),
+              _slot_p("RB", "a_rb2", 12.0), _slot_p("WR", "a_wr1", 16.0),
+              _slot_p("WR", "a_wr2", 11.0), _slot_p("TE", "a_te", 9.0),
+              _slot_p("K", "a_k", 8.0), _slot_p("DEF", "a_def", 7.0),
+              _slot_p("RB", "a_b1", 6.0), _slot_p("WR", "a_b2", 5.0)]
+    team_b = [_slot_p("QB", "b_qb", 19.0), _slot_p("RB", "b_rb1", 17.0),
+              _slot_p("RB", "b_rb2", 10.0), _slot_p("WR", "b_wr1", 15.0),
+              _slot_p("WR", "b_wr2", 9.0), _slot_p("TE", "b_te", 8.0),
+              _slot_p("K", "b_k", 7.0), _slot_p("DEF", "b_def", 6.0),
+              _slot_p("RB", "b_b1", 5.0), _slot_p("WR", "b_b2", 4.0)]
+    fa = [_slot_p("WR", "w_wr1", 13.0, "Waiver WR1"),
+          _slot_p("RB", "w_rb1", 8.0, "Waiver RB1"),
+          _slot_p("TE", "w_te1", 7.0, "Waiver TE1")]
+    league = team_a + team_b + fa
+    rostered = [p["player_id"] for p in team_a + team_b]
+    r = evaluate_trade(team_a, team_b, {}, rp, current_week=1,
+                       traded_a_ids=["a_rb1", "a_wr2"], traded_b_ids=["b_rb1"],
+                       rostered_ids=rostered, all_league_players=league)
+    assert r["slots_gained_a"] == 1
+    assert r["slots_gained_b"] == 0
+    assert r["slot_uplift_a"] == 144.0
+    assert r["slot_waiver_a"] == ["Waiver WR1"]
+    assert r["slot_uplift_b"] == 0.0
+    assert r["slot_rule"] == "baseline"
+    # Phase 1: verdict untouched by slot fields (fold gated to Phase 3).
+    r_nopkg = evaluate_trade(team_a, team_b, {}, rp, current_week=1)
+    assert r["winner"] == r_nopkg["winner"]
+    assert r["value_difference"] == r_nopkg["value_difference"]
+    assert r["recommendation"] == r_nopkg["recommendation"]
+
+
+def test_evaluate_trade_k_slot_fill_priced_honestly():
+    # K slot empties (K10 sent, backup K6 remains) → waiver K9 upgrades it:
+    # (9-6)/wk x 18 wk = 54.0. Streaming value priced as points, not zeroed.
+    rp = ["QB", "RB", "WR", "TE", "FLEX", "K", "DEF"]
+    team_a = [_slot_p("QB", "a_qb", 20.0), _slot_p("RB", "a_rb", 15.0),
+              _slot_p("WR", "a_wr", 14.0), _slot_p("TE", "a_te", 9.0),
+              _slot_p("K", "a_k", 10.0), _slot_p("K", "a_k2", 6.0),
+              _slot_p("DEF", "a_def", 7.0)]
+    team_b = [_slot_p("QB", "b_qb", 19.0), _slot_p("RB", "b_rb", 16.0),
+              _slot_p("WR", "b_wr", 13.0), _slot_p("TE", "b_te", 8.0),
+              _slot_p("K", "b_k", 8.0), _slot_p("DEF", "b_def", 6.0)]
+    fa = [_slot_p("K", "w_k", 9.0, "Waiver K")]
+    league = team_a + team_b + fa
+    rostered = [p["player_id"] for p in team_a + team_b]
+    r = evaluate_trade(team_a, team_b, {}, rp, current_week=1,
+                       traded_a_ids=["a_k", "a_wr"], traded_b_ids=["b_wr"],
+                       rostered_ids=rostered, all_league_players=league)
+    assert r["slots_gained_a"] == 1
+    assert r["slot_uplift_a"] == 54.0
+    assert r["slot_waiver_a"] == ["Waiver K"]
+
+
+def test_evaluate_trade_season_end_no_uplift():
+    # current_week=19 → weeks_remaining 0 → uplift 0 even with open slot.
+    # current_week=18 → exactly 1 week of uplift.
+    rp = ["QB", "RB", "WR", "TE", "FLEX"]
+    post = [_slot_p("QB", "qb", 20.0), _slot_p("RB", "rb", 10.0),
+            _slot_p("WR", "wr", 10.0), _slot_p("TE", "te", 5.0)]
+    pool = [_slot_p("WR", "w1", 7.0, "Waiver WR1")]
+    up19, n19 = slot_uplift_value(post, pool, rp, current_week=19)
+    assert up19 == 0.0 and n19 == []
+    up18, n18 = slot_uplift_value(post, pool, rp, current_week=18)
+    assert up18 == 7.0 and n18 == ["Waiver WR1"]
+
+
+def test_slot_uplift_dst_maps_to_def_slot():
+    # DST-position waiver fills a DEF slot (parity with side_value's
+    # normalization). Without the mapping the optimizer benches it → 0.
+    post = [_slot_p("QB", "qb", 20.0), _slot_p("RB", "rb", 15.0),
+            _slot_p("WR", "wr", 14.0), _slot_p("TE", "te", 9.0)]
+    pool = [_slot_p("DST", "w1", 8.0, "Waiver DST")]
+    up, names = slot_uplift_value(
+        post, pool, ["QB", "RB", "WR", "TE", "DEF"],
+        current_week=1, total_weeks=18)
+    assert up == 144.0
+    assert names == ["Waiver DST"]
+
+
+def test_evaluate_trade_no_packages_backward_compat():
+    # Omitted package params → slot fields zero AND verdict identical to a
+    # call on the same fixture. Guards the Phase 1 no-behavior-change claim.
+    team_a = [_slot_p("RB", "a1", 20.0), _slot_p("WR", "a2", 15.0)]
+    team_b = [_slot_p("RB", "b1", 18.0), _slot_p("WR", "b2", 12.0)]
+    rp = ["QB", "RB", "WR", "TE"]
+    r = evaluate_trade(team_a, team_b, {"pass_td": 4}, rp)
+    for k in ("slots_gained_a", "slots_gained_b", "slot_uplift_a",
+              "slot_uplift_b"):
+        assert r[k] == 0
+    assert r["slot_waiver_a"] == [] and r["slot_waiver_b"] == []
+    assert r["slot_rule"] == "baseline"
+    assert r["winner"] in ("Team A", "Fair")
+    # Existing points-not-dollars gate fixture still labels honestly.
+    r2 = evaluate_trade(
+        [_slot_p("RB", "a1", 20.0), _slot_p("WR", "a2", 15.0)],
+        [_slot_p("RB", "b1", 10.0)], {}, rp)
+    assert r2["ros_dollars_are_real_dollars"] is False
+    assert "pts (no market data" in r2["recommendation"]
+    assert "$" not in r2["recommendation"]
