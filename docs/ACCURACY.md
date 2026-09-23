@@ -55,3 +55,24 @@ Status: backtest PROMOTEs the fold, but production stays on baseline until
 the shadow gate opens (>=20 resolved trade rows via a trade outcome
 resolver, which does not exist yet). The gate, not this table, owns
 promotion. See `evaluate_trade_gated` in `src/ffanalytics/decision.py`.
+
+## Market blend research (2026-09-23, not in production)
+
+Method: `scripts/backtest_market_blend.py`. Production-verbatim
+`build_weekly_projections` on the freeze scope (2024+2025 REG weeks 4-18,
+box-score rows, true scoring; BASE reproduces n=10,356, MAE 4.520).
+Cross-season: fit the model weight on one season, score the other.
+Pooled convex blend on QB/RB/WR/TE; K and rows without a market value
+keep BASE.
+
+| Arm | Test 2025 (fit 2024) | Test 2024 (fit 2025) |
+|---|---|---|
+| Sleeper projections, $0 | MAE -0.185, t=6.81 | MAE -0.218, t=10.61 |
+| FantasyPros projections, paid, trial only | MAE -0.248, t=10.06 | MAE -0.245, t=9.97 |
+| Free weekly ECR (Friday) | MAE -0.035, t=3.44 | MAE -0.056, t=3.65 |
+
+Scope limits: the historical Sleeper and FantasyPros values are final
+versions, not pre-kickoff captures. Leak checks are in the spec
+(`docs/superpowers/specs/2026-09-23-market-blend-spec.md`). The live gate
+on pre-kickoff 2026 snapshots owns promotion, not this table. Results:
+`data/ml/backtest_market_blend_results.json`.
