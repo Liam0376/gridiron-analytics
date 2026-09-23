@@ -445,6 +445,59 @@ def build_sleeper_xwalk(sleeper_players: dict, name_pos_to_gsis: dict | None = N
 PROPS_RETENTION_DAYS = 180
 
 
+def build_market_snapshot_rows(model_projs: list, market_by_gsis: dict, schedule: list,
+                               season: int, week: int, scoring_settings: dict | None,
+                               now_utc: datetime, w_model: float | None = None) -> list[tuple]:
+    """market_snapshots rows (spec 2026-09-23-market-blend) for players whose
+    kickoff is still ahead of now_utc.
+
+    why pre-kickoff only: the live gate must grade values that existed before
+    the game. Sleeper's historical projections are final versions, and the
+    daily refresh keeps running through Monday of the same NFL week (week
+    flips Tuesday), so a plain upsert would overwrite Sunday players with
+    post-game values. A row is (re)written only while its game hasn't
+    started; the last pre-kickoff refresh wins.
+    Kickoff = schedule gameday + gametime (US/Eastern). Byes/no game: skipped.
+    """
+    from datetime import timezone
+    from zoneinfo import ZoneInfo
+    from ffanalytics.config import MARKET_BLEND_POSITIONS, MARKET_BLEND_W_MODEL
+    from ffanalytics.scoring import score_sleeper_stats
+    from ffanalytics.stat_projector import blend_with_market
+
+    w = MARKET_BLEND_W_MODEL if w_model is None else w_model
+    eastern = ZoneInfo("America/New_York")
+    kickoff = {}
+    for g in schedule or []:
+        if g.get("week") != week or g.get("game_type", "REG") != "REG":
+            continue
+        if g.get("season") not in (None, season) or not g.get("gameday"):
+            continue
+        try:
+            k = datetime.fromisoformat(f"{g['gameday']}T{g.get('gametime') or '13:00'}")
+        except ValueError:
+            continue
+        k = k.replace(tzinfo=eastern).astimezone(timezone.utc)
+        for team in (g.get("home_team"), g.get("away_team")):
+            if team:
+                kickoff[team] = k
+    snapped_at = now_utc.isoformat()
+    rows = []
+    for p in model_projs or []:
+        pos = str(p.get("position") or "").upper()
+        pid = str(p.get("player_id") or "")
+        model_pts = p.get("projected_points")
+        k = kickoff.get(p.get("team"))
+        if pos not in MARKET_BLEND_POSITIONS or not pid or model_pts is None or k is None or now_utc >= k:
+            continue
+        market = market_by_gsis.get(pid)
+        market_pts = score_sleeper_stats(market, scoring_settings) if market else None
+        blend = blend_with_market(float(model_pts), market_pts, pos, w)
+        rows.append((season, week, pid, pos, p.get("team"), float(model_pts), market_pts,
+                     float(blend), w, k.isoformat(), snapped_at))
+    return rows
+
+
 def prune_props_tables(conn, now_iso: str, ttl_days: int = PROPS_RETENTION_DAYS) -> dict:
     """Delete stale props experiment data. prop_lines past TTL go; RESOLVED
     shadow prop rows past TTL go; UNRESOLVED stay regardless of age (still
@@ -940,6 +993,10 @@ def run_refresh_with_data(
                 except Exception:
                     _pids = []
             data["fpros_id_to_gsis"] = map_fpros_id_to_gsis(_pids or [])
+            # Remap the Sleeper market with the ff_playerids fallback now
+            # that _pids is loaded (Sleeper's own gsis_id covers ~22%).
+            if market_raw and _pids:
+                market_by_gsis = map_market_to_gsis(market_raw, sleeper_players_map or {}, playerids=_pids)
             if _ecr_rows:
                 fpros_players_list = [nflverse_ecr_to_fpros(r) for r in _ecr_rows]
                 logger.info(f"refresh: free weekly ECR loaded: {len(fpros_players_list)} players")
@@ -976,6 +1033,7 @@ def run_refresh_with_data(
             fp_projections_map = {}
         data["sleeper_players_map"] = sleeper_players_map  # not stored, used for comparison only
         data["market_by_gsis"] = market_by_gsis
+        data["market_week"] = target_wk_m
         data["fpros_players"] = fpros_players_list if isinstance(fpros_players_list, list) else []
         data["fp_projections_map"] = fp_projections_map
         # StatsGuy real-trade market (free 500, non_sf_redraft) — true market value 0-10000 via name+team join
@@ -1208,6 +1266,24 @@ def run_refresh_with_data(
                          ps.get("projection_low"), ps.get("projection_high"),
                          snap_at),
                     )
+            # Market blend shadow (spec 2026-09-23-market-blend): pre-kickoff
+            # model + Sleeper + blend, graded by
+            # scripts/validate_market_blend_2026.py. Isolated: never aborts.
+            # Only when the market fetch targeted this same week.
+            try:
+                if data.get("market_by_gsis") and data.get("market_week") == market_week:
+                    from datetime import timezone as _tz
+                    _mrows = build_market_snapshot_rows(
+                        data.get("model_projections") or [], data["market_by_gsis"],
+                        data.get("schedule") or [], season, market_week,
+                        (data.get("league_settings") or {}).get("scoring_settings") or None,
+                        datetime.now(_tz.utc))
+                    conn.executemany(
+                        "INSERT OR REPLACE INTO market_snapshots VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        _mrows)
+                    logger.info(f"refresh: market_snapshots wrote {len(_mrows)} pre-kickoff rows (week {market_week})")
+            except Exception as _ms_exc:
+                logger.warning(f"refresh: market_snapshots skipped: {_ms_exc}")
         else:
             logger.warning("refresh: nflverse status=false — skipping player_stats INSERT (preserve last-good)")
 

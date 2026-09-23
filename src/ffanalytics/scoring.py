@@ -130,6 +130,22 @@ def calculate_fantasy_points(stats: dict, scoring_settings: dict | None = None) 
     return points
 
 
+def score_sleeper_stats(stats: dict, scoring_settings: dict | None = None) -> float:
+    """Score a Sleeper stat line (projection or actual). Sleeper stat keys
+    ARE the scoring-setting keys (pass_yd, rec, rec_40p, ...), so this is a
+    direct dot product with no alias map. Non-numeric/NaN/inf values count 0."""
+    settings = scoring_settings or DEFAULT_SCORING
+    total = 0.0
+    for key, mult in settings.items():
+        try:
+            v, m = float(stats.get(key) or 0), float(mult or 0)
+        except (TypeError, ValueError):
+            continue
+        if v == v and m == m and abs(v) != float("inf") and abs(m) != float("inf"):
+            total += v * m
+    return total
+
+
 def apply_flex_adjustment(points: float, position: str, num_flex_slots: int = 2) -> float:
     if position in FLEX_ELIGIBLE_POSITIONS and num_flex_slots >= 2:
         extra_flex = num_flex_slots - 1  # standard is 1 flex

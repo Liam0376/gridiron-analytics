@@ -89,6 +89,21 @@ FEATURES = {
 # MIN_MUESTRA_SHADOW, which was tuned empirically, not guessed).
 MIN_SHADOW_SAMPLES = 20
 
+# Market blend (spec docs/superpowers/specs/2026-09-23-market-blend-spec.md).
+# why 0.25: model weight in pred = w*model + (1-w)*Sleeper projection, pooled
+# over QB/RB/WR/TE, fitted on 2024+2025 wk 4-18 (flat optimum 0.20-0.25).
+# Cross-season holdouts: MAE -0.185 (t=6.81) and -0.218 (t=10.61) vs
+# production. Evidence: data/ml/backtest_market_blend_results.json.
+MARKET_BLEND_W_MODEL = 0.25
+MARKET_BLEND_POSITIONS = ("QB", "RB", "WR", "TE")  # K: no market in scope
+# why False: historical Sleeper values are final versions, not pre-kickoff.
+# Stays shadow-only (market_snapshots) until the 2026 live gate passes on
+# pre-kickoff snapshots: >= MARKET_BLEND_GATE_MIN_ROWS player-weeks,
+# weeks >= 4, paired-t on |err| >= MARKET_BLEND_GATE_T. Flip needs Liam's confirm.
+MARKET_BLEND_ENABLED = False
+MARKET_BLEND_GATE_MIN_ROWS = 1500
+MARKET_BLEND_GATE_T = 2.0
+
 # Flex-league scarcity adjustment: leagues with 2+ flex slots increase
 # demand for RB/WR/TE, making receiving volume more valuable.
 # tested and REJECTED: higher multipliers (1.10+) — overcorrected in

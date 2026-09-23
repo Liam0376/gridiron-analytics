@@ -1,6 +1,7 @@
 # Spec: blend weekly projections with Sleeper market projections
 
-> Status (2026-09-23): DRAFT, awaiting Liam's confirm. Research done and
+> Status (2026-09-23): Tasks 1-4 implemented (Liam confirmed), shadow capture live.
+> Flag flip (Task 5) still waits on the live gate plus Liam's confirm. Research done and
 > committed (`scripts/backtest_market_blend.py`,
 > `data/ml/backtest_market_blend_results.json`). No production change yet.
 
@@ -66,8 +67,11 @@ direction, underpowered.
    and an inline `why`. QB/RB/WR/TE only, and only when market points exist
    and are greater than 0. Otherwise BASE. Out players stay 0 (out-zero wins).
 3. **Shadow first.** A `MARKET_BLEND_ENABLED` flag defaults to False. While
-   off, refresh writes the blended value to `projection_snapshots` under a
-   `shadow` column, and nothing user-facing changes. Promotion follows the
+   off, refresh writes model, market and blend points together to
+   `market_snapshots`, and only before each player's kickoff. Nothing
+   user-facing changes. (Built this way instead of a `projection_snapshots`
+   column: that table is INSERT OR REPLACE on every refresh, including
+   Monday's post-game run.) Promotion follows the
    repo's existing shadow gate: at least N resolved 2026 player-weeks from
    pre-kickoff snapshots, with the blend beating BASE at paired-t of 2.0 or
    more on those.

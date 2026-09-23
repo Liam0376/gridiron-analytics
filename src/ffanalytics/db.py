@@ -294,3 +294,28 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             )"""
         )
         conn.execute("PRAGMA user_version=12")
+
+    if cur_version < 13:
+        # Market blend shadow v13 (spec 2026-09-23-market-blend). Model,
+        # Sleeper market and blend points frozen TOGETHER per player-week,
+        # written only before that player's kickoff (refresh enforces), so
+        # the live gate grades pre-game values. projection_snapshots is
+        # INSERT OR REPLACE on every refresh, incl. Monday's (post-Sunday),
+        # so it can't carry this guarantee. Additive only.
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS market_snapshots (
+                season INTEGER NOT NULL,
+                week INTEGER NOT NULL,
+                player_id TEXT NOT NULL,
+                position TEXT NOT NULL,
+                team TEXT,
+                model_points REAL NOT NULL,
+                market_points REAL,
+                blend_points REAL NOT NULL,
+                w_model REAL NOT NULL,
+                kickoff_utc TEXT NOT NULL,
+                snapped_at TEXT NOT NULL,
+                PRIMARY KEY (season, week, player_id)
+            )"""
+        )
+        conn.execute("PRAGMA user_version=13")

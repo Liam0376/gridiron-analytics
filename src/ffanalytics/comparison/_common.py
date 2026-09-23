@@ -56,9 +56,21 @@ def build_sleeper_map(sleeper_players: dict) -> dict[str, str]:
     return {gsis: sid for sid, gsis in build_gsis_map(sleeper_players).items()}
 
 
-def map_market_to_gsis(market_by_sleeper: dict, sleeper_players: dict) -> dict[str, dict]:
-    """Convert Sleeper projections keyed by sleeper_id to gsis_id keyed."""
-    gsis_map = build_gsis_map(sleeper_players)
+def map_market_to_gsis(market_by_sleeper: dict, sleeper_players: dict,
+                       playerids: list | None = None) -> dict[str, dict]:
+    """Convert Sleeper projections keyed by sleeper_id to gsis_id keyed.
+
+    why playerids fallback (2026-09-23): Sleeper's players DB carries a
+    gsis_id for only 233 of the 1,043 players Sleeper projected in 2026
+    week 3; nflverse ff_playerids (sleeper_id -> gsis_id) maps 959. Sleeper's
+    own gsis wins when present; playerids only fills gaps.
+    """
+    gsis_map = {}
+    for r in playerids or []:
+        sid, gsis = str(r.get("sleeper_id") or "").split(".")[0], str(r.get("gsis_id") or "").strip()
+        if sid and gsis:
+            gsis_map[sid] = gsis
+    gsis_map.update(build_gsis_map(sleeper_players))
     out: dict[str, dict] = {}
     for sid, proj in market_by_sleeper.items():
         gsis = gsis_map.get(str(sid))

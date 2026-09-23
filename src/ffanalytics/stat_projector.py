@@ -624,6 +624,35 @@ def build_game_context(schedule: List[Dict]) -> Dict:
     return ctx
 
 
+def blend_with_market(
+    model_pts: Optional[float],
+    market_pts: Optional[float],
+    position: str,
+    w_model: Optional[float] = None,
+) -> Optional[float]:
+    """Weekly point blend: w_model*model + (1-w_model)*market.
+
+    Evidence + rollout: docs/superpowers/specs/2026-09-23-market-blend-spec.md
+    (shadow-only while config.MARKET_BLEND_ENABLED is False).
+
+    Falls back to model_pts unchanged when:
+    - position not in MARKET_BLEND_POSITIONS (K: no market in scope);
+    - market missing or <= 0 (no Sleeper row / Sleeper projects a DNP);
+    - model_pts <= 0. This keeps out-zero absolute (a confirmed Out must
+      score 0, not 0.75*market). Known ceiling: a 0-history rookie also
+      stays at 0 and misses the market's view; the backtest scope never
+      contained those rows, so no evidence either way yet.
+    """
+    from ffanalytics.config import MARKET_BLEND_POSITIONS, MARKET_BLEND_W_MODEL
+
+    if w_model is None:
+        w_model = MARKET_BLEND_W_MODEL
+    if (model_pts is None or (position or "").upper() not in MARKET_BLEND_POSITIONS
+            or market_pts is None or market_pts <= 0 or model_pts <= 0):
+        return model_pts
+    return w_model * float(model_pts) + (1.0 - w_model) * float(market_pts)
+
+
 def build_weekly_projections(
     season_stats: List[Dict],
     schedule: List[Dict],

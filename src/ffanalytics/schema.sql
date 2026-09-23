@@ -188,3 +188,20 @@ CREATE TABLE IF NOT EXISTS projection_snapshots (
     snapped_at TEXT NOT NULL,
     PRIMARY KEY (season, week, player_id)
 );
+
+-- Market blend shadow v13: model + Sleeper market + blend points frozen
+-- together per player-week, written only before that player's kickoff.
+CREATE TABLE IF NOT EXISTS market_snapshots (
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    player_id TEXT NOT NULL,
+    position TEXT NOT NULL,
+    team TEXT,
+    model_points REAL NOT NULL,
+    market_points REAL,
+    blend_points REAL NOT NULL,
+    w_model REAL NOT NULL,
+    kickoff_utc TEXT NOT NULL,
+    snapped_at TEXT NOT NULL,
+    PRIMARY KEY (season, week, player_id)
+);
