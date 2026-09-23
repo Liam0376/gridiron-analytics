@@ -13,8 +13,11 @@ export async function renderDashboard(root) {
     fetchRostersFull().catch(() => null),
     fetchNews().catch(() => ({ trending_adds: [] })),
     fetchWaiver({}).catch(() => ({ recommendations: [] })),
-    fetchComparison({ edge: 'BUY', limit: 3 }).catch(() => ({ players: [] })),
-    fetchComparison({ edge: 'SELL', limit: 3 }).catch(() => ({ players: [] })),
+    // why high limit then slice (dashboard bug, 2026-09-23): the backend
+    // applies limit BEFORE the edge filter, so limit=3 on the top-by-points
+    // list almost never contains a BUY/SELL row and the module rendered empty.
+    fetchComparison({ edge: 'BUY', limit: 400 }).catch(() => ({ players: [] })),
+    fetchComparison({ edge: 'SELL', limit: 400 }).catch(() => ({ players: [] })),
   ]);
 
   const stale = computeStaleness(meta.lastUpdated || meta.last_updated || log.entries?.[0]?.ran_at);
@@ -26,6 +29,14 @@ export async function renderDashboard(root) {
     (a, b) => (b.wins ?? 0) - (a.wins ?? 0) || (b.fpts ?? 0) - (a.fpts ?? 0)
   );
   const cutLine = bulk?.playoff_teams ?? 6;
+
+  // ---- Playoff odds: Monte Carlo over remaining regular-season games.
+  // Win prob per game from projected starter points vs league median
+  // (logistic, ±40pts ≈ ±50pp swing, clamped). Tiebreak by PF pace.
+  // Honest estimate, not a market — labeled as such in the header.
+  const regEnd = (bulk?.playoff_week_start ?? 15) - 1;
+  const remaining = Math.max(0, regEnd - (week ?? 1));
+  const odds = playoffOdds(leagueTeams, cutLine, remaining);
 
   // ---- Status report: rostered players carrying an injury tag ----
   const hurt = [];
@@ -65,19 +76,23 @@ export async function renderDashboard(root) {
 
     <div class="dash-grid reveal in reveal-delay-1">
       <div class="card dash-span-4">
-        <div class="card-header"><h3>Playoff Race</h3><span class="kicker">top ${cutLine} · tiebreak PF</span></div>
+        <div class="card-header"><h3>Playoff Race</h3><span class="kicker">sim odds · ${remaining} left</span></div>
         <div class="card-body" style="padding:6px 12px">
-          ${leagueTeams.length ? leagueTeams.map((t, i) => `
+          ${leagueTeams.length ? leagueTeams.map((t, i) => {
+            const pct = Math.round((odds[i] ?? 0) * 100);
+            const cls = pct >= 70 ? 'var(--emerald)' : pct >= 35 ? 'var(--amber-strong)' : 'var(--text-faint)';
+            return `
             ${i === cutLine ? `<div class="cut-line"><span>playoff cut</span></div>` : ''}
             <div class="stand-row">
-              <span class="mono faint" style="width:18px">${i + 1}</span>
+              <span class="mono faint" style="width:16px">${i + 1}</span>
               ${userAvatar(t, 24)}
               <span class="stand-name">${escapeHtml(t.team_name || t.display_name || `Team ${t.roster_id}`)}</span>
               <span class="spacer"></span>
               <span class="mono" style="font-weight:700">${t.wins ?? 0}–${t.losses ?? 0}${t.ties ? `–${t.ties}` : ''}</span>
-              <span class="mono faint" style="font-size:11px; width:52px; text-align:right">${Number(t.starter_pts ?? 0).toFixed(1)}/wk</span>
-            </div>
-          `).join('') : `<div class="empty">No standings yet</div>`}
+              <span class="odds mono" style="color:${cls}; width:38px; text-align:right">${pct}%</span>
+              <span class="odds-bar"><span style="width:${pct}%; background:${cls}"></span></span>
+            </div>`;
+          }).join('') : `<div class="empty">No standings yet</div>`}
         </div>
       </div>
 
@@ -131,11 +146,11 @@ export async function renderDashboard(root) {
           <div class="signal-cols">
             <div>
               <div class="kicker good" style="margin-bottom:6px">▲ Buy — model over market</div>
-              ${(buys.players || []).map(p => signalRow(p)).join('') || `<div class="empty">—</div>`}
+              ${(buys.players || []).slice(0, 3).map(p => signalRow(p)).join('') || `<div class="empty">No clear buys</div>`}
             </div>
             <div>
               <div class="kicker bad" style="margin-bottom:6px">▼ Sell — market over model</div>
-              ${(sells.players || []).map(p => signalRow(p)).join('') || `<div class="empty">—</div>`}
+              ${(sells.players || []).slice(0, 3).map(p => signalRow(p)).join('') || `<div class="empty">No clear sells</div>`}
             </div>
           </div>
         </div>
@@ -186,8 +201,28 @@ function signalRow(p) {
     </div>`;
 }
 
-function severityRank(s) {
-  const v = String(s || '').toLowerCase();
+function playoffOdds(teams, cutLine, remaining, sims = 4000) {
+  if (!teams.length || cutLine <= 0) return teams.map(() => 0);
+  const powers = teams.map(t => Number(t.starter_pts ?? 0));
+  const sorted = [...powers].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
+  const probs = powers.map(pw => Math.min(0.95, Math.max(0.05, 0.5 + (pw - median) * 0.025)));
+  const base = teams.map(t => (Number(t.wins ?? 0)) + (Number(t.ties ?? 0)) * 0.5);
+  const pf = teams.map((t, i) => Number(t.fpts ?? 0) + remaining * powers[i]);
+  const makes = new Array(teams.length).fill(0);
+  for (let s = 0; s < sims; s++) {
+    const finalW = base.map((w, i) => {
+      let extra = 0;
+      for (let g = 0; g < remaining; g++) if (Math.random() < probs[i]) extra++;
+      return w + extra;
+    });
+    const order = teams.map((_, i) => i).sort((a, b) => finalW[b] - finalW[a] || pf[b] - pf[a]);
+    for (let k = 0; k < Math.min(cutLine, order.length); k++) makes[order[k]]++;
+  }
+  return makes.map(m => m / sims);
+}
+
+function severityRank(s) {  const v = String(s || '').toLowerCase();
   if (/out|ir|injured reserve|pup/.test(v)) return 3;
   if (/doubtful/.test(v)) return 2;
   if (/questionable|limited|dnp/.test(v)) return 1;
