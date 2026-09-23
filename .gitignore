@@ -42,3 +42,5 @@ logs/
 .impeccable/live/deferred-svelte-component-accepts.json
 .impeccable/live/*.png
 # impeccable-ignore-end
+# FantasyPros API bulk dump (scripts/fp_dump.py), local only:
+data/fantasypros_dump/
