@@ -49,7 +49,7 @@ if [ "$LAN" = "1" ]; then
   echo "  Explicit opt-in acknowledged; continuing local-only."
 fi
 
-echo "→ Gridiron Hub — warm-boot start (Ctrl+C to stop, 0 resources after)"
+echo "→ FantasyHub — warm-boot start (Ctrl+C to stop, 0 resources after)"
 echo "  Model: http://127.0.0.1:8000   Hub: http://127.0.0.1:8001   Proxy: http://127.0.0.1:8002"
 echo "  Flags: auto=$AUTO no-refresh=$NO_REFRESH force=$FORCE no-browser=$NO_BROWSER lan=$LAN league=$SLEEPER_LEAGUE_ID"
 echo ""
@@ -274,7 +274,7 @@ if curl -sf http://127.0.0.1:8001/ >/dev/null 2>&1; then
   fi
   echo ""
   echo "  ┌─────────────────────────────────────────────────────┐"
-  echo "  │  Gridiron Hub ready (local-only)                     │"
+  echo "  │  FantasyHub ready (local-only)                     │"
   echo "  │  Mac:    http://127.0.0.1:8001                      │"
   echo "  └─────────────────────────────────────────────────────┘"
   if [ "$LAN" = "1" ]; then
@@ -293,7 +293,7 @@ else
   fi
   echo ""
   echo "  ┌─────────────────────────────────────────────────────┐"
-  echo "  │  Gridiron Hub ready (local-only)                     │"
+  echo "  │  FantasyHub ready (local-only)                     │"
   echo "  │  Mac:    http://127.0.0.1:8001                      │"
   echo "  └─────────────────────────────────────────────────────┘"
   if [ "$LAN" = "1" ]; then

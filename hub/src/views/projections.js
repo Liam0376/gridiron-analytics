@@ -210,7 +210,7 @@ export async function renderProjections(root) {
       // guessed dollar value from weekly points alone, giving a
       // below-replacement QB15 $55 instead of the real $19.
       p.auction = c.auction;
-      p.gridironAuction = c.auction;
+      p.modelAuction = c.auction;
       p.marketAuction = c.marketAuction;
       p.vor = c.vor;
     } else {

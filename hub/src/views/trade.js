@@ -210,7 +210,7 @@ export async function renderTrade(root) {
       proj_rec: g.proj_rec || null, proj_rec_yd: g.proj_rec_yd || null,
       proj_rec_td: g.proj_rec_td || null, proj_fgm: null, proj_xpm: null,
     });
-    const pts = Number(p.gridiron_points ?? p.model_points ?? p.projected_points ?? p.weekly ?? 0);
+    const pts = Number(p.model_points ?? p.projected_points ?? p.weekly ?? 0);
     const lo = Number(p.projection_lower ?? p.lower ?? Math.max(0, pts - 5));
     const hi = Number(p.projection_upper ?? p.upper ?? pts + 5);
     const w = Number(p.width ?? (hi - lo) / 2);
@@ -283,8 +283,8 @@ export async function renderTrade(root) {
         ${players.map(p => {
           const pid = String(p.player_id || p.id);
           const isChecked = selectedSet.has(pid);
-          const gridironPts = Number(p.gridiron_points ?? p.model_points ?? p.projected_points ?? p.weekly ?? 0).toFixed(1);
-          const rosPts = Number(p.model_season_points ?? p.ros ?? (gridironPts * 17)).toFixed(0);
+          const modelPts = Number(p.model_points ?? p.projected_points ?? p.weekly ?? 0).toFixed(1);
+          const rosPts = Number(p.model_season_points ?? p.ros ?? (modelPts * 17)).toFixed(0);
           const auctionPrice = p.auction_price_paid ?? p.auction ?? p.marketAuction ?? 0;
           const preview = statPreview(p);
           const expKey = `${side}:${pid}`;
@@ -310,7 +310,7 @@ export async function renderTrade(root) {
                 </div>
               </div>
               <div style="text-align:right">
-                <div class="mono" style="font-weight:700; font-size:13px; color:var(--accent)">${gridironPts} <span class="micro faint">pts/wk</span></div>
+                <div class="mono" style="font-weight:700; font-size:13px; color:var(--accent)">${modelPts} <span class="micro faint">pts/wk</span></div>
                 <div class="micro faint mono">${rosPts} pts ROS</div>
                 <button class="trade-expand" data-side="${side}" data-pid="${escapeHtml(pid)}" title="Show projected stats" style="margin-top:4px; font-size:11px; background:transparent; color:var(--text-muted); border:1px solid var(--border); border-radius:6px; padding:1px 8px; cursor:pointer">${isOpen ? '▾ stats' : '▸ stats'}</button>
               </div>
@@ -416,8 +416,8 @@ export async function renderTrade(root) {
     // as "NaN" via toFixed. Same _num discipline as the banner helpers.
     const pw = (p) => {
       // why p.weekly last: FantasyHub roster items carry weekly/ros instead
-      // of gridiron_points/model_season_points. Same chain everywhere.
-      const n = Number(p.gridiron_points ?? p.model_points ?? p.projected_points ?? p.weekly ?? 0);
+      // of model_points/model_season_points. Same chain everywhere.
+      const n = Number(p.model_points ?? p.projected_points ?? p.weekly ?? 0);
       return Number.isFinite(n) ? n : 0;
     };
     const sentIds = sentSet || new Set();
@@ -490,7 +490,7 @@ export async function renderTrade(root) {
     // why discount AFTER capped/uncapped selection (not on season input):
     // pre-scaling pushes starters under `capped > 1` into the uncapped bench
     // floor, which re-inflates them (compression, not discount) and
-    // double-penalizes via the /17 inside uncapped. p.gridironAuction branch
+    // double-penalizes via the /17 inside uncapped. p.modelAuction branch
     // removed (dead on raw roster — only exists post-enrichPlayer, which
     // trade.js never calls); modelSeasonPoints camelCase removed (server
     // sends snake_case, so it always fell to the *17 fallback).
@@ -504,7 +504,7 @@ export async function renderTrade(root) {
         base = auc;
       } else {
         const pos = (p.position || '').toUpperCase();
-        const season = Number(p.model_season_points ?? p.ros ?? ((p.gridiron_points ?? p.model_points ?? p.projected_points ?? p.weekly ?? 0) * 17));
+        const season = Number(p.model_season_points ?? p.ros ?? ((p.model_points ?? p.projected_points ?? p.weekly ?? 0) * 17));
         if (vbdParams) {
           const capped = vbdAuction(season, pos, vbdParams);
           const uncapped = vbdAuctionUncapped(season, pos, vbdParams);

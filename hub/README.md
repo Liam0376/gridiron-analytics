@@ -1,4 +1,4 @@
-# Gridiron Hub — Local Command Center
+# FantasyHub — Local Command Center
 
 **Zero tokens. $0. Read-only.**
 

@@ -39,8 +39,8 @@ export function enrichPlayer(p, compRow, opts = {}) {
     weekly * 17
   );
 
-  const gridironAuction = num(
-    p.gridironAuction ?? comp.auction ?? (vbdParams
+  const modelAuction = num(
+    p.modelAuction ?? comp.auction ?? (vbdParams
       ? (comp.model_season_points != null
           ? vbdAuction(num(comp.model_season_points), pos, vbdParams)
           : vbdAuction(modelSeason, pos, vbdParams))
@@ -48,11 +48,11 @@ export function enrichPlayer(p, compRow, opts = {}) {
     1
   );
 
-  const gridironUncapped = num(
+  const modelUncapped = num(
     comp.auctionUncapped ?? (vbdParams
       ? vbdAuctionUncapped(comp.model_season_points ?? modelSeason, pos, vbdParams)
       : null),
-    gridironAuction
+    modelAuction
   );
 
   const marketVbd = (vbdParams && comp.market_season_points != null)
@@ -61,7 +61,7 @@ export function enrichPlayer(p, compRow, opts = {}) {
   const marketUncapped = comp.marketAuctionUncapped ?? ((vbdParams && comp.market_season_points != null)
     ? vbdAuctionUncapped(num(comp.market_season_points), pos, vbdParams)
     : null);
-  // why check comp.marketAuction first: the fallback `gridironAuction * 0.9`
+  // why check comp.marketAuction first: the fallback `modelAuction * 0.9`
   // fabricates a Value Edge when no real market data exists — user sees
   // "+$12 edge" that's entirely manufactured (audit 22.0). Return null
   // instead so the UI can show "Market: N/A" rather than a fake number.
@@ -72,7 +72,7 @@ export function enrichPlayer(p, compRow, opts = {}) {
 
   const replPts = (vbdParams?.replPts?.[pos] ?? 100);
   const vor = Math.max(0, modelSeason - replPts);
-  const deltaAuction = marketAuction != null ? gridironAuction - marketAuction : null;
+  const deltaAuction = marketAuction != null ? modelAuction - marketAuction : null;
 
   const slot = p.slot || defaultSlot;
   const ecr = comp.fp_ecr ?? p.fp_ecr ?? null;
@@ -126,8 +126,8 @@ export function enrichPlayer(p, compRow, opts = {}) {
     lower,
     upper,
     vor,
-    gridironAuction,
-    gridironUncapped,
+    modelAuction,
+    modelUncapped,
     marketAuction,
     marketUncapped,
     deltaAuction,

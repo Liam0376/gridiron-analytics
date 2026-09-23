@@ -31,7 +31,7 @@ export async function renderTierlists(root) {
     if (c) {
       p.market_season_stats = c.market_season_stats || null;
       p.auction = c.auction;
-      p.gridironAuction = c.auction;
+      p.modelAuction = c.auction;
       p.marketAuction = c.marketAuction;
       p.vor = c.vor;
     }

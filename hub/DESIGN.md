@@ -1,4 +1,4 @@
-# DESIGN.md — Gridiron Hub — Sidebar + Top Search
+# DESIGN.md — FantasyHub — Sidebar + Top Search
 
 > System fonts: Helvetica / Apple SF · Sidebar navigation · L2 fluid · Data-dense but airy
 

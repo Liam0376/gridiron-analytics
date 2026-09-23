@@ -1,8 +1,9 @@
 /* ═══════════════════════════════════════════════════════
-   Gridiron Hub v2 — Draftea × FantasyPros
+   FantasyHub v3 — Press Box × FantasyPros
    System fonts · Density 8/10 · Glass + Data-Dense
    ═══════════════════════════════════════════════════════ */
 @import './tokens.css';
+@import './pressbox.css';
 
 * { box-sizing: border-box; }
 html { scrollbar-gutter: stable; scroll-padding-top: var(--header-height); color-scheme: light dark; }

@@ -46,13 +46,13 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
   // comparison/_model.py, already correct — just not forwarded here). $1
   // matches the backend's own floor for a below-replacement player instead
   // of fabricating a number.
-  const gridironAuction = Number(p.gridironAuction ?? p.auction ?? 1);
-  // why no gridiron fallback: market consensus (FantasyPros) is absent in
+  const modelAuction = Number(p.modelAuction ?? p.auction ?? 1);
+  // why no model fallback: market consensus (FantasyPros) is absent in
   // deployments without a market data source. Falling back to the model
   // value fabricates agreement (delta always $0) — null renders N/A.
   const marketAuctionRaw = p.marketAuction ?? p.market_auction;
   const marketAuction = marketAuctionRaw != null ? Number(marketAuctionRaw) : null;
-  const deltaAuction = p.deltaAuction ?? (marketAuction != null ? (gridironAuction - marketAuction) : null);
+  const deltaAuction = p.deltaAuction ?? (marketAuction != null ? (modelAuction - marketAuction) : null);
   const edge = (p.edge || 'NEUTRAL').toUpperCase();
   const edgeIcon = edge === 'BUY' ? '▲ ' : edge === 'SELL' ? '▼ ' : '';
 
@@ -140,7 +140,7 @@ export function openPlayerModal(p, root = document.getElementById('app') || docu
         <div class="modal-values-grid" style="margin-top:16px">
           <div class="modal-val-card">
             <span class="kicker">Model $</span>
-            <span class="mono val-large" style="color:var(--amber)">$${gridironAuction}</span>
+            <span class="mono val-large" style="color:var(--amber)">$${modelAuction}</span>
             <span class="micro faint">${weekly.toFixed(1)} projected pts/wk</span>
           </div>
           ${marketAuction != null ? `

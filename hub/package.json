@@ -1,5 +1,5 @@
 {
-  "name": "gridiron-hub",
+  "name": "fantasyhub",
   "private": true,
   "version": "0.1.0",
   "description": "Local fantasy football hub — read-only consumer of fantasy.db + localhost:8000. Zero tokens, $0, 127.0.0.1 only.",

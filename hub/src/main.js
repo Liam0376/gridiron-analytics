@@ -225,7 +225,7 @@ async function loadSearchPlayersCache() {
                 // projections.js (93b7b91/d910ac1).
                 market_season_stats: p.market_season_stats || null,
                 auction: p.auction,
-                gridironAuction: p.auction,
+                modelAuction: p.auction,
                 marketAuction: p.marketAuction,
                 vor: p.vor,
               });

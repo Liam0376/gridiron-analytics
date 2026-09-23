@@ -85,7 +85,7 @@ export async function renderWaiver(root) {
     if (c) {
       r.market_season_stats = c.market_season_stats || null;
       r.auction = c.auction;
-      r.gridironAuction = c.auction;
+      r.modelAuction = c.auction;
       r.marketAuction = c.marketAuction;
       r.vor = c.vor;
     }

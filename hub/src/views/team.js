@@ -110,7 +110,7 @@ export async function renderTeam(root) {
   } catch (_) {}
 
   // Executive Header Metrics
-  const totalGridironValue = allPlayers.reduce((sum, p) => sum + (p.gridironAuction ?? 0), 0);
+  const totalModelValue = allPlayers.reduce((sum, p) => sum + (p.modelAuction ?? 0), 0);
   // Market consensus may be absent (no market data source): null honest,
   // never $0 — KPI renders N/A and the edge row is skipped below.
   const marketVals = allPlayers.map(p => p.marketAuction);
@@ -221,15 +221,15 @@ export async function renderTeam(root) {
           </div>
           <div class="kpi-card">
             <span class="kicker">Total Model $</span>
-            <div class="mono kpi-val" style="color:var(--emerald)">$${totalGridironValue}</div>
+            <div class="mono kpi-val" style="color:var(--emerald)">$${totalModelValue}</div>
             <span class="micro faint">Sum of VBD auction values</span>
           </div>
           ${totalMarketValue != null ? `
           <div class="kpi-card">
             <span class="kicker">Total Market Consensus $</span>
             <div class="mono kpi-val" style="color:var(--sky)">$${totalMarketValue}</div>
-            <div class="micro ${totalGridironValue >= totalMarketValue ? 'text-good' : 'text-bad'}">
-              ${totalGridironValue >= totalMarketValue ? '+' : ''}$${totalGridironValue - totalMarketValue} Value Edge
+            <div class="micro ${totalModelValue >= totalMarketValue ? 'text-good' : 'text-bad'}">
+              ${totalModelValue >= totalMarketValue ? '+' : ''}$${totalModelValue - totalMarketValue} Value Edge
             </div>
           </div>` : ''}
           <div class="kpi-card">
@@ -524,7 +524,7 @@ function renderPlayerRow(p, isReserve = false, showMarket = true, showEcr = true
         <span style="color:var(--amber); font-weight:700">${p.weekly.toFixed(1)}</span>
         <span class="micro faint"> / ${p.season.toFixed(0)}</span>
       </td>
-      <td class="mono"><span class="badge badge-amber" title="${p.gridironUncapped!=null && p.gridironUncapped!==p.gridironAuction ? `Uncapped VOR $${p.gridironUncapped}` : ''}">$${p.gridironAuction}${p.gridironUncapped!=null && p.gridironUncapped!==p.gridironAuction ? ` <span class="micro faint">($${p.gridironUncapped})</span>` : ''}</span></td>
+      <td class="mono"><span class="badge badge-amber" title="${p.modelUncapped!=null && p.modelUncapped!==p.modelAuction ? `Uncapped VOR $${p.modelUncapped}` : ''}">$${p.modelAuction}${p.modelUncapped!=null && p.modelUncapped!==p.modelAuction ? ` <span class="micro faint">($${p.modelUncapped})</span>` : ''}</span></td>
       ${showMarket ? `<td class="mono"><span class="badge badge-sky" title="Market consensus auction value">$${p.marketAuction}</span></td>
       <td class="mono ${deltaCls}">${deltaSign}$${p.deltaAuction}</td>` : ''}
       <td><span class="badge ${edgeCls}" aria-label="${escapeAttr(p.edge)}">${edgeIcon}${p.edge}</span></td>
@@ -552,6 +552,6 @@ function renderPlayerCardItem(p) {
     point_estimate: p.weekly,
     projection_lower: p.lower,
     projection_upper: p.upper,
-    auction: p.gridironAuction,
+    auction: p.modelAuction,
   }, { showInterval: true, showTeamLogo: true });
 }

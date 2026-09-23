@@ -84,14 +84,14 @@ export async function renderRoster(root) {
     const allPlayers = [...starters, ...bench, ...reserve];
 
     const starterFPTS = starters.reduce((s, p) => s + p.weekly, 0);
-    const totalGridiron = allPlayers.reduce((s, p) => s + (p.gridironAuction ?? 0), 0);
+    const totalModel = allPlayers.reduce((s, p) => s + (p.modelAuction ?? 0), 0);
     // Market consensus may be absent (no market data source): null honest,
     // renders N/A — never $0/NaN.
     const marketVals = allPlayers.map(p => p.marketAuction);
     const totalMarket = marketVals.every(v => v != null) ? marketVals.reduce((s, v) => s + v, 0) : null;
-    const deltaTotal = totalMarket != null ? totalGridiron - totalMarket : null;
+    const deltaTotal = totalMarket != null ? totalModel - totalMarket : null;
 
-    // Top player by projected points or Gridiron $
+    // Top player by projected points or Model $
     const topPlayer = [...allPlayers].sort((a, b) => b.weekly - a.weekly)[0] || null;
 
     // Determine weakest position group
@@ -126,7 +126,7 @@ export async function renderRoster(root) {
       reserve,
       allPlayers,
       starterFPTS,
-      totalGridiron,
+      totalModel,
       totalMarket,
       deltaTotal,
       topPlayer,
@@ -332,14 +332,14 @@ function renderLeaderboardRow(t, selectedId, showMarket = true) {
       <td class="mono" style="font-size:14px; font-weight:700; color:var(--amber)">
         ${t.starterFPTS.toFixed(1)} <span class="micro faint">pts/wk</span>
       </td>
-      <td class="mono"><span class="badge badge-emerald">$${t.totalGridiron}</span></td>
+      <td class="mono"><span class="badge badge-emerald">$${t.totalModel}</span></td>
       ${showMarket ? `<td class="mono"><span class="badge badge-sky">$${t.totalMarket}</span></td>
       <td class="mono ${deltaCls}">${deltaSign}$${t.deltaTotal}</td>` : ''}
       <td>
         ${t.topPlayer ? `
           <div style="display:flex; align-items:center; gap:6px" class="mono micro">
             ${playerAvatar(t.topPlayer, 24)}
-            <span>${escapeHtml(t.topPlayer.player_name)} (${t.topPlayer.position}, $${t.topPlayer.gridironAuction})</span>
+            <span>${escapeHtml(t.topPlayer.player_name)} (${t.topPlayer.position}, $${t.topPlayer.modelAuction})</span>
           </div>
         ` : '—'}
       </td>
@@ -373,7 +373,7 @@ function renderSingleTeamInspector(team) {
         </div>
         <div class="kpi-card">
           <span class="kicker">Model $ VOR</span>
-          <div class="mono kpi-val" style="color:var(--emerald)">$${team.totalGridiron}</div>
+          <div class="mono kpi-val" style="color:var(--emerald)">$${team.totalModel}</div>
           ${team.totalMarket != null ? `<span class="micro faint">Market $${team.totalMarket}</span>` : ''}
         </div>
         <div class="kpi-card">
@@ -460,7 +460,7 @@ function renderCompareTeamsInspector(teamA, teamB) {
           </div>
           <div>
             <div style="font-weight:700; font-size:16px">${escapeHtml(teamA.team_name)}</div>
-            <div class="mono micro faint">Rank #${teamA.rank} · ${teamA.starterFPTS.toFixed(1)} FPTS<br>$${teamA.totalGridiron}</div>
+            <div class="mono micro faint">Rank #${teamA.rank} · ${teamA.starterFPTS.toFixed(1)} FPTS<br>$${teamA.totalModel}</div>
           </div>
         </div>
 
@@ -473,7 +473,7 @@ function renderCompareTeamsInspector(teamA, teamB) {
         <div style="display:flex; align-items:center; justify-content:flex-end; gap:12px">
           <div style="text-align:right">
             <div style="font-weight:700; font-size:16px">${escapeHtml(teamB.team_name)}</div>
-            <div class="mono micro faint">Rank #${teamB.rank} · ${teamB.starterFPTS.toFixed(1)} FPTS<br>$${teamB.totalGridiron}</div>
+            <div class="mono micro faint">Rank #${teamB.rank} · ${teamB.starterFPTS.toFixed(1)} FPTS<br>$${teamB.totalModel}</div>
           </div>
           <div class="player-avatar" style="width:44px; height:44px">
             ${teamB.avatar_url && safeAvatarUrl(teamB.avatar_url) ? `<img src="${escapeAttr(safeAvatarUrl(teamB.avatar_url))}" />` : `<div class="player-avatar-fallback" style="background:var(--sky)">${escapeHtml(teamB.owner_name).charAt(0)}</div>`}
@@ -543,7 +543,7 @@ function renderCompareTeamsInspector(teamA, teamB) {
                           ${playerAvatar(pA, 32)}
                           <div>
                             <div style="font-weight:700"><button class="row-open-btn" data-player-id="${escapeHtml(pA.player_id)}" aria-label="Open details for ${escapeAttr(pA.player_name || pA.player_id)}" title="Open details for ${escapeAttr(pA.player_name || pA.player_id)}" style="background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; font-weight:700; text-align:left">${escapeHtml(pA.player_name)}</button> ${posBadge(pA.position)}</div>
-                            <div class="mono micro" style="color:var(--amber)">${pA.weekly.toFixed(1)} pts · $${pA.gridironAuction}</div>
+                            <div class="mono micro" style="color:var(--amber)">${pA.weekly.toFixed(1)} pts · $${pA.modelAuction}</div>
                           </div>
                         </div>
                       ` : '—'}
@@ -555,7 +555,7 @@ function renderCompareTeamsInspector(teamA, teamB) {
                           ${playerAvatar(pB, 32)}
                           <div>
                             <div style="font-weight:700"><button class="row-open-btn" data-player-id="${escapeHtml(pB.player_id)}" aria-label="Open details for ${escapeAttr(pB.player_name || pB.player_id)}" title="Open details for ${escapeAttr(pB.player_name || pB.player_id)}" style="background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; font-weight:700; text-align:left">${escapeHtml(pB.player_name)}</button> ${posBadge(pB.position)}</div>
-                            <div class="mono micro" style="color:var(--sky)">${pB.weekly.toFixed(1)} pts · $${pB.gridironAuction}</div>
+                            <div class="mono micro" style="color:var(--sky)">${pB.weekly.toFixed(1)} pts · $${pB.modelAuction}</div>
                           </div>
                         </div>
                       ` : '—'}
@@ -594,7 +594,7 @@ function renderInspectorPlayerRow(p, showMarket = true, showEcr = true) {
       </td>
       <td class="micro faint">${escapeHtml(p.team)} vs ${escapeHtml(p.opponent_team || 'TBD')}</td>
       <td class="mono" style="font-weight:700; color:var(--amber)">${p.weekly.toFixed(1)}</td>
-      <td class="mono"><span class="badge badge-amber" title="${p.gridironUncapped!=null && p.gridironUncapped!==p.gridironAuction ? `Uncapped $${p.gridironUncapped}`:''}">$${p.gridironAuction}${p.gridironUncapped!=null && p.gridironUncapped!==p.gridironAuction ? ` <span class="micro faint">($${p.gridironUncapped})</span>`:''}</span></td>
+      <td class="mono"><span class="badge badge-amber" title="${p.modelUncapped!=null && p.modelUncapped!==p.modelAuction ? `Uncapped $${p.modelUncapped}`:''}">$${p.modelAuction}${p.modelUncapped!=null && p.modelUncapped!==p.modelAuction ? ` <span class="micro faint">($${p.modelUncapped})</span>`:''}</span></td>
       ${showMarket ? `<td class="mono"><span class="badge badge-sky" title="Market consensus auction value">$${p.marketAuction}</span></td>
       <td class="mono ${deltaCls}">${deltaSign}$${p.deltaAuction}</td>` : ''}
       <td><span class="badge ${edgeCls}" aria-label="${escapeAttr(p.edge)}">${edgeIcon}${p.edge}</span></td>
