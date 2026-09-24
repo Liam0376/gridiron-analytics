@@ -364,7 +364,7 @@ body .mini-row:last-child { border-bottom: none; }
 body .mini-name { font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 body .stand-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--border); }
 body .stand-row:last-child { border-bottom: none; }
-body .stand-name { font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body .stand-name { flex: 1; min-width: 0; font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 body .odds { font-size: 12px; font-weight: 700; }
 body .odds-bar { width: 44px; height: 4px; border-radius: 999px; background: var(--surface-raised); overflow: hidden; flex-shrink: 0; }
 body .odds-bar span { display: block; height: 100%; border-radius: 999px; }
