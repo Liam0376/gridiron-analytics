@@ -266,12 +266,18 @@ export async function fetchTrade(teamA, teamB, pkgs = {}) {
     traded.push(`traded_b=${encodeURIComponent(pkgs.tradedB.join(","))}`);
   }
   const pkg_qs = traded.length ? `&${traded.join("&")}` : "";
+  // Hub first: it evaluates the actual picked packages (slots/market).
+  // Model backend second: frozen legacy shape (no packages key) — the
+  // verdict renderer falls back to client-side rows in that case.
+  try {
+    const hub = await tryHub(`/trade?team_a_id=${encodeURIComponent(teamA)}&team_b_id=${encodeURIComponent(teamB)}${pkg_qs}`);
+    if (hub && hub.packages) return hub;
+  } catch (_) { /* fall through to model */ }
   try {
     const data = await getJSON(modelUrl(`/recommendations/trade?team_a_id=${encodeURIComponent(teamA)}&team_b_id=${encodeURIComponent(teamB)}${pkg_qs}`));
     return data.trade_evaluation || data;
   } catch (_) {
-    const hub = await tryHub(`/trade?team_a_id=${encodeURIComponent(teamA)}&team_b_id=${encodeURIComponent(teamB)}`);
-    return hub;
+    return null;
   }
 }
 

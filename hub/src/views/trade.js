@@ -381,16 +381,28 @@ export async function renderTrade(root) {
       summaryBanner.innerHTML = `<div class="alert alert-warn" style="font-size:13px">Couldn\u2019t grade this trade right now.</div>`;
       return;
     }
-    summaryBanner.innerHTML = verdictHtml(data, nameA, nameB);
+    summaryBanner.innerHTML = verdictHtml(data, nameA, nameB,
+      fullRoster(rosterDataA).filter(p => selectedPidsA.has(String(p.player_id || p.id))),
+      fullRoster(rosterDataB).filter(p => selectedPidsB.has(String(p.player_id || p.id))));
   }
   // Plain-language verdict: who wins, the weekly exchange, market check,
-  // slot credit. No $ VOR, no stat tables.
-  function verdictHtml(data, nameA, nameB) {
+  // slot credit. No $ VOR, no stat tables. Package rows come from the
+  // server when it evaluated picks, else from the local roster objects
+  // (legacy model-backend shape carries no packages key).
+  function verdictHtml(data, nameA, nameB, listA = [], listB = []) {
     const headline = data.winner === 'Even' ? 'Fair trade' : `${data.winner} wins the trade`;
     const givesWk = Number(data.team_a_weekly ?? 0).toFixed(1);
     const getsWk = Number(data.team_b_weekly ?? 0).toFixed(1);
     const ma = data.market_a != null ? Number(data.market_a).toLocaleString('en-US') : null;
     const mb = data.market_b != null ? Number(data.market_b).toLocaleString('en-US') : null;
+    const toRow = (p) => ({
+      player_id: p.player_id || p.id, sleeper_id: p.sleeper_id || null,
+      player_name: p.player_name || p.full_name, position: p.position,
+      team: p.team, weekly: Number(p.model_points ?? p.projected_points ?? p.weekly ?? 0),
+      market: p.auction ?? p.marketAuction ?? null,
+    });
+    const rowsA = (data.packages?.a?.length ? data.packages.a : listA.map(toRow));
+    const rowsB = (data.packages?.b?.length ? data.packages.b : listB.map(toRow));
     const pkgRow = (pl) => `
       <div class="mini-row">
         ${playerAvatar(pl, 28)}
@@ -414,8 +426,8 @@ export async function renderTrade(root) {
       <h2 class="verdict-headline">${escapeHtml(headline)}</h2>
       <div class="micro faint" style="margin-bottom:8px">${escapeHtml(nameA)} gives ${givesWk}/wk · gets ${getsWk}/wk${ma && mb ? ` · market ${ma} vs ${mb}` : ''}</div>
       <div class="signal-cols">
-        <div><div class="kicker" style="margin-bottom:4px">${escapeHtml(nameA)} gives</div>${(data.packages?.a || []).map(pkgRow).join('') || '<div class="empty">—</div>'}</div>
-        <div><div class="kicker" style="margin-bottom:4px">${escapeHtml(nameB)} gives</div>${(data.packages?.b || []).map(pkgRow).join('') || '<div class="empty">—</div>'}</div>
+        <div><div class="kicker" style="margin-bottom:4px">${escapeHtml(nameA)} gives</div>${rowsA.map(pkgRow).join('') || '<div class="empty">—</div>'}</div>
+        <div><div class="kicker" style="margin-bottom:4px">${escapeHtml(nameB)} gives</div>${rowsB.map(pkgRow).join('') || '<div class="empty">—</div>'}</div>
       </div>
       ${s ? credit(nameA, s.gained_a, s.credit_a_ros, s.fill_a) + credit(nameB, s.gained_b, s.credit_b_ros, s.fill_b) : ''}
     </div></div>`;
