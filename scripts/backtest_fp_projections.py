@@ -177,6 +177,7 @@ def _season_rows(season):
             except Exception:
                 actual_pts = 0.0
             rows.append({"season": season, "week": week, "position": pos,
+                         "player_id": pid,
                          "stat_pts": stat_pts, "fp_pts": fp_pts, "actual_pts": actual_pts})
             if fp["points_ppr"] is not None:
                 sanity.append((fp_pts, fp["points_ppr"]))
