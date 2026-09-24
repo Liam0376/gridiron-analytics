@@ -4,17 +4,51 @@ Branch: `feat/trade-slot-uplift` (in place, solo mode). Stop for Liam's
 confirm before Task 1. Task 3 additionally needs Liam to confirm the CSV
 export exists on a free/non-premium fantasypros.com account before it starts.
 
-- [ ] Task 0: Reconciliation backtest.
-  - Extend `backtest_market_blend.py`'s FPP arm from 2024/2025-only to the
-    full 2020-2025 sample (same seasons as `backtest_fp_projections.py`).
-  - Re-fit the w-grid (both per-position and pooled). Report whether it
-    converges toward this session's w=1.00 (model weight 0) or holds near
-    the existing 0.10.
-  - Lock whichever number survives as `FP_BLEND_W_MODEL` in `config.py`.
-    Do not average the two prior results.
-  - Verify: script prints the fit + holdout numbers for both seasons,
-    written to `data/ml/backtest_market_blend_results.json` (extend, don't
-    replace, the existing SLP/ECR arms).
+- [x] Task 0: Reconciliation backtest — **not a single-number resolution,
+  found a real sample-definition difference instead.**
+  - `scripts/backtest_fpp_wide.py` reruns `backtest_market_blend.py`'s exact
+    protocol (0.05 grid, per-position + pooled `wp` fit) on the wider
+    2020-2025 sample, one direction (train 2020-2022, test 2023-2025,
+    matching `backtest_fp_projections.py`'s split, pre-registered, no
+    fold-shopping). Result: per-position w={QB:0.15, RB:0.0, WR:0.05,
+    TE:0.1}, pooled w=0.05. MAE 4.2669-4.2684 vs BASE 4.5037 (n=15,441).
+    This is close to the ORIGINAL 2-season finding (~0.10, MAE gain
+    ~0.245) — reconciled at more data, under this methodology.
+  - It does NOT reconcile with `backtest_fp_projections.py`'s w=1.00 /
+    MAE 3.386 (n=18,698). Root cause found: **the two scripts measure
+    different universes, not the same question at different scales.**
+    `backtest_market_blend.py`'s `build_rows()` iterates
+    `stats_{season}.json` rows directly — only players nflverse recorded a
+    stat line for that week ("played" universe). `backtest_fp_projections.py`
+    explicitly documents (its own header, line 21-22) "all-universe (DNPs
+    included, matches `backtest_ecr.py`)" — it projects every rostered
+    player on a team that played, including inactives/DNPs, same as
+    `backtest_ecr.py`'s `_model_week`. Row counts confirm it: 15,441
+    (played-only) vs 18,698 (all-universe) for the same seasons/positions/
+    weeks, ~17% more rows in the all-universe version.
+  - **Implication, not yet settled**: if most of FP's edge in the
+    all-universe measurement comes from correctly pricing in inactive/
+    injured players a trailing-stats model can't see pre-kickoff (the
+    same mechanism this repo's own out-zero rule already targets for
+    confirmed-Out players, per `backtest_opportunity.py`'s header), then
+    the real production question isn't "what blend weight" — it's
+    "does `stat_projector`'s existing out-zero/injury-status handling
+    already capture most of this, and is the residual played-only edge
+    (~0.24 MAE, matches both samples at that definition) the only genuinely
+    new information FP buys us." That's un-tested — needs a same-universe,
+    apples-to-apples rerun (e.g. add all-universe rows to
+    `backtest_market_blend.py`'s pipeline, or restrict
+    `backtest_fp_projections.py` to played-only rows) before locking
+    `FP_BLEND_W_MODEL` to either 0.05 or 1.00. **Not locking a number
+    yet — flagging for Liam's call**, since production has to project the
+    full roster weekly (all-universe is the real shape of the problem),
+    which argues for taking the w=1.00 number seriously rather than
+    splitting toward the played-only 0.05, but that's Liam's/the parent's
+    decision, not mine to make unilaterally on a fork.
+  - Verify: `PYTHONHASHSEED=0 .venv/bin/python scripts/backtest_fpp_wide.py`
+    prints both forms' fit + holdout numbers, written to
+    `data/ml/backtest_market_blend_results.json` under key
+    `FPP_2020_2025` (existing SLP/ECR/FPP 2-season arms untouched).
 - [ ] Task 1 (blocked on Liam confirming CSV export access): weekly CSV
   adapter.
   - `adapters/fantasypros_weekly_projections.py`, column-index parsing

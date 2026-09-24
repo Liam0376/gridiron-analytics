@@ -1480,5 +1480,64 @@
   "FPP+ECR/w": "PASS both holdouts",
   "FPP+ECR/wp": "PASS both holdouts",
   "FPP+ECR/ols": "PASS both holdouts"
+ },
+ "FPP_2020_2025": {
+  "train_seasons": [
+   2020,
+   2021,
+   2022
+  ],
+  "test_seasons": [
+   2023,
+   2024,
+   2025
+  ],
+  "BASE": {
+   "mae": 4.503662327569458,
+   "corr": 0.6403969725774799,
+   "pairwise": 0.7399628660983449,
+   "bias": -0.3089314163590443,
+   "n": 15441
+  },
+  "fpp_coverage": {
+   "train": 12044,
+   "test": 12427
+  },
+  "forms": {
+   "w": {
+    "mae": 4.268370748008549,
+    "corr": 0.6808901020050584,
+    "pairwise": 0.7586887420858703,
+    "bias": -0.2435689113399392,
+    "n": 15441,
+    "paired_t": 16.13689182722112,
+    "mean_abs_err_gain": 0.23529157956090926,
+    "rows_blended": 12427,
+    "params": {
+     "QB": 0.15,
+     "RB": 0.0,
+     "WR": 0.05,
+     "TE": 0.1
+    },
+    "pass": true
+   },
+   "wp": {
+    "mae": 4.266872470694903,
+    "corr": 0.6807795483297352,
+    "pairwise": 0.7587336819929315,
+    "bias": -0.24231461822420847,
+    "n": 15441,
+    "paired_t": 15.879445679128137,
+    "mean_abs_err_gain": 0.23678985687455475,
+    "rows_blended": 12427,
+    "params": {
+     "QB": 0.05,
+     "RB": 0.05,
+     "WR": 0.05,
+     "TE": 0.05
+    },
+    "pass": true
+   }
+  }
  }
 }
