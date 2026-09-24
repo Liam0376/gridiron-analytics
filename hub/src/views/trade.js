@@ -631,6 +631,8 @@ export async function renderTrade(root) {
         return;
       }
       const slotBlock = tradeSlotHtml(data);
+      const marketBlock = tradeMarketHtml(data);
+      const creditBlock = tradeCreditHtml(data);
 
       vbdRes.innerHTML = `
         <div class="row align-between" style="margin-bottom:12px">
@@ -643,11 +645,49 @@ export async function renderTrade(root) {
           </div>
         </div>
         <div class="faint" style="font-size:12px">${escapeHtml(data.recommendation || '')}</div>
+        ${marketBlock}
+        ${creditBlock}
         ${slotBlock}
       `;
     } catch (e) {
       vbdRes.innerHTML = `<div class="alert alert-bad">Trade evaluation failed. See console.</div>`;
     }
+  }
+
+  // FantasyCalc market comparison + open-slot waiver credit. Both ride
+  // on the new hub_trade package eval; absent keys (model backend,
+  // stale deploy) render nothing — never undefined.
+  function tradeMarketHtml(data) {
+    if (data.market_a == null && data.market_b == null) return '';
+    const ma = data.market_a != null ? Number(data.market_a).toLocaleString('en-US') : '—';
+    const mb = data.market_b != null ? Number(data.market_b).toLocaleString('en-US') : '—';
+    const trend = (list) => (list || [])
+      .filter((p) => Number.isFinite(Number(p.trend30)) && Number(p.trend30) !== 0)
+      .map((p) => {
+        const t = Number(p.trend30);
+        return `<span class="micro" style="color:${t > 0 ? 'var(--emerald)' : 'var(--crimson)'}">${escapeHtml(p.player_name || '')} ${t > 0 ? '▲' : '▼'}</span>`;
+      }).join(' · ');
+    const ta = trend(data.packages?.a), tb = trend(data.packages?.b);
+    return `<div class="divider" style="margin:12px 0"></div>`
+      + `<div style="font-size:12px"><div class="micro faint" style="text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px">Market value — FantasyCalc (millions of real trades)</div>`
+      + `<div class="mono">Team A pkg <strong>${ma}</strong> vs Team B pkg <strong>${mb}</strong></div>`
+      + ((ta || tb) ? `<div style="margin-top:4px">${ta}${ta && tb ? ' · ' : ''}${tb} <span class="faint">30-day trend</span></div>` : '')
+      + `</div>`;
+  }
+  function tradeCreditHtml(data) {
+    const s = data.slots;
+    if (!s || (!s.gained_a && !s.gained_b)) return '';
+    const line = (side, gained, credit, names) => {
+      if (!gained) return '';
+      const fill = names && names.length
+        ? ` — best fill: ${names.map((n) => escapeHtml(String(n))).join(', ')} (+${Number(credit).toFixed(1)} pts ROS)`
+        : ` — no waiver fill found, credit +${Number(credit).toFixed(1)}`;
+      return `<div style="padding:2px 0">Team ${escapeHtml(side)} gains ${gained} open slot${gained > 1 ? 's' : ''}${fill}</div>`;
+    };
+    return `<div class="divider" style="margin:12px 0"></div>`
+      + `<div style="font-size:12px"><div class="micro faint" style="text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px">Open-slot waiver credit <span class="faint">(2-for-1s free a bench spot)</span></div>`
+      + line('A', s.gained_a, s.credit_a_ros, s.fill_a)
+      + line('B', s.gained_b, s.credit_b_ros, s.fill_b) + `</div>`;
   }
 
   // Server slot context for the Evaluate panel. Present only when the model
