@@ -2275,6 +2275,11 @@ class Handler(BaseHTTPRequestHandler):
             u_info = users_map.get(o_id, {})
             disp_name = u_info.get("display_name") or u_info.get("team_name") or f"Team {r_id}"
             t_name = u_info.get("team_name") or u_info.get("display_name") or f"Team {r_id}"
+            # why nested settings: Sleeper nests W/L/FP under roster.settings,
+            # not top-level — top-level .get() silently yielded 0–0 forever.
+            rs = r.get("settings") or {}
+            _fp = r.get("fpts") if r.get("fpts") is not None else rs.get("fpts", 0)
+            _fpd = r.get("fpts_decimal") if r.get("fpts_decimal") is not None else rs.get("fpts_decimal", 0)
             all_teams.append({
                 "roster_id": r_id,
                 "user_id": o_id,
@@ -2285,10 +2290,10 @@ class Handler(BaseHTTPRequestHandler):
                 "avatar": u_info.get("avatar"),
                 "avatar_url": u_info.get("avatar_url"),
                 "players_count": len(r.get("players") or []),
-                "wins": r.get("wins", 0),
-                "losses": r.get("losses", 0),
-                "ties": r.get("ties", 0),
-                "fpts": r.get("fpts", 0),
+                "wins": r.get("wins") if r.get("wins") is not None else rs.get("wins", 0),
+                "losses": r.get("losses") if r.get("losses") is not None else rs.get("losses", 0),
+                "ties": r.get("ties") if r.get("ties") is not None else rs.get("ties", 0),
+                "fpts": (float(_fp or 0) + float(_fpd or 0) / 100.0),
                 "starter_pts": round(float(power.get(str(r_id), 0) or 0), 1),
             })
         payload = {
