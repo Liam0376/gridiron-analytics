@@ -390,6 +390,16 @@ body .sync-list { display: flex; flex-direction: column; }
 body .sync-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
 body .sync-row:last-child { border-bottom: none; }
 
+/* ---- Trade lab: persistent side-by-side columns ---- */
+body .trade-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--grid-gap); align-items: start; }
+body .trade-cols .card { display: flex; flex-direction: column; max-height: 74vh; min-height: 320px; }
+body .trade-cols .card-header { position: sticky; top: 0; z-index: 2; flex-shrink: 0; }
+body .trade-cols .card-body { overflow-y: auto; scrollbar-width: thin; }
+@media (max-width: 620px) {
+  body .trade-cols { grid-template-columns: 1fr; }
+  body .trade-cols .card { max-height: 62vh; }
+}
+
 /* ---- Misc ---- */
 body .alert { border-radius: 12px; }
 body .kicker { font-family: var(--font-display); letter-spacing: 0.14em; font-size: 12px; }

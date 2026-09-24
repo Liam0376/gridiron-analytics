@@ -195,8 +195,8 @@ function signalRow(p) {
         <div class="micro faint">${posBadge(p.position)} ${teamLogo(p.team, 12)} ${escapeHtml(p.team || '')}</div>
       </div>
       <div style="text-align:right">
-        <div class="mono" style="font-weight:700; font-size:12px">$${Number(p.auction ?? 0)}</div>
-        <div class="micro faint">${Number(p.weekly ?? p.projected_points ?? 0).toFixed(1)}/wk</div>
+        <div class="mono" style="font-weight:700; font-size:13px">${Number(p.weekly ?? p.projected_points ?? 0).toFixed(1)}<span class="micro faint">/wk</span></div>
+        <div class="micro faint">model $${Number(p.auction ?? 0)}</div>
       </div>
     </div>`;
 }

@@ -42,8 +42,8 @@ export async function renderTrade(root) {
     <!-- Live Trade Analysis Banner -->
     <div id="tradeSummaryBanner" class="reveal in" style="margin-top:16px"></div>
 
-    <!-- Dual Roster Checkbox Columns -->
-    <div class="grid grid-2 reveal in" style="margin-top:16px">
+    <!-- Dual Roster Columns — always side by side, internal scroll -->
+    <div class="trade-cols reveal in" style="margin-top:16px">
       <div class="card">
         <div class="card-header row align-between">
           <h3 id="teamAHeader">Team A Roster</h3>
