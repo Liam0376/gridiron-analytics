@@ -399,6 +399,36 @@ body .trade-cols .card-body { overflow-y: auto; scrollbar-width: thin; }
   body .trade-cols { grid-template-columns: 1fr; }
   body .trade-cols .card { max-height: 62vh; }
 }
+/* ---- Post-trade depth cards ---- */
+body .depth-team {
+  font-family: var(--font-display); font-size: 17px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;
+}
+body .depth-group { margin-bottom: 10px; }
+body .depth-group-head {
+  font-family: var(--font-display); font-size: 13px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 5px;
+}
+body .depth-group-head strong { color: var(--text); }
+body .depth-cards { display: flex; flex-wrap: wrap; gap: 6px; }
+body .depth-card {
+  display: flex; align-items: center; gap: 8px; flex: 1 1 150px; min-width: 0;
+  padding: 6px 8px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--surface);
+}
+body .depth-card .depth-name {
+  font-weight: 600; font-size: 12px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+body .depth-card .depth-tag {
+  font-family: var(--font-display); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.12em; flex-shrink: 0;
+}
+body .depth-in { border-color: var(--emerald); background: var(--emerald-dim); }
+body .depth-in .depth-tag { color: var(--emerald); }
+body .depth-out { opacity: 0.55; }
+body .depth-out .depth-name { text-decoration: line-through; }
+body .depth-out .depth-tag { color: var(--text-faint); }
 
 /* ---- Misc ---- */
 body .alert { border-radius: 12px; }

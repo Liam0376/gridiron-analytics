@@ -435,21 +435,30 @@ export async function renderTrade(root) {
       const ia = POS_ORDER.indexOf(a), ib = POS_ORDER.indexOf(b);
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     });
-    const rows = keys.map((pos) => {
+    const groupsHtml = keys.map((pos) => {
       const members = groups[pos].slice().sort((x, y) => pw(y) - pw(x));
       const kept = members.filter((p) => !p._incoming && !sentIds.has(String(p.player_id || p.id)));
       const wk = kept.reduce((s, p) => s + pw(p), 0);
-      const chips = members.map((p) => {
+      const cards = members.map((p) => {
         const pid = String(p.player_id || p.id);
-        const w = pw(p).toFixed(1);
-        if (p._incoming) return `<span class="mono" style="color:var(--emerald)">➕ ${escapeHtml(p.player_name || pid)} ${w}</span>`;
-        if (sentIds.has(pid)) return `<span class="mono faint" style="text-decoration:line-through">➖ ${escapeHtml(p.player_name || pid)} ${w}</span>`;
-        return `<span class="mono">${escapeHtml(p.player_name || pid)} ${w}</span>`;
-      }).join(' · ');
-      return `<div style="padding:3px 0"><strong style="color:var(--text)">${escapeHtml(pos)}</strong> `
-        + `<span class="faint">(${kept.length} kept · ${wk.toFixed(1)} pts/wk)</span><br>${chips}</div>`;
+        const isIn = p._incoming || incomingIds.has(pid);
+        const isOut = !isIn && sentIds.has(pid);
+        const state = isIn ? 'in' : isOut ? 'out' : 'kept';
+        return `<div class="depth-card depth-${state}">
+          ${playerAvatar(p, 34)}
+          <div style="flex:1; min-width:0">
+            <div class="depth-name">${escapeHtml(p.player_name || pid)}</div>
+            <div class="micro faint">${posBadge(pos)} · <span class="mono">${pw(p).toFixed(1)}</span></div>
+          </div>
+          <span class="depth-tag">${isIn ? 'IN' : isOut ? 'OUT' : ''}</span>
+        </div>`;
+      }).join('');
+      return `<div class="depth-group">
+        <div class="depth-group-head"><strong>${escapeHtml(pos)}</strong><span class="faint"> · ${kept.length} kept · ${wk.toFixed(1)}/wk</span></div>
+        <div class="depth-cards">${cards}</div>
+      </div>`;
     }).join('');
-    return `<div><strong style="color:var(--text)">${escapeHtml(teamName)} post-trade</strong>${rows}</div>`;
+    return `<div><div class="depth-team">${escapeHtml(teamName)} <span class="faint">post-trade</span></div>${groupsHtml}</div>`;
   }
   function renderDepth() {
     if (!depthEl) return;
