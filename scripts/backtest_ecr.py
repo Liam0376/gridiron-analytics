@@ -7,12 +7,19 @@ threshold (who was right when model and ECR differ). No model change, no
 tuning: measurement that sets the "beat ECR" bar future challengers clear.
 
 ECR sources (all $0, existing data only):
-  2025: type='all' archive, weekly Friday scrapes (PPR rb/wr/te, qb, k,
-  dst). Week w uses max scrape <= first-kickoff+3d (i.e. the Friday ECR
-  for that weekend). Thursday-game players are EXCLUDED for their week
-  (their game kicked off before the Friday scrape = outcome contamination).
+  2020-2025: type='all' archive, weekly Friday scrapes (PPR rb/wr/te, qb, k,
+  dst), which covers 2020-2026 already (no FantasyPros premium key needed —
+  see docs/superpowers/specs/2026-09-23-ecr-backtest-expansion-spec.md for
+  why the FantasyPros historical dump wasn't used here). Week w uses max
+  scrape <= first-kickoff+3d (i.e. the Friday ECR for that weekend).
+  Thursday-game players are EXCLUDED for their week (their game kicked off
+  before the Friday scrape = outcome contamination).
   2026: same from the archive when present, else skipped with a note
   (type='week' live gives current week only, never history).
+  Model needs nflverse box stats (data/nfl_cache/stats_*.json) for the
+  season + its prior season; 2020-2026 cached (2019 present only as 2020's
+  prior). Earlier seasons (2012-2019) are archive-less for ECR anyway
+  (nflreadpy's ff_rankings archive starts 2020), so not wired in.
 
 Model ranks: BASE pipeline (project_player_stats, no-out, no flags) under
 the standard all-universe discipline; per-week positional ranks by
@@ -406,14 +413,29 @@ def _run_sample(tag, stats_cur, stats_prior, sched, weeks, season,
             "recommended_thresholds": recommended}
 
 
+# Full REG seasons with both stats+schedule cached locally (2019 present
+# only as 2020's prior-season stats, not a sample of its own). 2026 is
+# partial (in-progress season) and handled separately below.
+FULL_SEASONS = (2020, 2021, 2022, 2023, 2024, 2025)
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sample", choices=["2025", "2026", "both"], default="both")
+    ap.add_argument(
+        "--sample", default="all",
+        help="'all' (default), 'current' (latest in-progress season only), "
+             "or a comma-separated season list e.g. '2024,2025'")
     args = ap.parse_args()
+    if args.sample == "all":
+        seasons = list(FULL_SEASONS)
+    elif args.sample == "current":
+        seasons = []
+    else:
+        seasons = [int(s) for s in args.sample.split(",")]
 
     arch = _load_archive_weekly()
-    scrapes25 = sorted({r["scrape_date"] for r in arch if r["scrape_date"].startswith("2025-")})
-    print(f"[ecrback] archive weekly rows: {len(arch)}; 2025 scrapes: {len(scrapes25)}")
+    arch_years = sorted({r["scrape_date"][:4] for r in arch if r["scrape_date"]})
+    print(f"[ecrback] archive weekly rows: {len(arch)}; years: {arch_years}")
     try:
         import nflreadpy as nfl
         pid_rows = nfl.load_ff_playerids().to_dicts()
@@ -427,15 +449,25 @@ def main():
             fpid_by_gsis[g] = f
     print(f"[ecrback] fpid spine: {len(fpid_by_gsis)} gsis ids")
 
-    stats24 = [r for r in _load_cache("stats_2024.json") if r.get("season_type", "REG") == "REG"]
-    stats25 = [r for r in _load_cache("stats_2025.json") if r.get("season_type", "REG") == "REG"]
-    sched25 = _load_cache("schedule_2025.json")
     results = {"edge_threshold": EDGE_THRESHOLD}
 
-    if args.sample in ("2025", "both"):
-        results["cal_2025"] = _run_sample(
-            "2025", stats25, stats24, sched25, range(4, 19), 2025, arch, fpid_by_gsis)
-    if args.sample in ("2026", "both"):
+    for season in seasons:
+        stats_path = CACHE / f"stats_{season}.json"
+        prior_path = CACHE / f"stats_{season - 1}.json"
+        sched_path = CACHE / f"schedule_{season}.json"
+        if not (stats_path.exists() and prior_path.exists() and sched_path.exists()):
+            print(f"[ecrback] {season}: missing cache (stats/prior/schedule) — skipped")
+            continue
+        stats_cur = [r for r in _load_cache(stats_path.name)
+                     if r.get("season_type", "REG") == "REG"]
+        stats_prior = [r for r in _load_cache(prior_path.name)
+                       if r.get("season_type", "REG") == "REG"]
+        sched = _load_cache(sched_path.name)
+        results[f"cal_{season}"] = _run_sample(
+            str(season), stats_cur, stats_prior, sched, range(4, 19),
+            season, arch, fpid_by_gsis)
+
+    if args.sample in ("all", "current"):
         try:
             stats26 = _ensure_cache(
                 "stats_2026.json",
@@ -443,6 +475,7 @@ def main():
         except Exception as exc:
             print(f"[ecrback] 2026 stats unavailable: {exc}")
             stats26 = []
+        stats25 = [r for r in _load_cache("stats_2025.json") if r.get("season_type", "REG") == "REG"]
         sched26 = _load_cache("schedule_2026.json")
         played = sorted({
             s["week"] for s in stats26

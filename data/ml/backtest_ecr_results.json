@@ -1,5 +1,4502 @@
 {
  "edge_threshold": 12,
+ "cal_2020": {
+  "weeks": {
+   "6": {
+    "scrape": "2020-10-17",
+    "early_teams": [],
+    "pos": {
+     "QB": {
+      "n": 36,
+      "spearman_model": 0.577091377091377,
+      "spearman_ecr": 0.6396396396396395,
+      "disagree_n": 2,
+      "model_wins": 0,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "WR": {
+      "n": 146,
+      "spearman_model": 0.6723588443407594,
+      "spearman_ecr": 0.7028146325807326,
+      "disagree_n": 56,
+      "model_wins": 26,
+      "ecr_wins": 28,
+      "ties": 2
+     },
+     "K": {
+      "n": 28,
+      "spearman_model": 0.2424740010946908,
+      "spearman_ecr": 0.2063492063492064,
+      "disagree_n": 8,
+      "model_wins": 5,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "RB": {
+      "n": 91,
+      "spearman_model": 0.6891065456282847,
+      "spearman_ecr": 0.7601688166905557,
+      "disagree_n": 33,
+      "model_wins": 15,
+      "ecr_wins": 18,
+      "ties": 0
+     },
+     "TE": {
+      "n": 73,
+      "spearman_model": 0.4698568431445145,
+      "spearman_ecr": 0.5817643293114662,
+      "disagree_n": 17,
+      "model_wins": 6,
+      "ecr_wins": 11,
+      "ties": 0
+     }
+    }
+   },
+   "7": {
+    "scrape": "2020-10-22",
+    "early_teams": [],
+    "pos": {
+     "QB": {
+      "n": 43,
+      "spearman_model": 0.7026578073089701,
+      "spearman_ecr": 0.779975838115373,
+      "disagree_n": 5,
+      "model_wins": 1,
+      "ecr_wins": 3,
+      "ties": 1
+     },
+     "TE": {
+      "n": 83,
+      "spearman_model": 0.4622182108223837,
+      "spearman_ecr": 0.5506438714449536,
+      "disagree_n": 38,
+      "model_wins": 14,
+      "ecr_wins": 24,
+      "ties": 0
+     },
+     "WR": {
+      "n": 153,
+      "spearman_model": 0.5992554916703523,
+      "spearman_ecr": 0.6306731322569429,
+      "disagree_n": 71,
+      "model_wins": 30,
+      "ecr_wins": 41,
+      "ties": 0
+     },
+     "K": {
+      "n": 28,
+      "spearman_model": 0.08155446086480571,
+      "spearman_ecr": 0.5128626163108922,
+      "disagree_n": 5,
+      "model_wins": 1,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "RB": {
+      "n": 91,
+      "spearman_model": 0.5091893613632743,
+      "spearman_ecr": 0.6080849183234945,
+      "disagree_n": 27,
+      "model_wins": 12,
+      "ecr_wins": 15,
+      "ties": 0
+     }
+    }
+   },
+   "8": {
+    "scrape": "2020-10-29",
+    "early_teams": [],
+    "pos": {
+     "QB": {
+      "n": 46,
+      "spearman_model": 0.7230958988590811,
+      "spearman_ecr": 0.7773666358310207,
+      "disagree_n": 9,
+      "model_wins": 4,
+      "ecr_wins": 5,
+      "ties": 0
+     },
+     "TE": {
+      "n": 84,
+      "spearman_model": 0.6072694137896123,
+      "spearman_ecr": 0.6770342921708974,
+      "disagree_n": 35,
+      "model_wins": 15,
+      "ecr_wins": 20,
+      "ties": 0
+     },
+     "K": {
+      "n": 29,
+      "spearman_model": 0.06108374384236453,
+      "spearman_ecr": -0.1566502463054187,
+      "disagree_n": 6,
+      "model_wins": 3,
+      "ecr_wins": 2,
+      "ties": 1
+     },
+     "RB": {
+      "n": 98,
+      "spearman_model": 0.4568151534278191,
+      "spearman_ecr": 0.6994583945690105,
+      "disagree_n": 41,
+      "model_wins": 15,
+      "ecr_wins": 26,
+      "ties": 0
+     },
+     "WR": {
+      "n": 155,
+      "spearman_model": 0.5530952918049692,
+      "spearman_ecr": 0.6535652308429593,
+      "disagree_n": 71,
+      "model_wins": 26,
+      "ecr_wins": 45,
+      "ties": 0
+     }
+    }
+   },
+   "9": {
+    "scrape": "2020-11-05",
+    "early_teams": [],
+    "pos": {
+     "QB": {
+      "n": 33,
+      "spearman_model": 0.6092914438502673,
+      "spearman_ecr": 0.7359625668449198,
+      "disagree_n": 1,
+      "model_wins": 1,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "TE": {
+      "n": 87,
+      "spearman_model": 0.5922213311948676,
+      "spearman_ecr": 0.6881851734007898,
+      "disagree_n": 23,
+      "model_wins": 8,
+      "ecr_wins": 15,
+      "ties": 0
+     },
+     "WR": {
+      "n": 153,
+      "spearman_model": 0.5850186964738049,
+      "spearman_ecr": 0.6876963258696573,
+      "disagree_n": 83,
+      "model_wins": 34,
+      "ecr_wins": 48,
+      "ties": 1
+     },
+     "K": {
+      "n": 29,
+      "spearman_model": 0.061576354679802964,
+      "spearman_ecr": -0.1354679802955665,
+      "disagree_n": 6,
+      "model_wins": 5,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "RB": {
+      "n": 102,
+      "spearman_model": 0.5733583638203912,
+      "spearman_ecr": 0.6393648872943639,
+      "disagree_n": 40,
+      "model_wins": 19,
+      "ecr_wins": 21,
+      "ties": 0
+     }
+    }
+   },
+   "10": {
+    "scrape": "2020-11-12",
+    "early_teams": [],
+    "pos": {
+     "QB": {
+      "n": 36,
+      "spearman_model": 0.594079794079794,
+      "spearman_ecr": 0.6473616473616474,
+      "disagree_n": 2,
+      "model_wins": 0,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "TE": {
+      "n": 83,
+      "spearman_model": 0.5425255027076951,
+      "spearman_ecr": 0.6142511557699477,
+      "disagree_n": 17,
+      "model_wins": 6,
+      "ecr_wins": 11,
+      "ties": 0
+     },
+     "WR": {
+      "n": 153,
+      "spearman_model": 0.6481042177636605,
+      "spearman_ecr": 0.7300415645433371,
+      "disagree_n": 80,
+      "model_wins": 34,
+      "ecr_wins": 46,
+      "ties": 0
+     },
+     "K": {
+      "n": 28,
+      "spearman_model": 0.28024083196496996,
+      "spearman_ecr": 0.5183360700602081,
+      "disagree_n": 5,
+      "model_wins": 1,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "RB": {
+      "n": 109,
+      "spearman_model": 0.5341673616902974,
+      "spearman_ecr": 0.6395066247506384,
+      "disagree_n": 45,
+      "model_wins": 20,
+      "ecr_wins": 25,
+      "ties": 0
+     }
+    }
+   },
+   "11": {
+    "scrape": "2020-11-19",
+    "early_teams": [],
+    "pos": {
+     "QB": {
+      "n": 39,
+      "spearman_model": 0.6352226720647774,
+      "spearman_ecr": 0.6611336032388664,
+      "disagree_n": 2,
+      "model_wins": 1,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "TE": {
+      "n": 85,
+      "spearman_model": 0.6349423490326364,
+      "spearman_ecr": 0.6699010152852085,
+      "disagree_n": 19,
+      "model_wins": 9,
+      "ecr_wins": 10,
+      "ties": 0
+     },
+     "WR": {
+      "n": 152,
+      "spearman_model": 0.7154539055078288,
+      "spearman_ecr": 0.7667763017396183,
+      "disagree_n": 59,
+      "model_wins": 23,
+      "ecr_wins": 36,
+      "ties": 0
+     },
+     "RB": {
+      "n": 106,
+      "spearman_model": 0.6814771897120689,
+      "spearman_ecr": 0.7774914413996541,
+      "disagree_n": 31,
+      "model_wins": 9,
+      "ecr_wins": 22,
+      "ties": 0
+     },
+     "K": {
+      "n": 29,
+      "spearman_model": 0.054679802955665026,
+      "spearman_ecr": 0.35517241379310344,
+      "disagree_n": 5,
+      "model_wins": 3,
+      "ecr_wins": 2,
+      "ties": 0
+     }
+    }
+   },
+   "12": {
+    "scrape": "2020-11-26",
+    "early_teams": [],
+    "pos": {
+     "QB": {
+      "n": 49,
+      "spearman_model": 0.6353061224489795,
+      "spearman_ecr": 0.6211224489795918,
+      "disagree_n": 7,
+      "model_wins": 4,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "TE": {
+      "n": 96,
+      "spearman_model": 0.5320401519262073,
+      "spearman_ecr": 0.5977726381895373,
+      "disagree_n": 34,
+      "model_wins": 17,
+      "ecr_wins": 17,
+      "ties": 0
+     },
+     "K": {
+      "n": 33,
+      "spearman_model": -0.01838235294117647,
+      "spearman_ecr": 0.1270053475935829,
+      "disagree_n": 5,
+      "model_wins": 2,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "RB": {
+      "n": 125,
+      "spearman_model": 0.5260030721966206,
+      "spearman_ecr": 0.6495718880887432,
+      "disagree_n": 67,
+      "model_wins": 27,
+      "ecr_wins": 40,
+      "ties": 0
+     },
+     "WR": {
+      "n": 175,
+      "spearman_model": 0.6297133900582176,
+      "spearman_ecr": 0.6554731924244954,
+      "disagree_n": 92,
+      "model_wins": 46,
+      "ecr_wins": 46,
+      "ties": 0
+     }
+    }
+   },
+   "13": {
+    "scrape": "2020-12-03",
+    "early_teams": [],
+    "pos": {
+     "TE": {
+      "n": 90,
+      "spearman_model": 0.5148372227023912,
+      "spearman_ecr": 0.5864311349841429,
+      "disagree_n": 20,
+      "model_wins": 7,
+      "ecr_wins": 13,
+      "ties": 0
+     },
+     "WR": {
+      "n": 149,
+      "spearman_model": 0.5502666424814076,
+      "spearman_ecr": 0.6641725595618181,
+      "disagree_n": 68,
+      "model_wins": 24,
+      "ecr_wins": 44,
+      "ties": 0
+     },
+     "QB": {
+      "n": 34,
+      "spearman_model": 0.4319327731092437,
+      "spearman_ecr": 0.5245225362872422,
+      "disagree_n": 0,
+      "model_wins": 0,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "K": {
+      "n": 30,
+      "spearman_model": 0.20177975528364853,
+      "spearman_ecr": 0.35706340378198004,
+      "disagree_n": 7,
+      "model_wins": 1,
+      "ecr_wins": 6,
+      "ties": 0
+     },
+     "RB": {
+      "n": 100,
+      "spearman_model": 0.4834683468346835,
+      "spearman_ecr": 0.5195439543954395,
+      "disagree_n": 47,
+      "model_wins": 20,
+      "ecr_wins": 27,
+      "ties": 0
+     }
+    }
+   },
+   "14": {
+    "scrape": "2020-12-10",
+    "early_teams": [],
+    "pos": {
+     "QB": {
+      "n": 37,
+      "spearman_model": 0.5379326695116169,
+      "spearman_ecr": 0.6605026078710289,
+      "disagree_n": 3,
+      "model_wins": 0,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "TE": {
+      "n": 99,
+      "spearman_model": 0.5926035868893011,
+      "spearman_ecr": 0.639645266835156,
+      "disagree_n": 30,
+      "model_wins": 15,
+      "ecr_wins": 15,
+      "ties": 0
+     },
+     "WR": {
+      "n": 169,
+      "spearman_model": 0.6519069166127989,
+      "spearman_ecr": 0.7097861305916856,
+      "disagree_n": 73,
+      "model_wins": 32,
+      "ecr_wins": 39,
+      "ties": 2
+     },
+     "K": {
+      "n": 32,
+      "spearman_model": 0.24266862170087977,
+      "spearman_ecr": 0.4670087976539589,
+      "disagree_n": 5,
+      "model_wins": 1,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "RB": {
+      "n": 120,
+      "spearman_model": 0.536877560941732,
+      "spearman_ecr": 0.6844862221105915,
+      "disagree_n": 58,
+      "model_wins": 21,
+      "ecr_wins": 36,
+      "ties": 1
+     }
+    }
+   },
+   "15": {
+    "scrape": "2020-12-17",
+    "early_teams": [],
+    "pos": {
+     "QB": {
+      "n": 43,
+      "spearman_model": 0.5830564784053156,
+      "spearman_ecr": 0.7103594080338266,
+      "disagree_n": 5,
+      "model_wins": 2,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "TE": {
+      "n": 103,
+      "spearman_model": 0.6411940429644597,
+      "spearman_ecr": 0.7482503082066715,
+      "disagree_n": 38,
+      "model_wins": 13,
+      "ecr_wins": 25,
+      "ties": 0
+     },
+     "WR": {
+      "n": 172,
+      "spearman_model": 0.6852765062272566,
+      "spearman_ecr": 0.7445843086162162,
+      "disagree_n": 74,
+      "model_wins": 32,
+      "ecr_wins": 42,
+      "ties": 0
+     },
+     "K": {
+      "n": 35,
+      "spearman_model": 0.2058823529411765,
+      "spearman_ecr": 0.30224089635854345,
+      "disagree_n": 4,
+      "model_wins": 1,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "RB": {
+      "n": 119,
+      "spearman_model": 0.5037957555903719,
+      "spearman_ecr": 0.6425022121186157,
+      "disagree_n": 57,
+      "model_wins": 23,
+      "ecr_wins": 33,
+      "ties": 1
+     }
+    }
+   },
+   "16": {
+    "scrape": "2020-12-24",
+    "early_teams": [],
+    "pos": {
+     "QB": {
+      "n": 41,
+      "spearman_model": 0.5344947735191637,
+      "spearman_ecr": 0.5912891986062718,
+      "disagree_n": 2,
+      "model_wins": 0,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "TE": {
+      "n": 104,
+      "spearman_model": 0.6334471353888829,
+      "spearman_ecr": 0.7153777626142682,
+      "disagree_n": 40,
+      "model_wins": 15,
+      "ecr_wins": 25,
+      "ties": 0
+     },
+     "WR": {
+      "n": 173,
+      "spearman_model": 0.6188980721361325,
+      "spearman_ecr": 0.6110104841339887,
+      "disagree_n": 72,
+      "model_wins": 38,
+      "ecr_wins": 33,
+      "ties": 1
+     },
+     "K": {
+      "n": 34,
+      "spearman_model": 0.22780748663101608,
+      "spearman_ecr": 0.2880061115355233,
+      "disagree_n": 7,
+      "model_wins": 3,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "RB": {
+      "n": 122,
+      "spearman_model": 0.5979988170021248,
+      "spearman_ecr": 0.7121009847372168,
+      "disagree_n": 63,
+      "model_wins": 30,
+      "ecr_wins": 31,
+      "ties": 2
+     }
+    }
+   },
+   "17": {
+    "scrape": "2020-12-24",
+    "early_teams": [],
+    "pos": {
+     "QB": {
+      "n": 42,
+      "spearman_model": 0.5480106960538044,
+      "spearman_ecr": 0.5063609107851876,
+      "disagree_n": 3,
+      "model_wins": 0,
+      "ecr_wins": 2,
+      "ties": 1
+     },
+     "TE": {
+      "n": 104,
+      "spearman_model": 0.45049610583591165,
+      "spearman_ecr": 0.5638352919918697,
+      "disagree_n": 37,
+      "model_wins": 11,
+      "ecr_wins": 26,
+      "ties": 0
+     },
+     "WR": {
+      "n": 173,
+      "spearman_model": 0.5332984133017508,
+      "spearman_ecr": 0.5596930432962434,
+      "disagree_n": 78,
+      "model_wins": 35,
+      "ecr_wins": 41,
+      "ties": 2
+     },
+     "K": {
+      "n": 34,
+      "spearman_model": 0.518105423987777,
+      "spearman_ecr": 0.518105423987777,
+      "disagree_n": 7,
+      "model_wins": 3,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "RB": {
+      "n": 122,
+      "spearman_model": 0.46068514742863187,
+      "spearman_ecr": 0.5149197012783383,
+      "disagree_n": 60,
+      "model_wins": 32,
+      "ecr_wins": 27,
+      "ties": 1
+     }
+    }
+   }
+  },
+  "summary": {
+   "K": {
+    "weeks": 12,
+    "n": 369,
+    "spearman_model_mean": 0.18,
+    "spearman_ecr_mean": 0.28,
+    "disagree_n": 70,
+    "model_wins": 29,
+    "ecr_wins": 40,
+    "ties": 1
+   },
+   "QB": {
+    "weeks": 12,
+    "n": 479,
+    "spearman_model_mean": 0.5927,
+    "spearman_ecr_mean": 0.6546,
+    "disagree_n": 41,
+    "model_wins": 13,
+    "ecr_wins": 26,
+    "ties": 2
+   },
+   "RB": {
+    "weeks": 12,
+    "n": 1305,
+    "spearman_model_mean": 0.5461,
+    "spearman_ecr_mean": 0.6539,
+    "disagree_n": 569,
+    "model_wins": 243,
+    "ecr_wins": 321,
+    "ties": 5
+   },
+   "TE": {
+    "weeks": 12,
+    "n": 1091,
+    "spearman_model_mean": 0.5561,
+    "spearman_ecr_mean": 0.6361,
+    "disagree_n": 348,
+    "model_wins": 136,
+    "ecr_wins": 212,
+    "ties": 0
+   },
+   "WR": {
+    "weeks": 12,
+    "n": 1923,
+    "spearman_model_mean": 0.6202,
+    "spearman_ecr_mean": 0.6764,
+    "disagree_n": 877,
+    "model_wins": 380,
+    "ecr_wins": 489,
+    "ties": 8
+   }
+  },
+  "threshold_sweep": {
+   "QB/T6": {
+    "mw": 176,
+    "ew": 219
+   },
+   "QB/T8": {
+    "mw": 154,
+    "ew": 200
+   },
+   "QB/T10": {
+    "mw": 140,
+    "ew": 183
+   },
+   "QB/T12": {
+    "mw": 125,
+    "ew": 172
+   },
+   "RB/T6": {
+    "mw": 562,
+    "ew": 674
+   },
+   "RB/T8": {
+    "mw": 541,
+    "ew": 652
+   },
+   "RB/T10": {
+    "mw": 520,
+    "ew": 632
+   },
+   "RB/T12": {
+    "mw": 500,
+    "ew": 610
+   },
+   "TE/T6": {
+    "mw": 449,
+    "ew": 560
+   },
+   "TE/T8": {
+    "mw": 430,
+    "ew": 539
+   },
+   "TE/T10": {
+    "mw": 410,
+    "ew": 514
+   },
+   "TE/T12": {
+    "mw": 394,
+    "ew": 489
+   },
+   "WR/T6": {
+    "mw": 929,
+    "ew": 856
+   },
+   "WR/T8": {
+    "mw": 871,
+    "ew": 817
+   },
+   "WR/T10": {
+    "mw": 820,
+    "ew": 772
+   },
+   "WR/T12": {
+    "mw": 778,
+    "ew": 723
+   }
+  },
+  "recommended_thresholds": {
+   "QB": 12,
+   "RB": 12,
+   "TE": 12,
+   "WR": 6
+  }
+ },
+ "cal_2021": {
+  "weeks": {
+   "4": {
+    "scrape": "2021-10-01",
+    "early_teams": [
+     "CIN",
+     "JAX"
+    ],
+    "pos": {
+     "QB": {
+      "n": 38,
+      "spearman_model": 0.6240288871867818,
+      "spearman_ecr": 0.6651712441186126,
+      "disagree_n": 4,
+      "model_wins": 4,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "K": {
+      "n": 31,
+      "spearman_model": -0.004435483870967741,
+      "spearman_ecr": 0.3133064516129032,
+      "disagree_n": 7,
+      "model_wins": 3,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "TE": {
+      "n": 82,
+      "spearman_model": 0.6003308627463785,
+      "spearman_ecr": 0.6267488749065653,
+      "disagree_n": 31,
+      "model_wins": 20,
+      "ecr_wins": 11,
+      "ties": 0
+     },
+     "WR": {
+      "n": 159,
+      "spearman_model": 0.6020062096966803,
+      "spearman_ecr": 0.6700939441233238,
+      "disagree_n": 93,
+      "model_wins": 51,
+      "ecr_wins": 42,
+      "ties": 0
+     },
+     "RB": {
+      "n": 97,
+      "spearman_model": 0.6523379970544919,
+      "spearman_ecr": 0.6550205133599831,
+      "disagree_n": 45,
+      "model_wins": 29,
+      "ecr_wins": 16,
+      "ties": 0
+     }
+    }
+   },
+   "5": {
+    "scrape": "2021-10-08",
+    "early_teams": [
+     "LA",
+     "SEA"
+    ],
+    "pos": {
+     "QB": {
+      "n": 38,
+      "spearman_model": 0.5159207790786738,
+      "spearman_ecr": 0.5798227377174745,
+      "disagree_n": 4,
+      "model_wins": 2,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "K": {
+      "n": 32,
+      "spearman_model": 0.2782258064516129,
+      "spearman_ecr": 0.3229472140762463,
+      "disagree_n": 4,
+      "model_wins": 1,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "TE": {
+      "n": 91,
+      "spearman_model": 0.4991559165472208,
+      "spearman_ecr": 0.6036335548445475,
+      "disagree_n": 28,
+      "model_wins": 15,
+      "ecr_wins": 13,
+      "ties": 0
+     },
+     "WR": {
+      "n": 155,
+      "spearman_model": 0.57837646224743,
+      "spearman_ecr": 0.6516279298348364,
+      "disagree_n": 82,
+      "model_wins": 40,
+      "ecr_wins": 39,
+      "ties": 3
+     },
+     "RB": {
+      "n": 95,
+      "spearman_model": 0.6209406494960806,
+      "spearman_ecr": 0.7152155655095185,
+      "disagree_n": 43,
+      "model_wins": 28,
+      "ecr_wins": 15,
+      "ties": 0
+     }
+    }
+   },
+   "6": {
+    "scrape": "2021-10-15",
+    "early_teams": [
+     "PHI",
+     "TB"
+    ],
+    "pos": {
+     "QB": {
+      "n": 30,
+      "spearman_model": 0.6040044493882092,
+      "spearman_ecr": 0.6952169076751947,
+      "disagree_n": 0,
+      "model_wins": 0,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "K": {
+      "n": 28,
+      "spearman_model": 0.09852216748768475,
+      "spearman_ecr": 0.3251231527093597,
+      "disagree_n": 4,
+      "model_wins": 2,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "TE": {
+      "n": 73,
+      "spearman_model": 0.6156670368999136,
+      "spearman_ecr": 0.7068986795014194,
+      "disagree_n": 20,
+      "model_wins": 4,
+      "ecr_wins": 16,
+      "ties": 0
+     },
+     "WR": {
+      "n": 132,
+      "spearman_model": 0.5896646543492666,
+      "spearman_ecr": 0.7069025791404255,
+      "disagree_n": 61,
+      "model_wins": 25,
+      "ecr_wins": 36,
+      "ties": 0
+     },
+     "RB": {
+      "n": 82,
+      "spearman_model": 0.5179199181550049,
+      "spearman_ecr": 0.6947791164658634,
+      "disagree_n": 21,
+      "model_wins": 10,
+      "ecr_wins": 11,
+      "ties": 0
+     }
+    }
+   },
+   "7": {
+    "scrape": "2021-10-22",
+    "early_teams": [
+     "CLE",
+     "DEN"
+    ],
+    "pos": {
+     "QB": {
+      "n": 27,
+      "spearman_model": 0.5982905982905984,
+      "spearman_ecr": 0.6892551892551894,
+      "disagree_n": 0,
+      "model_wins": 0,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "K": {
+      "n": 22,
+      "spearman_model": 0.4963297571993224,
+      "spearman_ecr": 0.2490118577075099,
+      "disagree_n": 1,
+      "model_wins": 1,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "TE": {
+      "n": 71,
+      "spearman_model": 0.6533869885982563,
+      "spearman_ecr": 0.6879333327985959,
+      "disagree_n": 17,
+      "model_wins": 7,
+      "ecr_wins": 9,
+      "ties": 1
+     },
+     "WR": {
+      "n": 128,
+      "spearman_model": 0.6173262680827688,
+      "spearman_ecr": 0.6999500720314685,
+      "disagree_n": 61,
+      "model_wins": 28,
+      "ecr_wins": 33,
+      "ties": 0
+     },
+     "RB": {
+      "n": 79,
+      "spearman_model": 0.5655063291139241,
+      "spearman_ecr": 0.6299902629016553,
+      "disagree_n": 24,
+      "model_wins": 15,
+      "ecr_wins": 9,
+      "ties": 0
+     }
+    }
+   },
+   "8": {
+    "scrape": "2021-10-29",
+    "early_teams": [
+     "ARI",
+     "GB"
+    ],
+    "pos": {
+     "QB": {
+      "n": 32,
+      "spearman_model": 0.23497067448680353,
+      "spearman_ecr": 0.34274193548387094,
+      "disagree_n": 1,
+      "model_wins": 0,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "K": {
+      "n": 29,
+      "spearman_model": 0.2768472906403941,
+      "spearman_ecr": 0.40246305418719214,
+      "disagree_n": 2,
+      "model_wins": 0,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "WR": {
+      "n": 152,
+      "spearman_model": 0.6026626753873388,
+      "spearman_ecr": 0.637437102217837,
+      "disagree_n": 70,
+      "model_wins": 35,
+      "ecr_wins": 35,
+      "ties": 0
+     },
+     "TE": {
+      "n": 80,
+      "spearman_model": 0.34943741209563994,
+      "spearman_ecr": 0.4694589161995534,
+      "disagree_n": 22,
+      "model_wins": 9,
+      "ecr_wins": 13,
+      "ties": 0
+     },
+     "RB": {
+      "n": 93,
+      "spearman_model": 0.5813613440362865,
+      "spearman_ecr": 0.6600071618274596,
+      "disagree_n": 36,
+      "model_wins": 25,
+      "ecr_wins": 11,
+      "ties": 0
+     }
+    }
+   },
+   "9": {
+    "scrape": "2021-11-05",
+    "early_teams": [
+     "IND",
+     "NYJ"
+    ],
+    "pos": {
+     "QB": {
+      "n": 38,
+      "spearman_model": 0.37148484516905567,
+      "spearman_ecr": 0.5380238538133275,
+      "disagree_n": 3,
+      "model_wins": 0,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "K": {
+      "n": 27,
+      "spearman_model": -0.10622710622710624,
+      "spearman_ecr": -0.07203907203907203,
+      "disagree_n": 3,
+      "model_wins": 1,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "TE": {
+      "n": 78,
+      "spearman_model": 0.5604648516040921,
+      "spearman_ecr": 0.6926787938705834,
+      "disagree_n": 21,
+      "model_wins": 10,
+      "ecr_wins": 11,
+      "ties": 0
+     },
+     "WR": {
+      "n": 147,
+      "spearman_model": 0.6209831581651541,
+      "spearman_ecr": 0.6604784707083062,
+      "disagree_n": 61,
+      "model_wins": 31,
+      "ecr_wins": 29,
+      "ties": 1
+     },
+     "RB": {
+      "n": 96,
+      "spearman_model": 0.6253662506782421,
+      "spearman_ecr": 0.6857704829083019,
+      "disagree_n": 40,
+      "model_wins": 24,
+      "ecr_wins": 15,
+      "ties": 1
+     }
+    }
+   },
+   "10": {
+    "scrape": "2021-11-12",
+    "early_teams": [
+     "BAL",
+     "MIA"
+    ],
+    "pos": {
+     "QB": {
+      "n": 31,
+      "spearman_model": 0.5177419354838709,
+      "spearman_ecr": 0.6314516129032257,
+      "disagree_n": 1,
+      "model_wins": 1,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "K": {
+      "n": 28,
+      "spearman_model": 0.22660098522167493,
+      "spearman_ecr": 0.2747673782156541,
+      "disagree_n": 5,
+      "model_wins": 2,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "TE": {
+      "n": 74,
+      "spearman_model": 0.4473158089596446,
+      "spearman_ecr": 0.4994927767095596,
+      "disagree_n": 17,
+      "model_wins": 6,
+      "ecr_wins": 11,
+      "ties": 0
+     },
+     "RB": {
+      "n": 89,
+      "spearman_model": 0.5689138576779026,
+      "spearman_ecr": 0.7252298263534219,
+      "disagree_n": 33,
+      "model_wins": 18,
+      "ecr_wins": 15,
+      "ties": 0
+     },
+     "WR": {
+      "n": 139,
+      "spearman_model": 0.6012154251753877,
+      "spearman_ecr": 0.6674568428629696,
+      "disagree_n": 58,
+      "model_wins": 32,
+      "ecr_wins": 25,
+      "ties": 1
+     }
+    }
+   },
+   "11": {
+    "scrape": "2021-11-19",
+    "early_teams": [
+     "ATL",
+     "NE"
+    ],
+    "pos": {
+     "QB": {
+      "n": 37,
+      "spearman_model": 0.3534850640113798,
+      "spearman_ecr": 0.31792318634423894,
+      "disagree_n": 1,
+      "model_wins": 0,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "K": {
+      "n": 30,
+      "spearman_model": 0.1528364849833148,
+      "spearman_ecr": 0.2938820912124583,
+      "disagree_n": 7,
+      "model_wins": 1,
+      "ecr_wins": 5,
+      "ties": 1
+     },
+     "TE": {
+      "n": 83,
+      "spearman_model": 0.5664119894210992,
+      "spearman_ecr": 0.6832557578268676,
+      "disagree_n": 27,
+      "model_wins": 7,
+      "ecr_wins": 20,
+      "ties": 0
+     },
+     "RB": {
+      "n": 100,
+      "spearman_model": 0.6065046504650465,
+      "spearman_ecr": 0.692001200120012,
+      "disagree_n": 47,
+      "model_wins": 25,
+      "ecr_wins": 22,
+      "ties": 0
+     },
+     "WR": {
+      "n": 153,
+      "spearman_model": 0.5801100344443998,
+      "spearman_ecr": 0.6215343016084345,
+      "disagree_n": 59,
+      "model_wins": 30,
+      "ecr_wins": 29,
+      "ties": 0
+     }
+    }
+   },
+   "12": {
+    "scrape": "2021-11-26",
+    "early_teams": [
+     "BUF",
+     "CHI",
+     "DAL",
+     "DET",
+     "LV",
+     "NO"
+    ],
+    "pos": {
+     "QB": {
+      "n": 29,
+      "spearman_model": 0.5285714285714286,
+      "spearman_ecr": 0.5669950738916256,
+      "disagree_n": 1,
+      "model_wins": 1,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "K": {
+      "n": 24,
+      "spearman_model": 0.03739130434782609,
+      "spearman_ecr": 0.26,
+      "disagree_n": 1,
+      "model_wins": 0,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "TE": {
+      "n": 73,
+      "spearman_model": 0.6587683573984945,
+      "spearman_ecr": 0.6620696038504258,
+      "disagree_n": 27,
+      "model_wins": 18,
+      "ecr_wins": 8,
+      "ties": 1
+     },
+     "RB": {
+      "n": 85,
+      "spearman_model": 0.662829783076021,
+      "spearman_ecr": 0.7574555403556772,
+      "disagree_n": 42,
+      "model_wins": 28,
+      "ecr_wins": 14,
+      "ties": 0
+     },
+     "WR": {
+      "n": 125,
+      "spearman_model": 0.5856405529953917,
+      "spearman_ecr": 0.6691305683563747,
+      "disagree_n": 61,
+      "model_wins": 38,
+      "ecr_wins": 23,
+      "ties": 0
+     }
+    }
+   },
+   "13": {
+    "scrape": "2021-12-03",
+    "early_teams": [
+     "DAL",
+     "NO"
+    ],
+    "pos": {
+     "QB": {
+      "n": 36,
+      "spearman_model": 0.5979407979407979,
+      "spearman_ecr": 0.5925353925353924,
+      "disagree_n": 1,
+      "model_wins": 1,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "K": {
+      "n": 27,
+      "spearman_model": 0.38705738705738707,
+      "spearman_ecr": 0.5421245421245421,
+      "disagree_n": 2,
+      "model_wins": 0,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "WR": {
+      "n": 141,
+      "spearman_model": 0.6372875551179417,
+      "spearman_ecr": 0.6807440387002868,
+      "disagree_n": 48,
+      "model_wins": 27,
+      "ecr_wins": 21,
+      "ties": 0
+     },
+     "TE": {
+      "n": 83,
+      "spearman_model": 0.6454388984509467,
+      "spearman_ecr": 0.7084085470803074,
+      "disagree_n": 22,
+      "model_wins": 10,
+      "ecr_wins": 11,
+      "ties": 1
+     },
+     "RB": {
+      "n": 96,
+      "spearman_model": 0.569167118827998,
+      "spearman_ecr": 0.6509359739555074,
+      "disagree_n": 42,
+      "model_wins": 24,
+      "ecr_wins": 16,
+      "ties": 2
+     }
+    }
+   },
+   "14": {
+    "scrape": "2021-12-11",
+    "early_teams": [
+     "MIN",
+     "PIT"
+    ],
+    "pos": {
+     "QB": {
+      "n": 30,
+      "spearman_model": 0.631590656284761,
+      "spearman_ecr": 0.6177975528364851,
+      "disagree_n": 1,
+      "model_wins": 0,
+      "ecr_wins": 0,
+      "ties": 1
+     },
+     "K": {
+      "n": 26,
+      "spearman_model": 0.15965811965811966,
+      "spearman_ecr": 0.6198290598290598,
+      "disagree_n": 4,
+      "model_wins": 0,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "TE": {
+      "n": 78,
+      "spearman_model": 0.6980993689854449,
+      "spearman_ecr": 0.700931979412992,
+      "disagree_n": 18,
+      "model_wins": 10,
+      "ecr_wins": 8,
+      "ties": 0
+     },
+     "WR": {
+      "n": 140,
+      "spearman_model": 0.6374319389473224,
+      "spearman_ecr": 0.7003768782415224,
+      "disagree_n": 47,
+      "model_wins": 18,
+      "ecr_wins": 29,
+      "ties": 0
+     },
+     "RB": {
+      "n": 93,
+      "spearman_model": 0.5741547551550237,
+      "spearman_ecr": 0.6706603801736742,
+      "disagree_n": 35,
+      "model_wins": 23,
+      "ecr_wins": 12,
+      "ties": 0
+     }
+    }
+   },
+   "15": {
+    "scrape": "2021-12-17",
+    "early_teams": [
+     "KC",
+     "LAC"
+    ],
+    "pos": {
+     "QB": {
+      "n": 36,
+      "spearman_model": 0.349034749034749,
+      "spearman_ecr": 0.44967824967824965,
+      "disagree_n": 1,
+      "model_wins": 0,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "K": {
+      "n": 30,
+      "spearman_model": 0.006451612903225807,
+      "spearman_ecr": -0.0949944382647386,
+      "disagree_n": 2,
+      "model_wins": 1,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "TE": {
+      "n": 94,
+      "spearman_model": 0.636253296246794,
+      "spearman_ecr": 0.6246166406017006,
+      "disagree_n": 24,
+      "model_wins": 12,
+      "ecr_wins": 12,
+      "ties": 0
+     },
+     "RB": {
+      "n": 113,
+      "spearman_model": 0.5149045179319981,
+      "spearman_ecr": 0.6820813094683612,
+      "disagree_n": 52,
+      "model_wins": 24,
+      "ecr_wins": 27,
+      "ties": 1
+     },
+     "WR": {
+      "n": 172,
+      "spearman_model": 0.5908618164580695,
+      "spearman_ecr": 0.703265331872056,
+      "disagree_n": 78,
+      "model_wins": 38,
+      "ecr_wins": 40,
+      "ties": 0
+     }
+    }
+   },
+   "16": {
+    "scrape": "2021-12-24",
+    "early_teams": [
+     "SF",
+     "TEN"
+    ],
+    "pos": {
+     "QB": {
+      "n": 39,
+      "spearman_model": 0.5601214574898785,
+      "spearman_ecr": 0.5947368421052631,
+      "disagree_n": 2,
+      "model_wins": 0,
+      "ecr_wins": 1,
+      "ties": 1
+     },
+     "K": {
+      "n": 29,
+      "spearman_model": 0.28965517241379307,
+      "spearman_ecr": 0.2832512315270936,
+      "disagree_n": 3,
+      "model_wins": 2,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "TE": {
+      "n": 97,
+      "spearman_model": 0.5149116347569956,
+      "spearman_ecr": 0.6158585094975152,
+      "disagree_n": 24,
+      "model_wins": 7,
+      "ecr_wins": 17,
+      "ties": 0
+     },
+     "WR": {
+      "n": 167,
+      "spearman_model": 0.5338307893679078,
+      "spearman_ecr": 0.5553148577941169,
+      "disagree_n": 64,
+      "model_wins": 36,
+      "ecr_wins": 28,
+      "ties": 0
+     },
+     "RB": {
+      "n": 102,
+      "spearman_model": 0.44684508427998715,
+      "spearman_ecr": 0.6838468541314441,
+      "disagree_n": 55,
+      "model_wins": 19,
+      "ecr_wins": 35,
+      "ties": 1
+     }
+    }
+   },
+   "17": {
+    "scrape": "2021-12-31",
+    "early_teams": [],
+    "pos": {
+     "QB": {
+      "n": 44,
+      "spearman_model": 0.5612403100775194,
+      "spearman_ecr": 0.6553911205073996,
+      "disagree_n": 4,
+      "model_wins": 0,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "K": {
+      "n": 34,
+      "spearman_model": 0.16027501909854852,
+      "spearman_ecr": 0.24797555385790684,
+      "disagree_n": 5,
+      "model_wins": 4,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "TE": {
+      "n": 97,
+      "spearman_model": 0.5956501157163896,
+      "spearman_ecr": 0.6733160196075707,
+      "disagree_n": 27,
+      "model_wins": 8,
+      "ecr_wins": 18,
+      "ties": 1
+     },
+     "WR": {
+      "n": 162,
+      "spearman_model": 0.631856678535793,
+      "spearman_ecr": 0.6241993450102146,
+      "disagree_n": 79,
+      "model_wins": 42,
+      "ecr_wins": 37,
+      "ties": 0
+     },
+     "RB": {
+      "n": 103,
+      "spearman_model": 0.5831063568070992,
+      "spearman_ecr": 0.7005996573386635,
+      "disagree_n": 48,
+      "model_wins": 16,
+      "ecr_wins": 32,
+      "ties": 0
+     }
+    }
+   },
+   "18": {
+    "scrape": "2021-12-31",
+    "early_teams": [],
+    "pos": {
+     "QB": {
+      "n": 44,
+      "spearman_model": 0.5116279069767442,
+      "spearman_ecr": 0.49823819591261453,
+      "disagree_n": 5,
+      "model_wins": 2,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "K": {
+      "n": 34,
+      "spearman_model": 0.24553093964858674,
+      "spearman_ecr": 0.1618029029793736,
+      "disagree_n": 5,
+      "model_wins": 3,
+      "ecr_wins": 1,
+      "ties": 1
+     },
+     "TE": {
+      "n": 97,
+      "spearman_model": 0.5740716389648644,
+      "spearman_ecr": 0.6052598704887717,
+      "disagree_n": 26,
+      "model_wins": 9,
+      "ecr_wins": 16,
+      "ties": 1
+     },
+     "WR": {
+      "n": 162,
+      "spearman_model": 0.5329153029873223,
+      "spearman_ecr": 0.5644909644273137,
+      "disagree_n": 78,
+      "model_wins": 39,
+      "ecr_wins": 38,
+      "ties": 1
+     },
+     "RB": {
+      "n": 103,
+      "spearman_model": 0.4284145323551377,
+      "spearman_ecr": 0.49726529895005045,
+      "disagree_n": 41,
+      "model_wins": 18,
+      "ecr_wins": 23,
+      "ties": 0
+     }
+    }
+   }
+  },
+  "summary": {
+   "K": {
+    "weeks": 15,
+    "n": 431,
+    "spearman_model_mean": 0.1803,
+    "spearman_ecr_mean": 0.2753,
+    "disagree_n": 55,
+    "model_wins": 21,
+    "ecr_wins": 32,
+    "ties": 2
+   },
+   "QB": {
+    "weeks": 15,
+    "n": 529,
+    "spearman_model_mean": 0.504,
+    "spearman_ecr_mean": 0.5623,
+    "disagree_n": 29,
+    "model_wins": 11,
+    "ecr_wins": 16,
+    "ties": 2
+   },
+   "RB": {
+    "weeks": 15,
+    "n": 1426,
+    "spearman_model_mean": 0.5679,
+    "spearman_ecr_mean": 0.6734,
+    "disagree_n": 604,
+    "model_wins": 326,
+    "ecr_wins": 273,
+    "ties": 5
+   },
+   "TE": {
+    "weeks": 15,
+    "n": 1251,
+    "spearman_model_mean": 0.5744,
+    "spearman_ecr_mean": 0.6374,
+    "disagree_n": 351,
+    "model_wins": 152,
+    "ecr_wins": 194,
+    "ties": 5
+   },
+   "WR": {
+    "weeks": 15,
+    "n": 2234,
+    "spearman_model_mean": 0.5961,
+    "spearman_ecr_mean": 0.6542,
+    "disagree_n": 1000,
+    "model_wins": 510,
+    "ecr_wins": 484,
+    "ties": 6
+   }
+  },
+  "threshold_sweep": {
+   "QB/T6": {
+    "mw": 152,
+    "ew": 168
+   },
+   "QB/T8": {
+    "mw": 137,
+    "ew": 143
+   },
+   "QB/T10": {
+    "mw": 117,
+    "ew": 131
+   },
+   "QB/T12": {
+    "mw": 108,
+    "ew": 124
+   },
+   "RB/T6": {
+    "mw": 592,
+    "ew": 710
+   },
+   "RB/T8": {
+    "mw": 556,
+    "ew": 680
+   },
+   "RB/T10": {
+    "mw": 533,
+    "ew": 645
+   },
+   "RB/T12": {
+    "mw": 510,
+    "ew": 622
+   },
+   "TE/T6": {
+    "mw": 640,
+    "ew": 473
+   },
+   "TE/T8": {
+    "mw": 614,
+    "ew": 455
+   },
+   "TE/T10": {
+    "mw": 592,
+    "ew": 422
+   },
+   "TE/T12": {
+    "mw": 572,
+    "ew": 398
+   },
+   "WR/T6": {
+    "mw": 1046,
+    "ew": 995
+   },
+   "WR/T8": {
+    "mw": 990,
+    "ew": 940
+   },
+   "WR/T10": {
+    "mw": 946,
+    "ew": 888
+   },
+   "WR/T12": {
+    "mw": 911,
+    "ew": 849
+   }
+  },
+  "recommended_thresholds": {
+   "QB": 12,
+   "RB": 12,
+   "TE": 12,
+   "WR": 12
+  }
+ },
+ "cal_2022": {
+  "weeks": {
+   "4": {
+    "scrape": "2022-09-30",
+    "early_teams": [
+     "CIN",
+     "MIA"
+    ],
+    "pos": {
+     "QB": {
+      "n": 32,
+      "spearman_model": 0.3225806451612903,
+      "spearman_ecr": 0.5762463343108505,
+      "disagree_n": 3,
+      "model_wins": 0,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "K": {
+      "n": 31,
+      "spearman_model": 0.14556451612903223,
+      "spearman_ecr": 0.37741935483870964,
+      "disagree_n": 12,
+      "model_wins": 2,
+      "ecr_wins": 8,
+      "ties": 2
+     },
+     "WR": {
+      "n": 155,
+      "spearman_model": 0.5735006928555316,
+      "spearman_ecr": 0.6577750135149354,
+      "disagree_n": 85,
+      "model_wins": 41,
+      "ecr_wins": 44,
+      "ties": 0
+     },
+     "RB": {
+      "n": 93,
+      "spearman_model": 0.6257049923905583,
+      "spearman_ecr": 0.7234937781623944,
+      "disagree_n": 34,
+      "model_wins": 18,
+      "ecr_wins": 15,
+      "ties": 1
+     },
+     "TE": {
+      "n": 87,
+      "spearman_model": 0.47195086389152147,
+      "spearman_ecr": 0.6092257782313917,
+      "disagree_n": 46,
+      "model_wins": 25,
+      "ecr_wins": 21,
+      "ties": 0
+     }
+    }
+   },
+   "5": {
+    "scrape": "2022-10-07",
+    "early_teams": [
+     "DEN",
+     "IND"
+    ],
+    "pos": {
+     "QB": {
+      "n": 36,
+      "spearman_model": 0.629086229086229,
+      "spearman_ecr": 0.7667953667953668,
+      "disagree_n": 4,
+      "model_wins": 1,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "K": {
+      "n": 32,
+      "spearman_model": 0.04472140762463343,
+      "spearman_ecr": 0.038856304985337244,
+      "disagree_n": 12,
+      "model_wins": 7,
+      "ecr_wins": 5,
+      "ties": 0
+     },
+     "WR": {
+      "n": 158,
+      "spearman_model": 0.5564645802369786,
+      "spearman_ecr": 0.67963980080904,
+      "disagree_n": 81,
+      "model_wins": 35,
+      "ecr_wins": 44,
+      "ties": 2
+     },
+     "RB": {
+      "n": 95,
+      "spearman_model": 0.6599104143337067,
+      "spearman_ecr": 0.7394176931690929,
+      "disagree_n": 33,
+      "model_wins": 21,
+      "ecr_wins": 12,
+      "ties": 0
+     },
+     "TE": {
+      "n": 92,
+      "spearman_model": 0.4161644806806096,
+      "spearman_ecr": 0.5210609866991353,
+      "disagree_n": 36,
+      "model_wins": 21,
+      "ecr_wins": 15,
+      "ties": 0
+     }
+    }
+   },
+   "6": {
+    "scrape": "2022-10-14",
+    "early_teams": [
+     "CHI",
+     "WAS"
+    ],
+    "pos": {
+     "QB": {
+      "n": 32,
+      "spearman_model": 0.3837976539589443,
+      "spearman_ecr": 0.5645161290322581,
+      "disagree_n": 2,
+      "model_wins": 0,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "K": {
+      "n": 30,
+      "spearman_model": -0.02780867630700779,
+      "spearman_ecr": 0.2031145717463849,
+      "disagree_n": 10,
+      "model_wins": 6,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "TE": {
+      "n": 80,
+      "spearman_model": 0.5993905297702766,
+      "spearman_ecr": 0.6418190342240975,
+      "disagree_n": 27,
+      "model_wins": 20,
+      "ecr_wins": 7,
+      "ties": 0
+     },
+     "WR": {
+      "n": 144,
+      "spearman_model": 0.6114862149344906,
+      "spearman_ecr": 0.7216026862823013,
+      "disagree_n": 53,
+      "model_wins": 21,
+      "ecr_wins": 31,
+      "ties": 1
+     },
+     "RB": {
+      "n": 86,
+      "spearman_model": 0.6004905891787349,
+      "spearman_ecr": 0.657946129534412,
+      "disagree_n": 30,
+      "model_wins": 18,
+      "ecr_wins": 12,
+      "ties": 0
+     }
+    }
+   },
+   "7": {
+    "scrape": "2022-10-21",
+    "early_teams": [
+     "ARI",
+     "NO"
+    ],
+    "pos": {
+     "QB": {
+      "n": 36,
+      "spearman_model": 0.6180180180180179,
+      "spearman_ecr": 0.7508365508365508,
+      "disagree_n": 3,
+      "model_wins": 2,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "K": {
+      "n": 27,
+      "spearman_model": -0.06227106227106227,
+      "spearman_ecr": -0.07692307692307693,
+      "disagree_n": 10,
+      "model_wins": 6,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "TE": {
+      "n": 92,
+      "spearman_model": 0.6074780759212736,
+      "spearman_ecr": 0.6482924968548996,
+      "disagree_n": 41,
+      "model_wins": 21,
+      "ecr_wins": 19,
+      "ties": 1
+     },
+     "WR": {
+      "n": 142,
+      "spearman_model": 0.5727287396451317,
+      "spearman_ecr": 0.6200515097728164,
+      "disagree_n": 64,
+      "model_wins": 34,
+      "ecr_wins": 30,
+      "ties": 0
+     },
+     "RB": {
+      "n": 90,
+      "spearman_model": 0.5996213524303411,
+      "spearman_ecr": 0.674439949135025,
+      "disagree_n": 33,
+      "model_wins": 16,
+      "ecr_wins": 17,
+      "ties": 0
+     }
+    }
+   },
+   "8": {
+    "scrape": "2022-10-28",
+    "early_teams": [
+     "BAL",
+     "TB"
+    ],
+    "pos": {
+     "K": {
+      "n": 29,
+      "spearman_model": 0.17980295566502463,
+      "spearman_ecr": 0.15172413793103448,
+      "disagree_n": 8,
+      "model_wins": 4,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "QB": {
+      "n": 37,
+      "spearman_model": 0.6154575628259839,
+      "spearman_ecr": 0.752963489805595,
+      "disagree_n": 3,
+      "model_wins": 1,
+      "ecr_wins": 1,
+      "ties": 1
+     },
+     "TE": {
+      "n": 94,
+      "spearman_model": 0.6219051403388361,
+      "spearman_ecr": 0.703471444568869,
+      "disagree_n": 48,
+      "model_wins": 21,
+      "ecr_wins": 27,
+      "ties": 0
+     },
+     "WR": {
+      "n": 158,
+      "spearman_model": 0.55142015245855,
+      "spearman_ecr": 0.6633229812957864,
+      "disagree_n": 84,
+      "model_wins": 35,
+      "ecr_wins": 48,
+      "ties": 1
+     },
+     "RB": {
+      "n": 100,
+      "spearman_model": 0.701950195019502,
+      "spearman_ecr": 0.7840744074407441,
+      "disagree_n": 44,
+      "model_wins": 26,
+      "ecr_wins": 18,
+      "ties": 0
+     }
+    }
+   },
+   "9": {
+    "scrape": "2022-11-04",
+    "early_teams": [
+     "HOU",
+     "PHI"
+    ],
+    "pos": {
+     "QB": {
+      "n": 32,
+      "spearman_model": 0.8079178885630498,
+      "spearman_ecr": 0.8240469208211144,
+      "disagree_n": 1,
+      "model_wins": 0,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "K": {
+      "n": 27,
+      "spearman_model": 0.2722832722832723,
+      "spearman_ecr": 0.33211233211233215,
+      "disagree_n": 8,
+      "model_wins": 6,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "TE": {
+      "n": 80,
+      "spearman_model": 0.5815986872948898,
+      "spearman_ecr": 0.6023242049107467,
+      "disagree_n": 24,
+      "model_wins": 18,
+      "ecr_wins": 6,
+      "ties": 0
+     },
+     "WR": {
+      "n": 136,
+      "spearman_model": 0.6451505176279758,
+      "spearman_ecr": 0.7369829683698297,
+      "disagree_n": 60,
+      "model_wins": 30,
+      "ecr_wins": 29,
+      "ties": 1
+     },
+     "RB": {
+      "n": 86,
+      "spearman_model": 0.6418510307089957,
+      "spearman_ecr": 0.6970423133166659,
+      "disagree_n": 27,
+      "model_wins": 16,
+      "ecr_wins": 11,
+      "ties": 0
+     }
+    }
+   },
+   "10": {
+    "scrape": "2022-11-11",
+    "early_teams": [
+     "ATL",
+     "CAR"
+    ],
+    "pos": {
+     "QB": {
+      "n": 32,
+      "spearman_model": 0.5953079178885631,
+      "spearman_ecr": 0.6847507331378299,
+      "disagree_n": 1,
+      "model_wins": 0,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "K": {
+      "n": 29,
+      "spearman_model": 0.04285714285714286,
+      "spearman_ecr": -0.10837438423645321,
+      "disagree_n": 7,
+      "model_wins": 5,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "TE": {
+      "n": 91,
+      "spearman_model": 0.5422360248447204,
+      "spearman_ecr": 0.6460423634336677,
+      "disagree_n": 33,
+      "model_wins": 16,
+      "ecr_wins": 16,
+      "ties": 1
+     },
+     "WR": {
+      "n": 147,
+      "spearman_model": 0.6722377955254666,
+      "spearman_ecr": 0.703666064722816,
+      "disagree_n": 68,
+      "model_wins": 35,
+      "ecr_wins": 33,
+      "ties": 0
+     },
+     "RB": {
+      "n": 98,
+      "spearman_model": 0.7470815880241506,
+      "spearman_ecr": 0.744074696287137,
+      "disagree_n": 35,
+      "model_wins": 22,
+      "ecr_wins": 13,
+      "ties": 0
+     }
+    }
+   },
+   "11": {
+    "scrape": "2022-11-18",
+    "early_teams": [
+     "GB",
+     "TEN"
+    ],
+    "pos": {
+     "K": {
+      "n": 28,
+      "spearman_model": -0.10837438423645322,
+      "spearman_ecr": 0.36507936507936517,
+      "disagree_n": 11,
+      "model_wins": 2,
+      "ecr_wins": 9,
+      "ties": 0
+     },
+     "QB": {
+      "n": 36,
+      "spearman_model": 0.590990990990991,
+      "spearman_ecr": 0.7068211068211068,
+      "disagree_n": 2,
+      "model_wins": 0,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "WR": {
+      "n": 140,
+      "spearman_model": 0.5173995757801054,
+      "spearman_ecr": 0.665889659093394,
+      "disagree_n": 65,
+      "model_wins": 31,
+      "ecr_wins": 34,
+      "ties": 0
+     },
+     "RB": {
+      "n": 95,
+      "spearman_model": 0.6620380739081747,
+      "spearman_ecr": 0.7730683090705487,
+      "disagree_n": 39,
+      "model_wins": 17,
+      "ecr_wins": 22,
+      "ties": 0
+     },
+     "TE": {
+      "n": 83,
+      "spearman_model": 0.5835817136140381,
+      "spearman_ecr": 0.6524705092145587,
+      "disagree_n": 32,
+      "model_wins": 21,
+      "ecr_wins": 11,
+      "ties": 0
+     }
+    }
+   },
+   "12": {
+    "scrape": "2022-11-25",
+    "early_teams": [
+     "BUF",
+     "DAL",
+     "DET",
+     "MIN",
+     "NE",
+     "NYG"
+    ],
+    "pos": {
+     "QB": {
+      "n": 32,
+      "spearman_model": 0.6425953079178885,
+      "spearman_ecr": 0.8075513196480938,
+      "disagree_n": 2,
+      "model_wins": 2,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "K": {
+      "n": 27,
+      "spearman_model": 0.18864468864468867,
+      "spearman_ecr": 0.5244200244200244,
+      "disagree_n": 6,
+      "model_wins": 2,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "TE": {
+      "n": 83,
+      "spearman_model": 0.49611687166785623,
+      "spearman_ecr": 0.48599974812140556,
+      "disagree_n": 40,
+      "model_wins": 31,
+      "ecr_wins": 7,
+      "ties": 2
+     },
+     "WR": {
+      "n": 145,
+      "spearman_model": 0.5347543693906472,
+      "spearman_ecr": 0.6668857924796495,
+      "disagree_n": 84,
+      "model_wins": 53,
+      "ecr_wins": 31,
+      "ties": 0
+     },
+     "RB": {
+      "n": 93,
+      "spearman_model": 0.4777983348751156,
+      "spearman_ecr": 0.6477276118289517,
+      "disagree_n": 43,
+      "model_wins": 21,
+      "ecr_wins": 21,
+      "ties": 1
+     }
+    }
+   },
+   "13": {
+    "scrape": "2022-12-02",
+    "early_teams": [
+     "BUF",
+     "NE"
+    ],
+    "pos": {
+     "QB": {
+      "n": 35,
+      "spearman_model": 0.6487394957983195,
+      "spearman_ecr": 0.7560224089635855,
+      "disagree_n": 4,
+      "model_wins": 2,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "K": {
+      "n": 29,
+      "spearman_model": -0.07438423645320197,
+      "spearman_ecr": -0.03399014778325123,
+      "disagree_n": 3,
+      "model_wins": 2,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "TE": {
+      "n": 91,
+      "spearman_model": 0.5895365504061155,
+      "spearman_ecr": 0.6044433827042521,
+      "disagree_n": 29,
+      "model_wins": 15,
+      "ecr_wins": 14,
+      "ties": 0
+     },
+     "WR": {
+      "n": 151,
+      "spearman_model": 0.7263645869640989,
+      "spearman_ecr": 0.7931132738877825,
+      "disagree_n": 76,
+      "model_wins": 38,
+      "ecr_wins": 35,
+      "ties": 3
+     },
+     "RB": {
+      "n": 106,
+      "spearman_model": 0.6418671436128675,
+      "spearman_ecr": 0.726195934201577,
+      "disagree_n": 56,
+      "model_wins": 28,
+      "ecr_wins": 28,
+      "ties": 0
+     }
+    }
+   },
+   "14": {
+    "scrape": "2022-12-09",
+    "early_teams": [
+     "LA",
+     "LV"
+    ],
+    "pos": {
+     "QB": {
+      "n": 37,
+      "spearman_model": 0.5431484115694643,
+      "spearman_ecr": 0.7785680417259365,
+      "disagree_n": 4,
+      "model_wins": 0,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "K": {
+      "n": 26,
+      "spearman_model": 0.023589743589743587,
+      "spearman_ecr": 0.24376068376068377,
+      "disagree_n": 2,
+      "model_wins": 0,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "WR": {
+      "n": 124,
+      "spearman_model": 0.5636695515342252,
+      "spearman_ecr": 0.63239653815893,
+      "disagree_n": 49,
+      "model_wins": 25,
+      "ecr_wins": 24,
+      "ties": 0
+     },
+     "TE": {
+      "n": 81,
+      "spearman_model": 0.4707542908762422,
+      "spearman_ecr": 0.5771906052393859,
+      "disagree_n": 23,
+      "model_wins": 13,
+      "ecr_wins": 10,
+      "ties": 0
+     },
+     "RB": {
+      "n": 93,
+      "spearman_model": 0.5367938885739011,
+      "spearman_ecr": 0.6393721464593715,
+      "disagree_n": 36,
+      "model_wins": 18,
+      "ecr_wins": 18,
+      "ties": 0
+     }
+    }
+   },
+   "15": {
+    "scrape": "2022-12-16",
+    "early_teams": [
+     "SEA",
+     "SF"
+    ],
+    "pos": {
+     "QB": {
+      "n": 38,
+      "spearman_model": 0.6570740781267097,
+      "spearman_ecr": 0.7023744392165445,
+      "disagree_n": 3,
+      "model_wins": 0,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "K": {
+      "n": 30,
+      "spearman_model": 0.14660734149054505,
+      "spearman_ecr": -0.1310344827586207,
+      "disagree_n": 5,
+      "model_wins": 4,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "TE": {
+      "n": 100,
+      "spearman_model": 0.5332013201320133,
+      "spearman_ecr": 0.6212421242124212,
+      "disagree_n": 42,
+      "model_wins": 23,
+      "ecr_wins": 19,
+      "ties": 0
+     },
+     "WR": {
+      "n": 170,
+      "spearman_model": 0.6760180995475111,
+      "spearman_ecr": 0.7129206587649073,
+      "disagree_n": 82,
+      "model_wins": 47,
+      "ecr_wins": 35,
+      "ties": 0
+     },
+     "RB": {
+      "n": 116,
+      "spearman_model": 0.622742474916388,
+      "spearman_ecr": 0.7705378080190673,
+      "disagree_n": 55,
+      "model_wins": 21,
+      "ecr_wins": 32,
+      "ties": 2
+     }
+    }
+   },
+   "16": {
+    "scrape": "2022-12-23",
+    "early_teams": [
+     "JAX",
+     "NYJ"
+    ],
+    "pos": {
+     "QB": {
+      "n": 36,
+      "spearman_model": 0.5804375804375804,
+      "spearman_ecr": 0.7093951093951094,
+      "disagree_n": 3,
+      "model_wins": 0,
+      "ecr_wins": 2,
+      "ties": 1
+     },
+     "K": {
+      "n": 30,
+      "spearman_model": -0.27296996662958845,
+      "spearman_ecr": 0.06518353726362626,
+      "disagree_n": 6,
+      "model_wins": 3,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "TE": {
+      "n": 96,
+      "spearman_model": 0.5776587086272383,
+      "spearman_ecr": 0.6560499186109605,
+      "disagree_n": 32,
+      "model_wins": 17,
+      "ecr_wins": 15,
+      "ties": 0
+     },
+     "WR": {
+      "n": 149,
+      "spearman_model": 0.7140758207872301,
+      "spearman_ecr": 0.7591619807727189,
+      "disagree_n": 65,
+      "model_wins": 35,
+      "ecr_wins": 29,
+      "ties": 1
+     },
+     "RB": {
+      "n": 109,
+      "spearman_model": 0.7093133166527661,
+      "spearman_ecr": 0.7987952923732738,
+      "disagree_n": 38,
+      "model_wins": 18,
+      "ecr_wins": 20,
+      "ties": 0
+     }
+    }
+   },
+   "17": {
+    "scrape": "2022-12-30",
+    "early_teams": [
+     "DAL",
+     "TEN"
+    ],
+    "pos": {
+     "QB": {
+      "n": 40,
+      "spearman_model": 0.24690431519699813,
+      "spearman_ecr": 0.7296435272045028,
+      "disagree_n": 9,
+      "model_wins": 2,
+      "ecr_wins": 7,
+      "ties": 0
+     },
+     "K": {
+      "n": 28,
+      "spearman_model": 0.12096332785987962,
+      "spearman_ecr": 0.10673234811165848,
+      "disagree_n": 5,
+      "model_wins": 2,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "TE": {
+      "n": 88,
+      "spearman_model": 0.6487090979535768,
+      "spearman_ecr": 0.6806382304251347,
+      "disagree_n": 34,
+      "model_wins": 20,
+      "ecr_wins": 14,
+      "ties": 0
+     },
+     "WR": {
+      "n": 146,
+      "spearman_model": 0.6500747110369891,
+      "spearman_ecr": 0.7263204573279477,
+      "disagree_n": 58,
+      "model_wins": 34,
+      "ecr_wins": 24,
+      "ties": 0
+     },
+     "RB": {
+      "n": 99,
+      "spearman_model": 0.7046876932591218,
+      "spearman_ecr": 0.7509956709956709,
+      "disagree_n": 32,
+      "model_wins": 18,
+      "ecr_wins": 14,
+      "ties": 0
+     }
+    }
+   },
+   "18": {
+    "scrape": "2022-12-30",
+    "early_teams": [],
+    "pos": {
+     "QB": {
+      "n": 45,
+      "spearman_model": 0.33451910408432156,
+      "spearman_ecr": 0.3968379446640317,
+      "disagree_n": 13,
+      "model_wins": 7,
+      "ecr_wins": 6,
+      "ties": 0
+     },
+     "K": {
+      "n": 32,
+      "spearman_model": -0.07844574780058651,
+      "spearman_ecr": 0.07001466275659823,
+      "disagree_n": 8,
+      "model_wins": 3,
+      "ecr_wins": 5,
+      "ties": 0
+     },
+     "TE": {
+      "n": 104,
+      "spearman_model": 0.49834631388029443,
+      "spearman_ecr": 0.5361677157793663,
+      "disagree_n": 37,
+      "model_wins": 21,
+      "ecr_wins": 16,
+      "ties": 0
+     },
+     "WR": {
+      "n": 167,
+      "spearman_model": 0.6086166737093797,
+      "spearman_ecr": 0.606338957197481,
+      "disagree_n": 64,
+      "model_wins": 37,
+      "ecr_wins": 27,
+      "ties": 0
+     },
+     "RB": {
+      "n": 113,
+      "spearman_model": 0.4775434160622796,
+      "spearman_ecr": 0.4911254907179453,
+      "disagree_n": 29,
+      "model_wins": 10,
+      "ecr_wins": 19,
+      "ties": 0
+     }
+    }
+   }
+  },
+  "summary": {
+   "K": {
+    "weeks": 15,
+    "n": 435,
+    "spearman_model_mean": 0.0361,
+    "spearman_ecr_mean": 0.1419,
+    "disagree_n": 113,
+    "model_wins": 54,
+    "ecr_wins": 57,
+    "ties": 2
+   },
+   "QB": {
+    "weeks": 15,
+    "n": 536,
+    "spearman_model_mean": 0.5478,
+    "spearman_ecr_mean": 0.7005,
+    "disagree_n": 57,
+    "model_wins": 17,
+    "ecr_wins": 38,
+    "ties": 2
+   },
+   "RB": {
+    "weeks": 15,
+    "n": 1472,
+    "spearman_model_mean": 0.6273,
+    "spearman_ecr_mean": 0.7079,
+    "disagree_n": 564,
+    "model_wins": 288,
+    "ecr_wins": 272,
+    "ties": 4
+   },
+   "TE": {
+    "weeks": 15,
+    "n": 1342,
+    "spearman_model_mean": 0.5492,
+    "spearman_ecr_mean": 0.6124,
+    "disagree_n": 524,
+    "model_wins": 303,
+    "ecr_wins": 217,
+    "ties": 4
+   },
+   "WR": {
+    "weeks": 15,
+    "n": 2232,
+    "spearman_model_mean": 0.6116,
+    "spearman_ecr_mean": 0.6897,
+    "disagree_n": 1038,
+    "model_wins": 531,
+    "ecr_wins": 498,
+    "ties": 9
+   }
+  },
+  "threshold_sweep": {
+   "QB/T6": {
+    "mw": 184,
+    "ew": 250
+   },
+   "QB/T8": {
+    "mw": 169,
+    "ew": 226
+   },
+   "QB/T10": {
+    "mw": 154,
+    "ew": 209
+   },
+   "QB/T12": {
+    "mw": 139,
+    "ew": 193
+   },
+   "RB/T6": {
+    "mw": 606,
+    "ew": 708
+   },
+   "RB/T8": {
+    "mw": 578,
+    "ew": 677
+   },
+   "RB/T10": {
+    "mw": 539,
+    "ew": 637
+   },
+   "RB/T12": {
+    "mw": 511,
+    "ew": 611
+   },
+   "TE/T6": {
+    "mw": 717,
+    "ew": 469
+   },
+   "TE/T8": {
+    "mw": 703,
+    "ew": 451
+   },
+   "TE/T10": {
+    "mw": 664,
+    "ew": 424
+   },
+   "TE/T12": {
+    "mw": 647,
+    "ew": 403
+   },
+   "WR/T6": {
+    "mw": 986,
+    "ew": 983
+   },
+   "WR/T8": {
+    "mw": 937,
+    "ew": 935
+   },
+   "WR/T10": {
+    "mw": 895,
+    "ew": 879
+   },
+   "WR/T12": {
+    "mw": 858,
+    "ew": 840
+   }
+  },
+  "recommended_thresholds": {
+   "QB": 12,
+   "RB": 12,
+   "TE": 12,
+   "WR": 12
+  }
+ },
+ "cal_2023": {
+  "weeks": {
+   "4": {
+    "scrape": "2023-09-29",
+    "early_teams": [
+     "DET",
+     "GB"
+    ],
+    "pos": {
+     "K": {
+      "n": 30,
+      "spearman_model": 0.30100111234705235,
+      "spearman_ecr": 0.1417130144605117,
+      "disagree_n": 8,
+      "model_wins": 7,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "QB": {
+      "n": 36,
+      "spearman_model": 0.5009009009009009,
+      "spearman_ecr": 0.5809523809523809,
+      "disagree_n": 3,
+      "model_wins": 1,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "TE": {
+      "n": 83,
+      "spearman_model": 0.4988035766760422,
+      "spearman_ecr": 0.5834137945510265,
+      "disagree_n": 34,
+      "model_wins": 20,
+      "ecr_wins": 14,
+      "ties": 0
+     },
+     "WR": {
+      "n": 147,
+      "spearman_model": 0.5791430233700292,
+      "spearman_ecr": 0.6258326714151285,
+      "disagree_n": 74,
+      "model_wins": 44,
+      "ecr_wins": 30,
+      "ties": 0
+     },
+     "RB": {
+      "n": 94,
+      "spearman_model": 0.5755662319835277,
+      "spearman_ecr": 0.7524834736119641,
+      "disagree_n": 38,
+      "model_wins": 21,
+      "ecr_wins": 17,
+      "ties": 0
+     }
+    }
+   },
+   "5": {
+    "scrape": "2023-10-06",
+    "early_teams": [
+     "CHI",
+     "WAS"
+    ],
+    "pos": {
+     "K": {
+      "n": 26,
+      "spearman_model": 0.011965811965811967,
+      "spearman_ecr": -0.1617094017094017,
+      "disagree_n": 4,
+      "model_wins": 2,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "QB": {
+      "n": 31,
+      "spearman_model": 0.484274193548387,
+      "spearman_ecr": 0.5657258064516127,
+      "disagree_n": 2,
+      "model_wins": 0,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "TE": {
+      "n": 73,
+      "spearman_model": 0.5471121806738246,
+      "spearman_ecr": 0.6883870171541405,
+      "disagree_n": 28,
+      "model_wins": 14,
+      "ecr_wins": 13,
+      "ties": 1
+     },
+     "WR": {
+      "n": 132,
+      "spearman_model": 0.626648160999306,
+      "spearman_ecr": 0.6931155436074516,
+      "disagree_n": 63,
+      "model_wins": 32,
+      "ecr_wins": 31,
+      "ties": 0
+     },
+     "RB": {
+      "n": 85,
+      "spearman_model": 0.5512214188000781,
+      "spearman_ecr": 0.6924956028923197,
+      "disagree_n": 31,
+      "model_wins": 16,
+      "ecr_wins": 15,
+      "ties": 0
+     }
+    }
+   },
+   "6": {
+    "scrape": "2023-10-13",
+    "early_teams": [
+     "DEN",
+     "KC"
+    ],
+    "pos": {
+     "K": {
+      "n": 28,
+      "spearman_model": -0.15325670498084296,
+      "spearman_ecr": -0.23809523809523817,
+      "disagree_n": 7,
+      "model_wins": 4,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "TE": {
+      "n": 86,
+      "spearman_model": 0.596433794046889,
+      "spearman_ecr": 0.6590027831501486,
+      "disagree_n": 25,
+      "model_wins": 14,
+      "ecr_wins": 10,
+      "ties": 1
+     },
+     "QB": {
+      "n": 42,
+      "spearman_model": 0.6512438214083138,
+      "spearman_ecr": 0.8061745401507172,
+      "disagree_n": 4,
+      "model_wins": 2,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "WR": {
+      "n": 146,
+      "spearman_model": 0.671448815709562,
+      "spearman_ecr": 0.7573238577156958,
+      "disagree_n": 68,
+      "model_wins": 28,
+      "ecr_wins": 38,
+      "ties": 2
+     },
+     "RB": {
+      "n": 95,
+      "spearman_model": 0.6277715565509518,
+      "spearman_ecr": 0.7976441686924844,
+      "disagree_n": 35,
+      "model_wins": 15,
+      "ecr_wins": 18,
+      "ties": 2
+     }
+    }
+   },
+   "7": {
+    "scrape": "2023-10-20",
+    "early_teams": [
+     "JAX",
+     "NO"
+    ],
+    "pos": {
+     "K": {
+      "n": 24,
+      "spearman_model": -0.0391304347826087,
+      "spearman_ecr": -0.12782608695652176,
+      "disagree_n": 2,
+      "model_wins": 2,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "TE": {
+      "n": 72,
+      "spearman_model": 0.6313267734259437,
+      "spearman_ecr": 0.6341565373979032,
+      "disagree_n": 21,
+      "model_wins": 13,
+      "ecr_wins": 8,
+      "ties": 0
+     },
+     "QB": {
+      "n": 31,
+      "spearman_model": 0.35725806451612896,
+      "spearman_ecr": 0.6254032258064515,
+      "disagree_n": 1,
+      "model_wins": 0,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "WR": {
+      "n": 130,
+      "spearman_model": 0.6691256196315666,
+      "spearman_ecr": 0.7127878648864199,
+      "disagree_n": 52,
+      "model_wins": 22,
+      "ecr_wins": 30,
+      "ties": 0
+     },
+     "RB": {
+      "n": 82,
+      "spearman_model": 0.5771269359279938,
+      "spearman_ecr": 0.6522676070134196,
+      "disagree_n": 32,
+      "model_wins": 21,
+      "ecr_wins": 10,
+      "ties": 1
+     }
+    }
+   },
+   "8": {
+    "scrape": "2023-10-27",
+    "early_teams": [
+     "BUF",
+     "TB"
+    ],
+    "pos": {
+     "K": {
+      "n": 30,
+      "spearman_model": 0.10166852057842048,
+      "spearman_ecr": 0.4545050055617353,
+      "disagree_n": 8,
+      "model_wins": 2,
+      "ecr_wins": 6,
+      "ties": 0
+     },
+     "TE": {
+      "n": 85,
+      "spearman_model": 0.6597224936486222,
+      "spearman_ecr": 0.6853429743990619,
+      "disagree_n": 27,
+      "model_wins": 13,
+      "ecr_wins": 14,
+      "ties": 0
+     },
+     "QB": {
+      "n": 37,
+      "spearman_model": 0.6206733048838312,
+      "spearman_ecr": 0.621384542437174,
+      "disagree_n": 3,
+      "model_wins": 3,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "WR": {
+      "n": 158,
+      "spearman_model": 0.6873610918843432,
+      "spearman_ecr": 0.7196073375488974,
+      "disagree_n": 75,
+      "model_wins": 34,
+      "ecr_wins": 40,
+      "ties": 1
+     },
+     "RB": {
+      "n": 97,
+      "spearman_model": 0.7502498422049232,
+      "spearman_ecr": 0.8273327372185988,
+      "disagree_n": 31,
+      "model_wins": 16,
+      "ecr_wins": 15,
+      "ties": 0
+     }
+    }
+   },
+   "9": {
+    "scrape": "2023-11-03",
+    "early_teams": [
+     "PIT",
+     "TEN"
+    ],
+    "pos": {
+     "K": {
+      "n": 26,
+      "spearman_model": 0.12068376068376069,
+      "spearman_ecr": 0.2,
+      "disagree_n": 1,
+      "model_wins": 1,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "TE": {
+      "n": 76,
+      "spearman_model": 0.6455775803144225,
+      "spearman_ecr": 0.7195352016404649,
+      "disagree_n": 24,
+      "model_wins": 12,
+      "ecr_wins": 12,
+      "ties": 0
+     },
+     "QB": {
+      "n": 32,
+      "spearman_model": 0.5975073313782991,
+      "spearman_ecr": 0.5095307917888563,
+      "disagree_n": 3,
+      "model_wins": 2,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "WR": {
+      "n": 138,
+      "spearman_model": 0.5705828228562817,
+      "spearman_ecr": 0.637802134074712,
+      "disagree_n": 56,
+      "model_wins": 21,
+      "ecr_wins": 35,
+      "ties": 0
+     },
+     "RB": {
+      "n": 84,
+      "spearman_model": 0.7468259592993824,
+      "spearman_ecr": 0.7426344031588539,
+      "disagree_n": 20,
+      "model_wins": 13,
+      "ecr_wins": 7,
+      "ties": 0
+     }
+    }
+   },
+   "10": {
+    "scrape": "2023-11-10",
+    "early_teams": [
+     "CAR",
+     "CHI"
+    ],
+    "pos": {
+     "K": {
+      "n": 26,
+      "spearman_model": -0.18427350427350428,
+      "spearman_ecr": -0.08854700854700855,
+      "disagree_n": 4,
+      "model_wins": 3,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "WR": {
+      "n": 140,
+      "spearman_model": 0.6457720146071593,
+      "spearman_ecr": 0.6772656155189978,
+      "disagree_n": 63,
+      "model_wins": 32,
+      "ecr_wins": 31,
+      "ties": 0
+     },
+     "RB": {
+      "n": 88,
+      "spearman_model": 0.6229262794547568,
+      "spearman_ecr": 0.7837871156352365,
+      "disagree_n": 32,
+      "model_wins": 11,
+      "ecr_wins": 21,
+      "ties": 0
+     },
+     "QB": {
+      "n": 32,
+      "spearman_model": 0.6818181818181818,
+      "spearman_ecr": 0.719574780058651,
+      "disagree_n": 1,
+      "model_wins": 1,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "TE": {
+      "n": 76,
+      "spearman_model": 0.6553656869446344,
+      "spearman_ecr": 0.703403964456596,
+      "disagree_n": 18,
+      "model_wins": 8,
+      "ecr_wins": 10,
+      "ties": 0
+     }
+    }
+   },
+   "11": {
+    "scrape": "2023-11-17",
+    "early_teams": [
+     "BAL",
+     "CIN"
+    ],
+    "pos": {
+     "K": {
+      "n": 26,
+      "spearman_model": -0.0823931623931624,
+      "spearman_ecr": 0.29982905982905983,
+      "disagree_n": 7,
+      "model_wins": 1,
+      "ecr_wins": 6,
+      "ties": 0
+     },
+     "TE": {
+      "n": 77,
+      "spearman_model": 0.555391976444608,
+      "spearman_ecr": 0.6297386823702612,
+      "disagree_n": 28,
+      "model_wins": 17,
+      "ecr_wins": 11,
+      "ties": 0
+     },
+     "QB": {
+      "n": 35,
+      "spearman_model": 0.7546218487394959,
+      "spearman_ecr": 0.7834733893557424,
+      "disagree_n": 1,
+      "model_wins": 1,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "WR": {
+      "n": 145,
+      "spearman_model": 0.6171783971028185,
+      "spearman_ecr": 0.6861084868524643,
+      "disagree_n": 62,
+      "model_wins": 30,
+      "ecr_wins": 31,
+      "ties": 1
+     },
+     "RB": {
+      "n": 91,
+      "spearman_model": 0.592992514731645,
+      "spearman_ecr": 0.7202420767638158,
+      "disagree_n": 35,
+      "model_wins": 15,
+      "ecr_wins": 20,
+      "ties": 0
+     }
+    }
+   },
+   "12": {
+    "scrape": "2023-11-24",
+    "early_teams": [
+     "DAL",
+     "DET",
+     "GB",
+     "SEA",
+     "SF",
+     "WAS"
+    ],
+    "pos": {
+     "K": {
+      "n": 26,
+      "spearman_model": 0.26427350427350427,
+      "spearman_ecr": 0.398974358974359,
+      "disagree_n": 5,
+      "model_wins": 1,
+      "ecr_wins": 3,
+      "ties": 1
+     },
+     "TE": {
+      "n": 78,
+      "spearman_model": 0.5088961671240152,
+      "spearman_ecr": 0.5814059358363155,
+      "disagree_n": 36,
+      "model_wins": 23,
+      "ecr_wins": 12,
+      "ties": 1
+     },
+     "QB": {
+      "n": 31,
+      "spearman_model": 0.6999999999999998,
+      "spearman_ecr": 0.7778225806451612,
+      "disagree_n": 2,
+      "model_wins": 1,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "WR": {
+      "n": 149,
+      "spearman_model": 0.6549646290585887,
+      "spearman_ecr": 0.7918853545127095,
+      "disagree_n": 88,
+      "model_wins": 55,
+      "ecr_wins": 33,
+      "ties": 0
+     },
+     "RB": {
+      "n": 94,
+      "spearman_model": 0.7089043817505328,
+      "spearman_ecr": 0.8289058266806343,
+      "disagree_n": 39,
+      "model_wins": 26,
+      "ecr_wins": 13,
+      "ties": 0
+     }
+    }
+   },
+   "13": {
+    "scrape": "2023-12-01",
+    "early_teams": [
+     "DAL",
+     "SEA"
+    ],
+    "pos": {
+     "K": {
+      "n": 24,
+      "spearman_model": -0.09304347826086956,
+      "spearman_ecr": 0.02347826086956522,
+      "disagree_n": 4,
+      "model_wins": 3,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "QB": {
+      "n": 29,
+      "spearman_model": 0.6009852216748769,
+      "spearman_ecr": 0.702463054187192,
+      "disagree_n": 1,
+      "model_wins": 1,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "TE": {
+      "n": 75,
+      "spearman_model": 0.469302987197724,
+      "spearman_ecr": 0.5010810810810811,
+      "disagree_n": 24,
+      "model_wins": 15,
+      "ecr_wins": 9,
+      "ties": 0
+     },
+     "WR": {
+      "n": 141,
+      "spearman_model": 0.5632689755554604,
+      "spearman_ecr": 0.6602779662628385,
+      "disagree_n": 63,
+      "model_wins": 27,
+      "ecr_wins": 36,
+      "ties": 0
+     },
+     "RB": {
+      "n": 86,
+      "spearman_model": 0.6903250153309118,
+      "spearman_ecr": 0.8394075192226048,
+      "disagree_n": 31,
+      "model_wins": 13,
+      "ecr_wins": 17,
+      "ties": 1
+     }
+    }
+   },
+   "14": {
+    "scrape": "2023-12-08",
+    "early_teams": [
+     "NE",
+     "PIT"
+    ],
+    "pos": {
+     "TE": {
+      "n": 87,
+      "spearman_model": 0.5830174236349056,
+      "spearman_ecr": 0.6285084202085004,
+      "disagree_n": 24,
+      "model_wins": 12,
+      "ecr_wins": 12,
+      "ties": 0
+     },
+     "K": {
+      "n": 29,
+      "spearman_model": 0.08472906403940887,
+      "spearman_ecr": -0.03201970443349753,
+      "disagree_n": 7,
+      "model_wins": 3,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "QB": {
+      "n": 35,
+      "spearman_model": 0.5299719887955183,
+      "spearman_ecr": 0.4495798319327731,
+      "disagree_n": 4,
+      "model_wins": 4,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "WR": {
+      "n": 160,
+      "spearman_model": 0.6206082268838626,
+      "spearman_ecr": 0.7189001523497012,
+      "disagree_n": 68,
+      "model_wins": 33,
+      "ecr_wins": 35,
+      "ties": 0
+     },
+     "RB": {
+      "n": 94,
+      "spearman_model": 0.6802080699346169,
+      "spearman_ecr": 0.7746342520680561,
+      "disagree_n": 35,
+      "model_wins": 18,
+      "ecr_wins": 17,
+      "ties": 0
+     }
+    }
+   },
+   "15": {
+    "scrape": "2023-12-15",
+    "early_teams": [
+     "LAC",
+     "LV"
+    ],
+    "pos": {
+     "K": {
+      "n": 31,
+      "spearman_model": 0.15967741935483867,
+      "spearman_ecr": 0.16209677419354834,
+      "disagree_n": 8,
+      "model_wins": 3,
+      "ecr_wins": 5,
+      "ties": 0
+     },
+     "TE": {
+      "n": 93,
+      "spearman_model": 0.5962221360150398,
+      "spearman_ecr": 0.6549789621318373,
+      "disagree_n": 33,
+      "model_wins": 16,
+      "ecr_wins": 17,
+      "ties": 0
+     },
+     "QB": {
+      "n": 36,
+      "spearman_model": 0.4401544401544401,
+      "spearman_ecr": 0.557014157014157,
+      "disagree_n": 2,
+      "model_wins": 0,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "WR": {
+      "n": 170,
+      "spearman_model": 0.5483955276286783,
+      "spearman_ecr": 0.6473641465306146,
+      "disagree_n": 76,
+      "model_wins": 31,
+      "ecr_wins": 45,
+      "ties": 0
+     },
+     "RB": {
+      "n": 94,
+      "spearman_model": 0.5323483726474731,
+      "spearman_ecr": 0.6905104215583572,
+      "disagree_n": 32,
+      "model_wins": 13,
+      "ecr_wins": 19,
+      "ties": 0
+     }
+    }
+   },
+   "16": {
+    "scrape": "2023-12-22",
+    "early_teams": [
+     "LA",
+     "NO"
+    ],
+    "pos": {
+     "K": {
+      "n": 31,
+      "spearman_model": 0.014516129032258063,
+      "spearman_ecr": 0.18588709677419352,
+      "disagree_n": 2,
+      "model_wins": 0,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "TE": {
+      "n": 90,
+      "spearman_model": 0.5359756348520393,
+      "spearman_ecr": 0.6184384903486027,
+      "disagree_n": 23,
+      "model_wins": 12,
+      "ecr_wins": 11,
+      "ties": 0
+     },
+     "QB": {
+      "n": 41,
+      "spearman_model": 0.45522648083623696,
+      "spearman_ecr": 0.7101045296167248,
+      "disagree_n": 5,
+      "model_wins": 1,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "WR": {
+      "n": 161,
+      "spearman_model": 0.5263745111571199,
+      "spearman_ecr": 0.5794110881067402,
+      "disagree_n": 68,
+      "model_wins": 31,
+      "ecr_wins": 36,
+      "ties": 1
+     },
+     "RB": {
+      "n": 100,
+      "spearman_model": 0.5838463846384638,
+      "spearman_ecr": 0.7555235523552355,
+      "disagree_n": 36,
+      "model_wins": 16,
+      "ecr_wins": 20,
+      "ties": 0
+     }
+    }
+   },
+   "17": {
+    "scrape": "2023-12-29",
+    "early_teams": [
+     "CLE",
+     "NYJ"
+    ],
+    "pos": {
+     "K": {
+      "n": 32,
+      "spearman_model": 0.23387096774193547,
+      "spearman_ecr": 0.4215542521994135,
+      "disagree_n": 4,
+      "model_wins": 2,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "TE": {
+      "n": 88,
+      "spearman_model": 0.5118347363601141,
+      "spearman_ecr": 0.6847240322637456,
+      "disagree_n": 29,
+      "model_wins": 12,
+      "ecr_wins": 17,
+      "ties": 0
+     },
+     "QB": {
+      "n": 38,
+      "spearman_model": 0.5384615384615384,
+      "spearman_ecr": 0.727541306488675,
+      "disagree_n": 5,
+      "model_wins": 2,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "WR": {
+      "n": 160,
+      "spearman_model": 0.6114848236259229,
+      "spearman_ecr": 0.6929362475096683,
+      "disagree_n": 66,
+      "model_wins": 25,
+      "ecr_wins": 41,
+      "ties": 0
+     },
+     "RB": {
+      "n": 99,
+      "spearman_model": 0.6082745825602968,
+      "spearman_ecr": 0.6776252319109461,
+      "disagree_n": 37,
+      "model_wins": 19,
+      "ecr_wins": 18,
+      "ties": 0
+     }
+    }
+   },
+   "18": {
+    "scrape": "2023-12-29",
+    "early_teams": [],
+    "pos": {
+     "K": {
+      "n": 33,
+      "spearman_model": 0.2406417112299465,
+      "spearman_ecr": 0.02640374331550802,
+      "disagree_n": 4,
+      "model_wins": 4,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "TE": {
+      "n": 94,
+      "spearman_model": 0.43247480403135496,
+      "spearman_ecr": 0.49001192067333743,
+      "disagree_n": 30,
+      "model_wins": 9,
+      "ecr_wins": 20,
+      "ties": 1
+     },
+     "QB": {
+      "n": 41,
+      "spearman_model": 0.36742160278745645,
+      "spearman_ecr": 0.295993031358885,
+      "disagree_n": 5,
+      "model_wins": 2,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "WR": {
+      "n": 171,
+      "spearman_model": 0.31206950344397244,
+      "spearman_ecr": 0.3178990568075456,
+      "disagree_n": 78,
+      "model_wins": 40,
+      "ecr_wins": 37,
+      "ties": 1
+     },
+     "RB": {
+      "n": 107,
+      "spearman_model": 0.5058386723877818,
+      "spearman_ecr": 0.5545759125374712,
+      "disagree_n": 46,
+      "model_wins": 19,
+      "ecr_wins": 27,
+      "ties": 0
+     }
+    }
+   }
+  },
+  "summary": {
+   "K": {
+    "weeks": 15,
+    "n": 422,
+    "spearman_model_mean": 0.0654,
+    "spearman_ecr_mean": 0.1111,
+    "disagree_n": 75,
+    "model_wins": 38,
+    "ecr_wins": 36,
+    "ties": 1
+   },
+   "QB": {
+    "weeks": 15,
+    "n": 527,
+    "spearman_model_mean": 0.552,
+    "spearman_ecr_mean": 0.6288,
+    "disagree_n": 42,
+    "model_wins": 21,
+    "ecr_wins": 21,
+    "ties": 0
+   },
+   "RB": {
+    "weeks": 15,
+    "n": 1390,
+    "spearman_model_mean": 0.6236,
+    "spearman_ecr_mean": 0.7393,
+    "disagree_n": 510,
+    "model_wins": 252,
+    "ecr_wins": 254,
+    "ties": 4
+   },
+   "TE": {
+    "weeks": 15,
+    "n": 1233,
+    "spearman_model_mean": 0.5618,
+    "spearman_ecr_mean": 0.6308,
+    "disagree_n": 404,
+    "model_wins": 210,
+    "ecr_wins": 190,
+    "ties": 4
+   },
+   "WR": {
+    "weeks": 15,
+    "n": 2248,
+    "spearman_model_mean": 0.5936,
+    "spearman_ecr_mean": 0.6612,
+    "disagree_n": 1020,
+    "model_wins": 485,
+    "ecr_wins": 529,
+    "ties": 6
+   }
+  },
+  "threshold_sweep": {
+   "QB/T6": {
+    "mw": 195,
+    "ew": 235
+   },
+   "QB/T8": {
+    "mw": 179,
+    "ew": 221
+   },
+   "QB/T10": {
+    "mw": 159,
+    "ew": 209
+   },
+   "QB/T12": {
+    "mw": 156,
+    "ew": 199
+   },
+   "RB/T6": {
+    "mw": 597,
+    "ew": 729
+   },
+   "RB/T8": {
+    "mw": 560,
+    "ew": 690
+   },
+   "RB/T10": {
+    "mw": 535,
+    "ew": 670
+   },
+   "RB/T12": {
+    "mw": 513,
+    "ew": 641
+   },
+   "TE/T6": {
+    "mw": 656,
+    "ew": 496
+   },
+   "TE/T8": {
+    "mw": 640,
+    "ew": 461
+   },
+   "TE/T10": {
+    "mw": 609,
+    "ew": 436
+   },
+   "TE/T12": {
+    "mw": 583,
+    "ew": 411
+   },
+   "WR/T6": {
+    "mw": 991,
+    "ew": 1056
+   },
+   "WR/T8": {
+    "mw": 941,
+    "ew": 996
+   },
+   "WR/T10": {
+    "mw": 905,
+    "ew": 952
+   },
+   "WR/T12": {
+    "mw": 853,
+    "ew": 902
+   }
+  },
+  "recommended_thresholds": {
+   "QB": 12,
+   "RB": 12,
+   "TE": 12,
+   "WR": 12
+  }
+ },
+ "cal_2024": {
+  "weeks": {
+   "4": {
+    "scrape": "2024-09-27",
+    "early_teams": [
+     "DAL",
+     "NYG"
+    ],
+    "pos": {
+     "QB": {
+      "n": 37,
+      "spearman_model": 0.6932195353247985,
+      "spearman_ecr": 0.7285443338074916,
+      "disagree_n": 2,
+      "model_wins": 1,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "K": {
+      "n": 29,
+      "spearman_model": -0.17536945812807883,
+      "spearman_ecr": -0.241871921182266,
+      "disagree_n": 6,
+      "model_wins": 2,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "TE": {
+      "n": 86,
+      "spearman_model": 0.45193641209491014,
+      "spearman_ecr": 0.5001273644983254,
+      "disagree_n": 37,
+      "model_wins": 23,
+      "ecr_wins": 13,
+      "ties": 1
+     },
+     "WR": {
+      "n": 148,
+      "spearman_model": 0.5855991589452758,
+      "spearman_ecr": 0.6847636569592465,
+      "disagree_n": 86,
+      "model_wins": 43,
+      "ecr_wins": 43,
+      "ties": 0
+     },
+     "RB": {
+      "n": 96,
+      "spearman_model": 0.7268583830710799,
+      "spearman_ecr": 0.7737614411379311,
+      "disagree_n": 38,
+      "model_wins": 21,
+      "ecr_wins": 17,
+      "ties": 0
+     }
+    }
+   },
+   "5": {
+    "scrape": "2024-10-04",
+    "early_teams": [
+     "ATL",
+     "TB"
+    ],
+    "pos": {
+     "QB": {
+      "n": 32,
+      "spearman_model": 0.5520527859237536,
+      "spearman_ecr": 0.5520527859237536,
+      "disagree_n": 3,
+      "model_wins": 1,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "K": {
+      "n": 25,
+      "spearman_model": -0.02461538461538462,
+      "spearman_ecr": 0.3015384615384616,
+      "disagree_n": 4,
+      "model_wins": 1,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "TE": {
+      "n": 75,
+      "spearman_model": 0.4834139402560455,
+      "spearman_ecr": 0.6104978662873399,
+      "disagree_n": 25,
+      "model_wins": 11,
+      "ecr_wins": 13,
+      "ties": 1
+     },
+     "WR": {
+      "n": 139,
+      "spearman_model": 0.5839760489744851,
+      "spearman_ecr": 0.6996343666325098,
+      "disagree_n": 63,
+      "model_wins": 32,
+      "ecr_wins": 31,
+      "ties": 0
+     },
+     "RB": {
+      "n": 89,
+      "spearman_model": 0.581886278515492,
+      "spearman_ecr": 0.7301018475629947,
+      "disagree_n": 32,
+      "model_wins": 16,
+      "ecr_wins": 16,
+      "ties": 0
+     }
+    }
+   },
+   "6": {
+    "scrape": "2024-10-11",
+    "early_teams": [
+     "SEA",
+     "SF"
+    ],
+    "pos": {
+     "QB": {
+      "n": 33,
+      "spearman_model": 0.5601604278074866,
+      "spearman_ecr": 0.5975935828877005,
+      "disagree_n": 3,
+      "model_wins": 1,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "K": {
+      "n": 26,
+      "spearman_model": 0.1753846153846154,
+      "spearman_ecr": 0.5398290598290598,
+      "disagree_n": 4,
+      "model_wins": 0,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "TE": {
+      "n": 76,
+      "spearman_model": 0.5112508544087492,
+      "spearman_ecr": 0.6084757347915243,
+      "disagree_n": 23,
+      "model_wins": 12,
+      "ecr_wins": 10,
+      "ties": 1
+     },
+     "WR": {
+      "n": 133,
+      "spearman_model": 0.5761316452596893,
+      "spearman_ecr": 0.5919139776170413,
+      "disagree_n": 67,
+      "model_wins": 31,
+      "ecr_wins": 36,
+      "ties": 0
+     },
+     "RB": {
+      "n": 82,
+      "spearman_model": 0.43457298026795527,
+      "spearman_ecr": 0.5131746498187874,
+      "disagree_n": 22,
+      "model_wins": 14,
+      "ecr_wins": 8,
+      "ties": 0
+     }
+    }
+   },
+   "7": {
+    "scrape": "2024-10-18",
+    "early_teams": [
+     "DEN",
+     "NO"
+    ],
+    "pos": {
+     "QB": {
+      "n": 36,
+      "spearman_model": 0.5495495495495495,
+      "spearman_ecr": 0.7693693693693693,
+      "disagree_n": 3,
+      "model_wins": 0,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "K": {
+      "n": 28,
+      "spearman_model": 0.34373289545703345,
+      "spearman_ecr": 0.27203065134099624,
+      "disagree_n": 6,
+      "model_wins": 4,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "TE": {
+      "n": 83,
+      "spearman_model": 0.5653415053944,
+      "spearman_ecr": 0.6624407035808741,
+      "disagree_n": 26,
+      "model_wins": 14,
+      "ecr_wins": 12,
+      "ties": 0
+     },
+     "WR": {
+      "n": 146,
+      "spearman_model": 0.5406129197073255,
+      "spearman_ecr": 0.543719494972436,
+      "disagree_n": 64,
+      "model_wins": 40,
+      "ecr_wins": 23,
+      "ties": 1
+     },
+     "RB": {
+      "n": 93,
+      "spearman_model": 0.6967115275581152,
+      "spearman_ecr": 0.8241354485728031,
+      "disagree_n": 36,
+      "model_wins": 17,
+      "ecr_wins": 18,
+      "ties": 1
+     }
+    }
+   },
+   "8": {
+    "scrape": "2024-10-25",
+    "early_teams": [
+     "LA",
+     "MIN"
+    ],
+    "pos": {
+     "QB": {
+      "n": 39,
+      "spearman_model": 0.3558704453441296,
+      "spearman_ecr": 0.5688259109311742,
+      "disagree_n": 7,
+      "model_wins": 2,
+      "ecr_wins": 5,
+      "ties": 0
+     },
+     "TE": {
+      "n": 91,
+      "spearman_model": 0.6819397993311036,
+      "spearman_ecr": 0.7810001592610287,
+      "disagree_n": 29,
+      "model_wins": 11,
+      "ecr_wins": 18,
+      "ties": 0
+     },
+     "K": {
+      "n": 31,
+      "spearman_model": -0.028225806451612902,
+      "spearman_ecr": 0.0596774193548387,
+      "disagree_n": 4,
+      "model_wins": 2,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "WR": {
+      "n": 154,
+      "spearman_model": 0.5976276727699878,
+      "spearman_ecr": 0.6820232813553492,
+      "disagree_n": 74,
+      "model_wins": 40,
+      "ecr_wins": 34,
+      "ties": 0
+     },
+     "RB": {
+      "n": 100,
+      "spearman_model": 0.7439063906390639,
+      "spearman_ecr": 0.8227807464205842,
+      "disagree_n": 27,
+      "model_wins": 15,
+      "ecr_wins": 12,
+      "ties": 0
+     }
+    }
+   },
+   "9": {
+    "scrape": "2024-11-01",
+    "early_teams": [
+     "HOU",
+     "NYJ"
+    ],
+    "pos": {
+     "TE": {
+      "n": 84,
+      "spearman_model": 0.5057608585602916,
+      "spearman_ecr": 0.5387668320340184,
+      "disagree_n": 22,
+      "model_wins": 15,
+      "ecr_wins": 7,
+      "ties": 0
+     },
+     "K": {
+      "n": 28,
+      "spearman_model": -0.28461959496442263,
+      "spearman_ecr": 0.14668856048166395,
+      "disagree_n": 6,
+      "model_wins": 1,
+      "ecr_wins": 5,
+      "ties": 0
+     },
+     "QB": {
+      "n": 36,
+      "spearman_model": 0.6499356499356499,
+      "spearman_ecr": 0.7583011583011582,
+      "disagree_n": 2,
+      "model_wins": 0,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "WR": {
+      "n": 142,
+      "spearman_model": 0.5715635877457874,
+      "spearman_ecr": 0.6280531569680549,
+      "disagree_n": 71,
+      "model_wins": 39,
+      "ecr_wins": 32,
+      "ties": 0
+     },
+     "RB": {
+      "n": 93,
+      "spearman_model": 0.7432037241502789,
+      "spearman_ecr": 0.7422189728745784,
+      "disagree_n": 18,
+      "model_wins": 14,
+      "ecr_wins": 4,
+      "ties": 0
+     }
+    }
+   },
+   "10": {
+    "scrape": "2024-11-08",
+    "early_teams": [
+     "BAL",
+     "CIN"
+    ],
+    "pos": {
+     "QB": {
+      "n": 34,
+      "spearman_model": 0.5202444614209321,
+      "spearman_ecr": 0.5272727272727273,
+      "disagree_n": 2,
+      "model_wins": 2,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "TE": {
+      "n": 82,
+      "spearman_model": 0.6862028058031584,
+      "spearman_ecr": 0.7832413665502117,
+      "disagree_n": 20,
+      "model_wins": 9,
+      "ecr_wins": 10,
+      "ties": 1
+     },
+     "K": {
+      "n": 26,
+      "spearman_model": -0.19247863247863248,
+      "spearman_ecr": 0.2923076923076923,
+      "disagree_n": 4,
+      "model_wins": 1,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "WR": {
+      "n": 142,
+      "spearman_model": 0.5434532503756359,
+      "spearman_ecr": 0.6719594460079927,
+      "disagree_n": 73,
+      "model_wins": 35,
+      "ecr_wins": 38,
+      "ties": 0
+     },
+     "RB": {
+      "n": 85,
+      "spearman_model": 0.7132694938440493,
+      "spearman_ecr": 0.7663083838186437,
+      "disagree_n": 26,
+      "model_wins": 17,
+      "ecr_wins": 9,
+      "ties": 0
+     }
+    }
+   },
+   "11": {
+    "scrape": "2024-11-15",
+    "early_teams": [
+     "PHI",
+     "WAS"
+    ],
+    "pos": {
+     "QB": {
+      "n": 34,
+      "spearman_model": 0.32223071046600466,
+      "spearman_ecr": 0.6803666921313981,
+      "disagree_n": 3,
+      "model_wins": 0,
+      "ecr_wins": 3,
+      "ties": 0
+     },
+     "TE": {
+      "n": 80,
+      "spearman_model": 0.4048757618377872,
+      "spearman_ecr": 0.4,
+      "disagree_n": 22,
+      "model_wins": 11,
+      "ecr_wins": 11,
+      "ties": 0
+     },
+     "K": {
+      "n": 25,
+      "spearman_model": 0.14153846153846156,
+      "spearman_ecr": 0.036923076923076927,
+      "disagree_n": 3,
+      "model_wins": 1,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "WR": {
+      "n": 136,
+      "spearman_model": 0.7118887457659462,
+      "spearman_ecr": 0.7495667544096195,
+      "disagree_n": 63,
+      "model_wins": 37,
+      "ecr_wins": 26,
+      "ties": 0
+     },
+     "RB": {
+      "n": 88,
+      "spearman_model": 0.7398471346553485,
+      "spearman_ecr": 0.80126977418697,
+      "disagree_n": 28,
+      "model_wins": 14,
+      "ecr_wins": 14,
+      "ties": 0
+     }
+    }
+   },
+   "12": {
+    "scrape": "2024-11-22",
+    "early_teams": [
+     "CLE",
+     "PIT"
+    ],
+    "pos": {
+     "TE": {
+      "n": 71,
+      "spearman_model": 0.6051643192488264,
+      "spearman_ecr": 0.6949362843729042,
+      "disagree_n": 18,
+      "model_wins": 9,
+      "ecr_wins": 9,
+      "ties": 0
+     },
+     "K": {
+      "n": 24,
+      "spearman_model": 0.028695652173913046,
+      "spearman_ecr": 0.1547826086956522,
+      "disagree_n": 1,
+      "model_wins": 0,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "QB": {
+      "n": 33,
+      "spearman_model": 0.47660427807486627,
+      "spearman_ecr": 0.5902406417112299,
+      "disagree_n": 2,
+      "model_wins": 2,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "WR": {
+      "n": 128,
+      "spearman_model": 0.6906358725508149,
+      "spearman_ecr": 0.7251257855794273,
+      "disagree_n": 39,
+      "model_wins": 24,
+      "ecr_wins": 15,
+      "ties": 0
+     },
+     "RB": {
+      "n": 86,
+      "spearman_model": 0.7376857398933911,
+      "spearman_ecr": 0.812859097127223,
+      "disagree_n": 26,
+      "model_wins": 15,
+      "ecr_wins": 10,
+      "ties": 1
+     }
+    }
+   },
+   "13": {
+    "scrape": "2024-11-29",
+    "early_teams": [
+     "CHI",
+     "DAL",
+     "DET",
+     "GB",
+     "MIA",
+     "NYG"
+    ],
+    "pos": {
+     "QB": {
+      "n": 31,
+      "spearman_model": 0.2330645161290322,
+      "spearman_ecr": 0.42580645161290315,
+      "disagree_n": 3,
+      "model_wins": 1,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "K": {
+      "n": 26,
+      "spearman_model": 0.03452991452991453,
+      "spearman_ecr": 0.5411965811965812,
+      "disagree_n": 5,
+      "model_wins": 1,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "WR": {
+      "n": 139,
+      "spearman_model": 0.6660887439117029,
+      "spearman_ecr": 0.7594628440315344,
+      "disagree_n": 78,
+      "model_wins": 52,
+      "ecr_wins": 26,
+      "ties": 0
+     },
+     "TE": {
+      "n": 80,
+      "spearman_model": 0.6063525550867322,
+      "spearman_ecr": 0.7085091420534458,
+      "disagree_n": 27,
+      "model_wins": 17,
+      "ecr_wins": 9,
+      "ties": 1
+     },
+     "RB": {
+      "n": 88,
+      "spearman_model": 0.717639392765313,
+      "spearman_ecr": 0.7504666971927724,
+      "disagree_n": 45,
+      "model_wins": 31,
+      "ecr_wins": 14,
+      "ties": 0
+     }
+    }
+   },
+   "14": {
+    "scrape": "2024-12-06",
+    "early_teams": [
+     "DET",
+     "GB"
+    ],
+    "pos": {
+     "QB": {
+      "n": 32,
+      "spearman_model": 0.8596041055718475,
+      "spearman_ecr": 0.8669354838709677,
+      "disagree_n": 0,
+      "model_wins": 0,
+      "ecr_wins": 0,
+      "ties": 0
+     },
+     "TE": {
+      "n": 74,
+      "spearman_model": 0.5559570529433544,
+      "spearman_ecr": 0.7148907811921511,
+      "disagree_n": 24,
+      "model_wins": 12,
+      "ecr_wins": 11,
+      "ties": 1
+     },
+     "K": {
+      "n": 26,
+      "spearman_model": 0.20957264957264957,
+      "spearman_ecr": 0.23897435897435895,
+      "disagree_n": 3,
+      "model_wins": 2,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "WR": {
+      "n": 132,
+      "spearman_model": 0.6979019373555331,
+      "spearman_ecr": 0.7287702253551991,
+      "disagree_n": 47,
+      "model_wins": 27,
+      "ecr_wins": 20,
+      "ties": 0
+     },
+     "RB": {
+      "n": 79,
+      "spearman_model": 0.5583252190847128,
+      "spearman_ecr": 0.6355929624811132,
+      "disagree_n": 19,
+      "model_wins": 11,
+      "ecr_wins": 8,
+      "ties": 0
+     }
+    }
+   },
+   "15": {
+    "scrape": "2024-12-13",
+    "early_teams": [
+     "LA",
+     "SF"
+    ],
+    "pos": {
+     "QB": {
+      "n": 36,
+      "spearman_model": 0.6056628056628056,
+      "spearman_ecr": 0.6293436293436293,
+      "disagree_n": 2,
+      "model_wins": 0,
+      "ecr_wins": 2,
+      "ties": 0
+     },
+     "TE": {
+      "n": 92,
+      "spearman_model": 0.5903857713114374,
+      "spearman_ecr": 0.6729805958417459,
+      "disagree_n": 30,
+      "model_wins": 15,
+      "ecr_wins": 15,
+      "ties": 0
+     },
+     "K": {
+      "n": 33,
+      "spearman_model": 0.09826203208556149,
+      "spearman_ecr": 0.4197860962566845,
+      "disagree_n": 8,
+      "model_wins": 0,
+      "ecr_wins": 8,
+      "ties": 0
+     },
+     "WR": {
+      "n": 161,
+      "spearman_model": 0.7055699332873246,
+      "spearman_ecr": 0.7606999079825166,
+      "disagree_n": 64,
+      "model_wins": 31,
+      "ecr_wins": 32,
+      "ties": 1
+     },
+     "RB": {
+      "n": 103,
+      "spearman_model": 0.7741071036330887,
+      "spearman_ecr": 0.7839772437132626,
+      "disagree_n": 40,
+      "model_wins": 22,
+      "ecr_wins": 18,
+      "ties": 0
+     }
+    }
+   },
+   "16": {
+    "scrape": "2024-12-20",
+    "early_teams": [
+     "DEN",
+     "LAC"
+    ],
+    "pos": {
+     "QB": {
+      "n": 38,
+      "spearman_model": 0.5518109202319729,
+      "spearman_ecr": 0.6566363934784988,
+      "disagree_n": 3,
+      "model_wins": 0,
+      "ecr_wins": 2,
+      "ties": 1
+     },
+     "K": {
+      "n": 33,
+      "spearman_model": 0.320855614973262,
+      "spearman_ecr": 0.7195855614973262,
+      "disagree_n": 7,
+      "model_wins": 0,
+      "ecr_wins": 7,
+      "ties": 0
+     },
+     "TE": {
+      "n": 88,
+      "spearman_model": 0.5825085414391885,
+      "spearman_ecr": 0.5843401077806347,
+      "disagree_n": 35,
+      "model_wins": 22,
+      "ecr_wins": 12,
+      "ties": 1
+     },
+     "WR": {
+      "n": 155,
+      "spearman_model": 0.7112629306177694,
+      "spearman_ecr": 0.807347491218459,
+      "disagree_n": 52,
+      "model_wins": 20,
+      "ecr_wins": 32,
+      "ties": 0
+     },
+     "RB": {
+      "n": 96,
+      "spearman_model": 0.7321215409658168,
+      "spearman_ecr": 0.7901790558871407,
+      "disagree_n": 32,
+      "model_wins": 17,
+      "ecr_wins": 15,
+      "ties": 0
+     }
+    }
+   },
+   "17": {
+    "scrape": "2024-12-27",
+    "early_teams": [
+     "BAL",
+     "CHI",
+     "HOU",
+     "KC",
+     "PIT",
+     "SEA"
+    ],
+    "pos": {
+     "QB": {
+      "n": 34,
+      "spearman_model": 0.46890756302521014,
+      "spearman_ecr": 0.5303284950343775,
+      "disagree_n": 5,
+      "model_wins": 4,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "K": {
+      "n": 27,
+      "spearman_model": 0.17277167277167277,
+      "spearman_ecr": 0.5054945054945056,
+      "disagree_n": 7,
+      "model_wins": 2,
+      "ecr_wins": 5,
+      "ties": 0
+     },
+     "WR": {
+      "n": 141,
+      "spearman_model": 0.6989939637826962,
+      "spearman_ecr": 0.7372704310972216,
+      "disagree_n": 71,
+      "model_wins": 48,
+      "ecr_wins": 23,
+      "ties": 0
+     },
+     "TE": {
+      "n": 84,
+      "spearman_model": 0.6117242077553914,
+      "spearman_ecr": 0.6530120481927711,
+      "disagree_n": 38,
+      "model_wins": 24,
+      "ecr_wins": 13,
+      "ties": 1
+     },
+     "RB": {
+      "n": 83,
+      "spearman_model": 0.6419755677763319,
+      "spearman_ecr": 0.6501616220981488,
+      "disagree_n": 37,
+      "model_wins": 27,
+      "ecr_wins": 9,
+      "ties": 1
+     }
+    }
+   },
+   "18": {
+    "scrape": "2024-12-27",
+    "early_teams": [],
+    "pos": {
+     "QB": {
+      "n": 42,
+      "spearman_model": 0.27266834130135326,
+      "spearman_ecr": 0.1966615347216595,
+      "disagree_n": 5,
+      "model_wins": 4,
+      "ecr_wins": 1,
+      "ties": 0
+     },
+     "TE": {
+      "n": 103,
+      "spearman_model": 0.5201643017176997,
+      "spearman_ecr": 0.47778192681105297,
+      "disagree_n": 27,
+      "model_wins": 16,
+      "ecr_wins": 11,
+      "ties": 0
+     },
+     "K": {
+      "n": 33,
+      "spearman_model": -0.004344919786096257,
+      "spearman_ecr": 0.07921122994652406,
+      "disagree_n": 5,
+      "model_wins": 1,
+      "ecr_wins": 4,
+      "ties": 0
+     },
+     "WR": {
+      "n": 169,
+      "spearman_model": 0.4766669981602108,
+      "spearman_ecr": 0.4455720749838397,
+      "disagree_n": 64,
+      "model_wins": 29,
+      "ecr_wins": 34,
+      "ties": 1
+     },
+     "RB": {
+      "n": 105,
+      "spearman_model": 0.35045614762595895,
+      "spearman_ecr": 0.35873937383371346,
+      "disagree_n": 33,
+      "model_wins": 18,
+      "ecr_wins": 15,
+      "ties": 0
+     }
+    }
+   }
+  },
+  "summary": {
+   "K": {
+    "weeks": 15,
+    "n": 420,
+    "spearman_model_mean": 0.0544,
+    "spearman_ecr_mean": 0.2711,
+    "disagree_n": 73,
+    "model_wins": 18,
+    "ecr_wins": 55,
+    "ties": 0
+   },
+   "QB": {
+    "weeks": 15,
+    "n": 527,
+    "spearman_model_mean": 0.5114,
+    "spearman_ecr_mean": 0.6052,
+    "disagree_n": 45,
+    "model_wins": 18,
+    "ecr_wins": 26,
+    "ties": 1
+   },
+   "RB": {
+    "weeks": 15,
+    "n": 1366,
+    "spearman_model_mean": 0.6595,
+    "spearman_ecr_mean": 0.717,
+    "disagree_n": 459,
+    "model_wins": 269,
+    "ecr_wins": 187,
+    "ties": 3
+   },
+   "TE": {
+    "weeks": 15,
+    "n": 1249,
+    "spearman_model_mean": 0.5575,
+    "spearman_ecr_mean": 0.6261,
+    "disagree_n": 403,
+    "model_wins": 221,
+    "ecr_wins": 174,
+    "ties": 8
+   },
+   "WR": {
+    "weeks": 15,
+    "n": 2165,
+    "spearman_model_mean": 0.6239,
+    "spearman_ecr_mean": 0.6811,
+    "disagree_n": 976,
+    "model_wins": 528,
+    "ecr_wins": 445,
+    "ties": 3
+   }
+  },
+  "threshold_sweep": {
+   "QB/T6": {
+    "mw": 235,
+    "ew": 370
+   },
+   "QB/T8": {
+    "mw": 218,
+    "ew": 343
+   },
+   "QB/T10": {
+    "mw": 200,
+    "ew": 329
+   },
+   "QB/T12": {
+    "mw": 182,
+    "ew": 311
+   },
+   "RB/T6": {
+    "mw": 556,
+    "ew": 633
+   },
+   "RB/T8": {
+    "mw": 532,
+    "ew": 614
+   },
+   "RB/T10": {
+    "mw": 506,
+    "ew": 574
+   },
+   "RB/T12": {
+    "mw": 470,
+    "ew": 544
+   },
+   "TE/T6": {
+    "mw": 689,
+    "ew": 453
+   },
+   "TE/T8": {
+    "mw": 663,
+    "ew": 436
+   },
+   "TE/T10": {
+    "mw": 644,
+    "ew": 417
+   },
+   "TE/T12": {
+    "mw": 626,
+    "ew": 394
+   },
+   "WR/T6": {
+    "mw": 1024,
+    "ew": 949
+   },
+   "WR/T8": {
+    "mw": 981,
+    "ew": 905
+   },
+   "WR/T10": {
+    "mw": 941,
+    "ew": 857
+   },
+   "WR/T12": {
+    "mw": 889,
+    "ew": 809
+   }
+  },
+  "recommended_thresholds": {
+   "QB": 12,
+   "RB": 12,
+   "TE": 12,
+   "WR": 12
+  }
+ },
  "cal_2025": {
   "weeks": {
    "4": {
@@ -145,12 +4642,12 @@
       "ties": 0
      },
      "WR": {
-      "n": 147,
-      "spearman_model": 0.5105176465254743,
-      "spearman_ecr": 0.612464015595131,
-      "disagree_n": 80,
+      "n": 146,
+      "spearman_model": 0.5168326376370104,
+      "spearman_ecr": 0.6196234563735745,
+      "disagree_n": 79,
       "model_wins": 39,
-      "ecr_wins": 41,
+      "ecr_wins": 40,
       "ties": 0
      },
      "RB": {
@@ -190,12 +4687,12 @@
       "ties": 0
      },
      "WR": {
-      "n": 145,
-      "spearman_model": 0.5239607935758149,
-      "spearman_ecr": 0.5949574870099198,
-      "disagree_n": 76,
+      "n": 144,
+      "spearman_model": 0.5193915280122176,
+      "spearman_ecr": 0.5915119363395225,
+      "disagree_n": 75,
       "model_wins": 44,
-      "ecr_wins": 32,
+      "ecr_wins": 31,
       "ties": 0
      },
      "TE": {
@@ -253,9 +4750,9 @@
       "ties": 1
      },
      "WR": {
-      "n": 127,
-      "spearman_model": 0.4192971972253468,
-      "spearman_ecr": 0.5691847112860893,
+      "n": 126,
+      "spearman_model": 0.41797075365579306,
+      "spearman_ecr": 0.5689058867641545,
       "disagree_n": 65,
       "model_wins": 33,
       "ecr_wins": 32,
@@ -352,13 +4849,13 @@
       "ties": 0
      },
      "WR": {
-      "n": 150,
-      "spearman_model": 0.578367038535046,
-      "spearman_ecr": 0.6958442597448776,
-      "disagree_n": 68,
-      "model_wins": 28,
+      "n": 149,
+      "spearman_model": 0.5734663522582986,
+      "spearman_ecr": 0.6940504262651912,
+      "disagree_n": 69,
+      "model_wins": 30,
       "ecr_wins": 39,
-      "ties": 1
+      "ties": 0
      },
      "TE": {
       "n": 78,
@@ -406,13 +4903,13 @@
       "ties": 0
      },
      "WR": {
-      "n": 150,
-      "spearman_model": 0.633146362060536,
-      "spearman_ecr": 0.7060847148762166,
+      "n": 149,
+      "spearman_model": 0.6276002176673317,
+      "spearman_ecr": 0.7030763649555596,
       "disagree_n": 76,
       "model_wins": 40,
-      "ecr_wins": 36,
-      "ties": 0
+      "ecr_wins": 35,
+      "ties": 1
      },
      "TE": {
       "n": 86,
@@ -460,11 +4957,11 @@
       "ties": 0
      },
      "WR": {
-      "n": 137,
-      "spearman_model": 0.5456297720611569,
-      "spearman_ecr": 0.6717335299718109,
-      "disagree_n": 66,
-      "model_wins": 28,
+      "n": 136,
+      "spearman_model": 0.5381852010877344,
+      "spearman_ecr": 0.6671771384953008,
+      "disagree_n": 67,
+      "model_wins": 29,
       "ecr_wins": 38,
       "ties": 0
      },
@@ -518,13 +5015,13 @@
       "ties": 0
      },
      "WR": {
-      "n": 142,
-      "spearman_model": 0.6763476260030051,
-      "spearman_ecr": 0.7137624137923809,
+      "n": 141,
+      "spearman_model": 0.6816772978295303,
+      "spearman_ecr": 0.7162292906374417,
       "disagree_n": 93,
-      "model_wins": 59,
+      "model_wins": 60,
       "ecr_wins": 33,
-      "ties": 1
+      "ties": 0
      },
      "TE": {
       "n": 85,
@@ -572,12 +5069,12 @@
       "ties": 0
      },
      "WR": {
-      "n": 145,
-      "spearman_model": 0.572173673437254,
-      "spearman_ecr": 0.6402889308770273,
-      "disagree_n": 67,
+      "n": 144,
+      "spearman_model": 0.5790330359295875,
+      "spearman_ecr": 0.6439273370307852,
+      "disagree_n": 66,
       "model_wins": 35,
-      "ecr_wins": 32,
+      "ecr_wins": 31,
       "ties": 0
      },
      "TE": {
@@ -626,12 +5123,12 @@
       "ties": 0
      },
      "WR": {
-      "n": 169,
-      "spearman_model": 0.6511038735020636,
-      "spearman_ecr": 0.7155188702700015,
-      "disagree_n": 82,
+      "n": 168,
+      "spearman_model": 0.6535753514104504,
+      "spearman_ecr": 0.7154726894478161,
+      "disagree_n": 81,
       "model_wins": 44,
-      "ecr_wins": 37,
+      "ecr_wins": 36,
       "ties": 1
      },
      "TE": {
@@ -680,13 +5177,13 @@
       "ties": 0
      },
      "WR": {
-      "n": 165,
-      "spearman_model": 0.6597467475222398,
-      "spearman_ecr": 0.7323965484999867,
+      "n": 164,
+      "spearman_model": 0.6558350223769944,
+      "spearman_ecr": 0.7339191707589133,
       "disagree_n": 84,
       "model_wins": 39,
-      "ecr_wins": 45,
-      "ties": 0
+      "ecr_wins": 44,
+      "ties": 1
      },
      "TE": {
       "n": 97,
@@ -738,9 +5235,9 @@
       "ties": 0
      },
      "WR": {
-      "n": 140,
-      "spearman_model": 0.5225208283221447,
-      "spearman_ecr": 0.6045352168113535,
+      "n": 139,
+      "spearman_model": 0.5162160954466242,
+      "spearman_ecr": 0.6031189954868404,
       "disagree_n": 77,
       "model_wins": 51,
       "ecr_wins": 26,
@@ -789,13 +5286,13 @@
       "ties": 0
      },
      "WR": {
-      "n": 171,
-      "spearman_model": 0.3682842537259702,
-      "spearman_ecr": 0.36808265533875734,
-      "disagree_n": 79,
-      "model_wins": 39,
-      "ecr_wins": 38,
-      "ties": 2
+      "n": 170,
+      "spearman_model": 0.36004787464658855,
+      "spearman_ecr": 0.3645715402324118,
+      "disagree_n": 78,
+      "model_wins": 40,
+      "ecr_wins": 37,
+      "ties": 1
      },
      "TE": {
       "n": 103,
@@ -861,79 +5358,79 @@
    },
    "WR": {
     "weeks": 15,
-    "n": 2210,
-    "spearman_model_mean": 0.5763,
-    "spearman_ecr_mean": 0.6558,
-    "disagree_n": 1126,
-    "model_wins": 595,
-    "ecr_wins": 524,
-    "ties": 7
+    "n": 2198,
+    "spearman_model_mean": 0.5749,
+    "spearman_ecr_mean": 0.6556,
+    "disagree_n": 1123,
+    "model_wins": 600,
+    "ecr_wins": 517,
+    "ties": 6
    }
   },
   "threshold_sweep": {
    "QB/T6": {
-    "mw": 258,
-    "ew": 354
+    "mw": 259,
+    "ew": 353
    },
    "QB/T8": {
-    "mw": 239,
-    "ew": 331
+    "mw": 240,
+    "ew": 330
    },
    "QB/T10": {
-    "mw": 223,
-    "ew": 309
+    "mw": 224,
+    "ew": 308
    },
    "QB/T12": {
-    "mw": 214,
-    "ew": 287
+    "mw": 215,
+    "ew": 286
    },
    "RB/T6": {
-    "mw": 628,
+    "mw": 631,
     "ew": 606
    },
    "RB/T8": {
-    "mw": 603,
-    "ew": 584
+    "mw": 602,
+    "ew": 582
    },
    "RB/T10": {
-    "mw": 574,
+    "mw": 575,
     "ew": 544
    },
    "RB/T12": {
-    "mw": 546,
-    "ew": 517
+    "mw": 548,
+    "ew": 516
    },
    "TE/T6": {
-    "mw": 673,
-    "ew": 484
+    "mw": 678,
+    "ew": 483
    },
    "TE/T8": {
-    "mw": 648,
+    "mw": 650,
     "ew": 464
    },
    "TE/T10": {
-    "mw": 622,
-    "ew": 441
+    "mw": 625,
+    "ew": 440
    },
    "TE/T12": {
     "mw": 598,
-    "ew": 416
+    "ew": 414
    },
    "WR/T6": {
-    "mw": 1022,
-    "ew": 980
+    "mw": 1015,
+    "ew": 973
    },
    "WR/T8": {
-    "mw": 971,
-    "ew": 942
+    "mw": 967,
+    "ew": 936
    },
    "WR/T10": {
-    "mw": 928,
-    "ew": 893
+    "mw": 925,
+    "ew": 887
    },
    "WR/T12": {
-    "mw": 888,
-    "ew": 840
+    "mw": 885,
+    "ew": 835
    }
   },
   "recommended_thresholds": {
@@ -1104,19 +5601,19 @@
     "ew": 18
    },
    "WR/T6": {
-    "mw": 101,
+    "mw": 100,
     "ew": 61
    },
    "WR/T8": {
-    "mw": 97,
-    "ew": 58
-   },
-   "WR/T10": {
     "mw": 96,
     "ew": 58
    },
-   "WR/T12": {
+   "WR/T10": {
     "mw": 95,
+    "ew": 58
+   },
+   "WR/T12": {
+    "mw": 94,
     "ew": 55
    }
   },
