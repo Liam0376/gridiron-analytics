@@ -79,6 +79,23 @@ weekly point projections are premium-gated, this whole path is blocked
 and FP's edge stays research-only (interesting, unshippable) until/unless
 that changes. **This blocks Task 3 below — confirm before starting it.**
 
+## Task 0b finding: injury out-zero doesn't explain the gap
+
+Tested whether the played-vs-all-universe gap (Task 0) was really an
+out-zero artifact: does giving `stat_projector` its own production
+`is_out` handling (free, nflverse injury reports) close most of the
+distance to FP on the all-universe holdout? No — it closes 2.8% of the
+MAE gap (4.200 -> 4.178 vs FP's 3.386; paired-t stays at 41.3, from
+42.05). Only 93/18,698 rows carried an Out flag in this sample (FP's own
+projection table already mostly excludes genuinely-out players upstream,
+so the overlap is naturally small). The real gap is not about correctly
+zeroing inactive players — it survives fully intact. See
+`docs/superpowers/plans/2026-09-24-fp-market-source-plan.md` Task 0b and
+`scripts/backtest_fp_outzero.py` / `data/ml/backtest_fp_outzero_results.json`
+for the full numbers. This rules out the cheapest, most FP-independent
+explanation; the all-universe w=1.00 finding stands as the best evidence
+so far, not an artifact of missing out-zero logic.
+
 ## Design (proposed, mirrors the Sleeper market-blend pattern already live)
 
 The existing infra generalizes cleanly — market source is already just

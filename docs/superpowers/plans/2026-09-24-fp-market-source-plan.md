@@ -49,6 +49,44 @@ export exists on a free/non-premium fantasypros.com account before it starts.
     prints both forms' fit + holdout numbers, written to
     `data/ml/backtest_market_blend_results.json` under key
     `FPP_2020_2025` (existing SLP/ECR/FPP 2-season arms untouched).
+- [x] Task 0b: does stat_projector's existing out-zero rule (already free,
+  already production, `api.py:1559`) explain the all-universe gap?
+  **No — it barely moves it.** `scripts/backtest_fp_outzero.py` reruns
+  `backtest_fp_projections.py`'s exact all-universe holdout (2023-2025,
+  n=18,698, same row count confirms same universe) with `is_out=True`
+  passed into `project_player_stats` for any player-week flagged in
+  nflverse's weekly injury report (`report_status` in the mirrored
+  `_UNAVAILABLE` set — same source `backtest_snap_share.py` already uses,
+  fetched free via `nflreadpy.load_injuries`, cached
+  `data/nfl_cache/injuries_{2020..2024}.json` this run, 2025/2026 already
+  present).
+  - Only 93/18,698 rows (0.5%) were flagged Out. Root cause checked and
+    confirmed real, not a join bug: thousands of "out" designations exist
+    per season league-wide (996-1,382/season in the raw injury feed), but
+    almost none land in this specific sample — FP's own `proj_weekly`
+    table mostly doesn't project players who are actually out (the
+    common-players join already excludes them upstream), so the
+    intersection of "flagged out" AND "FP still gave them a row" is
+    naturally tiny.
+  - MAE: no-out stat 4.200 -> out-zero stat 4.178 (2.8% of the 0.814 MAE
+    gap to FP closed). Corr 0.676->0.678, pairwise 0.729->0.731. Paired-t
+    (out-zero stat AE vs FP AE) = 41.3, p<0.0001 — essentially unchanged
+    from the original t=42.05.
+  - **Verdict: the injury-handling hypothesis is rejected.** FP's edge is
+    not primarily about correctly zeroing inactive players — that
+    mechanism was already nearly irrelevant to this sample. The real gap
+    (corr 0.676 vs 0.758, MAE 4.18 vs 3.39, worst at QB: 6.93 vs 4.20)
+    survives fully intact. FP's advantage lives somewhere else — most
+    likely genuine judgment on active-but-uncertain-role players
+    (committee backfields, emerging roles, game-script calls) that a
+    trailing-box-score model structurally can't see, consistent with
+    this session's earlier ML-ablation finding (XGBoost + box features
+    couldn't find anything beyond FP's raw number either). **The
+    all-universe w=1.00 finding stands** — not an out-zero artifact.
+  - Verify: `PYTHONHASHSEED=0 .venv/bin/python scripts/backtest_fp_outzero.py`
+    prints the no-out/out-zero/FP comparison, written to
+    `data/ml/backtest_fp_outzero_results.json`. Full suite: 313 passed,
+    4 skipped.
 - [ ] Task 1 (blocked on Liam confirming CSV export access): weekly CSV
   adapter.
   - `adapters/fantasypros_weekly_projections.py`, column-index parsing
