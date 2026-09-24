@@ -2253,6 +2253,19 @@ class Handler(BaseHTTPRequestHandler):
                     return
         teams_data_map, league_leaderboard, rosters, players = build_league_analytics(conn, self._league_id, week=req_week)
         users_map = get_sleeper_users(conn, self._league_id)
+        # Power + records for the dashboard playoff race. Sleeper roster
+        # rows carry W/L/FP; weekly starter projections come from the
+        # leaderboard built in the same analytics pass (matchup-adjusted).
+        power = {}
+        for t in (league_leaderboard if isinstance(league_leaderboard, list) else []):
+            if isinstance(t, dict) and t.get("roster_id") is not None:
+                power[str(t.get("roster_id"))] = t.get("projected_weekly_starter_pts") or 0
+        try:
+            lg_row = try_fetch_one(conn, "SELECT data FROM league_settings ORDER BY season DESC LIMIT 1")
+            lg = load_json_blob(lg_row) or {}
+            lg_settings = lg.get("settings") or {}
+        except Exception:
+            lg_settings = {}
         all_teams = []
         for r in (rosters if isinstance(rosters, list) else []):
             if not isinstance(r, dict):
@@ -2272,6 +2285,11 @@ class Handler(BaseHTTPRequestHandler):
                 "avatar": u_info.get("avatar"),
                 "avatar_url": u_info.get("avatar_url"),
                 "players_count": len(r.get("players") or []),
+                "wins": r.get("wins", 0),
+                "losses": r.get("losses", 0),
+                "ties": r.get("ties", 0),
+                "fpts": r.get("fpts", 0),
+                "starter_pts": round(float(power.get(str(r_id), 0) or 0), 1),
             })
         payload = {
             "rosters": teams_data_map,
@@ -2279,6 +2297,8 @@ class Handler(BaseHTTPRequestHandler):
             "team_leaderboard": league_leaderboard,
             "leagueRosters": all_teams,
             "allTeams": all_teams,
+            "playoff_teams": lg_settings.get("playoff_teams", 6),
+            "playoff_week_start": lg_settings.get("playoff_week_start", 15),
             "meta": {"rosters": len(rosters) if isinstance(rosters, list) else 0, "players": len(players) if isinstance(players, list) else 0, "week": req_week},
         }
         last_modified = formatdate(timeval=now, localtime=False, usegmt=True)
@@ -2447,6 +2467,20 @@ class Handler(BaseHTTPRequestHandler):
         if not row:
             row = try_fetch_one(conn, "SELECT data FROM player_stats ORDER BY season DESC, rowid DESC LIMIT 1")
         players = load_json_blob(row) or []
+        # Sleeper-ID reverse index (norm name + POS) so headshots resolve.
+        # player_stats rows are GSIS-keyed with no Sleeper id.
+        sid_by_name_pos = {}
+        try:
+            for sid, sp in (get_sleeper_players_cached() or {}).items():
+                if not isinstance(sp, dict):
+                    continue
+                nm = sp.get("full_name") or f"{sp.get('first_name', '')} {sp.get('last_name', '')}".strip()
+                ps = (sp.get("position") or "").upper()
+                key = _norm_n(nm or "")
+                if key and ps:
+                    sid_by_name_pos.setdefault((key, ps), str(sid))
+        except Exception:
+            pass
         recs = []
         for p in players:
             pid = str(p.get("player_id") or p.get("id") or "")
@@ -2466,7 +2500,11 @@ class Handler(BaseHTTPRequestHandler):
             # fallback fix there never reached here. Confirmed live: waiver
             # showed raw player_id ("00-0038543") instead of a real name.
             player_name = p.get("short_name") or p.get("player_display_name") or p.get("player_name") or pid
-            recs.append({"player_id": pid, "player_name": player_name, "position": (p.get("position") or "UNK").upper(), "projected_points": round(pts,2), "improvement_over_roster": round(pts*0.8,2), "waiver_priority": 0, "replaces_player_name": None})
+            pos = (p.get("position") or "UNK").upper()
+            recs.append({"player_id": pid, "player_name": player_name, "position": pos,
+                         "team": (p.get("team") or p.get("recent_team") or "").upper() or None,
+                         "sleeper_id": sid_by_name_pos.get((_norm_n(player_name), pos)),
+                         "projected_points": round(pts,2), "improvement_over_roster": round(pts*0.8,2), "waiver_priority": 0, "replaces_player_name": None})
         recs.sort(key=lambda x: x["improvement_over_roster"], reverse=True)
         for i, r in enumerate(recs[:50]): r["waiver_priority"] = i+1
         self.json({"recommendations": recs[:50], "meta": {"source": "db:free_agents"}})

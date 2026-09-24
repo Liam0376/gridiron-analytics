@@ -81,14 +81,17 @@ export async function renderDashboard(root) {
           ${leagueTeams.length ? leagueTeams.map((t, i) => {
             const pct = Math.round((odds[i] ?? 0) * 100);
             const cls = pct >= 70 ? 'var(--emerald)' : pct >= 35 ? 'var(--amber-strong)' : 'var(--text-faint)';
+            // why dash, not 0–0: a missing record is unknown, not winless.
+            const record = (t.wins == null && t.losses == null) ? '–' : `${t.wins ?? 0}–${t.losses ?? 0}${t.ties ? `–${t.ties}` : ''}`;
             return `
             ${i === cutLine ? `<div class="cut-line"><span>playoff cut</span></div>` : ''}
-            <div class="stand-row">
+            <div class="stand-row" title="Projected ${Number(t.starter_pts ?? 0).toFixed(1)} pts this week">
               <span class="mono faint" style="width:16px">${i + 1}</span>
               ${userAvatar(t, 24)}
               <span class="stand-name">${escapeHtml(t.team_name || t.display_name || `Team ${t.roster_id}`)}</span>
               <span class="spacer"></span>
-              <span class="mono" style="font-weight:700">${t.wins ?? 0}–${t.losses ?? 0}${t.ties ? `–${t.ties}` : ''}</span>
+              <span class="mono" style="font-weight:700">${record}</span>
+              <span class="mono faint" style="font-size:11px">${Number(t.starter_pts ?? 0).toFixed(0)}/wk</span>
               <span class="odds mono" style="color:${cls}; width:38px; text-align:right">${pct}%</span>
               <span class="odds-bar"><span style="width:${pct}%; background:${cls}"></span></span>
             </div>`;
