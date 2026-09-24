@@ -391,8 +391,6 @@ export async function renderTrade(root) {
   // (legacy model-backend shape carries no packages key).
   function verdictHtml(data, nameA, nameB, listA = [], listB = []) {
     const headline = data.winner === 'Even' ? 'Fair trade' : `${data.winner} wins the trade`;
-    const givesWk = Number(data.team_a_weekly ?? 0).toFixed(1);
-    const getsWk = Number(data.team_b_weekly ?? 0).toFixed(1);
     const ma = data.market_a != null ? Number(data.market_a).toLocaleString('en-US') : null;
     const mb = data.market_b != null ? Number(data.market_b).toLocaleString('en-US') : null;
     const toRow = (p) => ({
@@ -403,12 +401,23 @@ export async function renderTrade(root) {
     });
     const rowsA = (data.packages?.a?.length ? data.packages.a : listA.map(toRow));
     const rowsB = (data.packages?.b?.length ? data.packages.b : listB.map(toRow));
+    // One coherent unit everywhere: weekly points, summed from the same
+    // rows shown below (the old subline mixed VOR/wk in and matched nothing).
+    const sumWk = (rows) => rows.reduce((s, p) => s + Number(p.weekly ?? 0), 0);
+    const givesWk = sumWk(rowsA).toFixed(1);
+    const getsWk = sumWk(rowsB).toFixed(1);
+    const modelD = Number(data.value_difference ?? 0);
+    const marketD = (ma != null && mb != null) ? (Number(data.market_b) - Number(data.market_a)) : null;
+    const marketRel = (marketD != null && (Number(data.market_a) + Number(data.market_b)) > 0)
+      ? Math.abs(marketD) / (Number(data.market_a) + Number(data.market_b)) : 0;
+    const disagree = marketD != null && Math.abs(modelD) >= 20 && marketRel >= 0.10
+      && ((modelD > 0) !== (marketD > 0));
     const pkgRow = (pl) => `
       <div class="mini-row">
         ${playerAvatar(pl, 28)}
         <div style="flex:1; min-width:0">
           <div class="mini-name">${escapeHtml(pl.player_name || '')}</div>
-          <div class="micro faint">${posBadge(pl.position)} ${teamLogo(pl.team, 12)} ${escapeHtml(pl.team || '')}</div>
+          <div class="micro faint">${posBadge(pl.position)} ${teamLogo(pl.team, 12)}</div>
         </div>
         <div style="text-align:right">
           <div class="mono" style="font-weight:700; font-size:13px">${Number(pl.weekly ?? 0).toFixed(1)}<span class="micro faint">/wk</span></div>
@@ -425,6 +434,7 @@ export async function renderTrade(root) {
       <div class="kicker">Trade verdict</div>
       <h2 class="verdict-headline">${escapeHtml(headline)}</h2>
       <div class="micro faint" style="margin-bottom:8px">${escapeHtml(nameA)} gives ${givesWk}/wk · gets ${getsWk}/wk${ma && mb ? ` · market ${ma} vs ${mb}` : ''}</div>
+      ${disagree ? `<div class="alert alert-warn" style="font-size:12px; margin-bottom:8px">Model and market disagree here — the model likes the ${modelD > 0 ? 'incoming' : 'outgoing'} side, real leagues pay more for the other. Trust the market on stars, the model on depth.</div>` : ''}
       <div class="signal-cols">
         <div><div class="kicker" style="margin-bottom:4px">${escapeHtml(nameA)} gives</div>${rowsA.map(pkgRow).join('') || '<div class="empty">—</div>'}</div>
         <div><div class="kicker" style="margin-bottom:4px">${escapeHtml(nameB)} gives</div>${rowsB.map(pkgRow).join('') || '<div class="empty">—</div>'}</div>
