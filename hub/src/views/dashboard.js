@@ -59,6 +59,29 @@ export async function renderDashboard(root) {
   const rec = Number(scoring.rec ?? 1.0);
   const scoringLabel = rec === 1 ? 'Full PPR' : rec === 0.5 ? 'Half PPR' : rec === 0 ? 'Non-PPR' : `${rec} PPR`;
 
+  // Trade signals: only rostered (tradable) players, never K/DEF.
+  // Ownership resolved from the same rosters-full pass as standings.
+  const rostersMap = bulk?.rosters || {};
+  const knowRosters = Object.keys(rostersMap).length > 0;
+  const ownerOf = new Map();
+  for (const [rid, r] of Object.entries(rostersMap)) {
+    const label = r.teamMeta?.team_name || r.teamMeta?.display_name || `Team ${rid}`;
+    for (const p of [...(r.starters || []), ...(r.bench || [])]) {
+      if (p.player_id != null) ownerOf.set(String(p.player_id), label);
+      if (p.sleeper_id != null) ownerOf.set(String(p.sleeper_id), label);
+    }
+  }
+  const isSignal = (p) => {
+    const pos = (p.position || '').toUpperCase();
+    if (pos === 'K' || pos === 'DEF') return false;
+    if (!knowRosters) return true;
+    return ownerOf.has(String(p.player_id)) || (p.sleeper_id != null && ownerOf.has(String(p.sleeper_id)));
+  };
+  const rankSignal = (list) => [...list].filter(isSignal)
+    .sort((a, b) => (Number(b.auction ?? 0)) - (Number(a.auction ?? 0))).slice(0, 3);
+  const buySignals = rankSignal(buys.players || []);
+  const sellSignals = rankSignal(sells.players || []);
+
   root.innerHTML = `
     <div class="dash-band reveal in">
       <div class="dash-band-main">
@@ -149,11 +172,11 @@ export async function renderDashboard(root) {
           <div class="signal-cols">
             <div>
               <div class="kicker good" style="margin-bottom:6px">▲ Buy — model over market</div>
-              ${(buys.players || []).slice(0, 3).map(p => signalRow(p)).join('') || `<div class="empty">No clear buys</div>`}
+              ${buySignals.map(p => signalRow(p, ownerOf.get(String(p.player_id)) || (p.sleeper_id != null ? ownerOf.get(String(p.sleeper_id)) : ''))).join('') || `<div class="empty">No clear buys on rosters</div>`}
             </div>
             <div>
               <div class="kicker bad" style="margin-bottom:6px">▼ Sell — market over model</div>
-              ${(sells.players || []).slice(0, 3).map(p => signalRow(p)).join('') || `<div class="empty">No clear sells</div>`}
+              ${sellSignals.map(p => signalRow(p, ownerOf.get(String(p.player_id)) || (p.sleeper_id != null ? ownerOf.get(String(p.sleeper_id)) : ''))).join('') || `<div class="empty">No clear sells on rosters</div>`}
             </div>
           </div>
         </div>
@@ -189,13 +212,13 @@ export async function renderDashboard(root) {
   });
 }
 
-function signalRow(p) {
+function signalRow(p, owner) {
   return `
     <div class="mini-row">
       ${playerAvatar(p, 26)}
       <div style="flex:1; min-width:0">
         <div class="mini-name">${escapeHtml(p.player_name || p.player_id)}</div>
-        <div class="micro faint">${posBadge(p.position)} ${teamLogo(p.team, 12)} ${escapeHtml(p.team || '')}</div>
+        <div class="micro faint">${posBadge(p.position)} ${teamLogo(p.team, 12)} ${escapeHtml(p.team || '')}${owner ? ` · @${escapeHtml(owner)}` : ''}</div>
       </div>
       <div style="text-align:right">
         <div class="mono" style="font-weight:700; font-size:13px">${Number(p.weekly ?? p.projected_points ?? 0).toFixed(1)}<span class="micro faint">/wk</span></div>
