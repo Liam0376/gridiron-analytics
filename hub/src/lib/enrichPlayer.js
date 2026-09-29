@@ -1,6 +1,7 @@
 // hub/src/lib/enrichPlayer.js — single canonical player enrichment used by every view.
 
 import { computeVbdParams, vbdAuction, vbdAuctionUncapped } from '../components/vbdAuction.js';
+import { intervalBounds } from './intervals.js';
 
 function num(x, fallback = 0) {
   const n = Number(x);
@@ -26,10 +27,10 @@ export function enrichPlayer(p, compRow, opts = {}) {
 
   const weekly = num(p.projected_points ?? comp.projected_points ?? comp.weekly, 0);
   const season = num(comp.ros ?? comp.marketRos ?? weekly * 17, weekly * 17);
-  const width = num(p.width ?? p.projection_width ?? comp.interval_width ?? comp.projection_width ?? comp.width, 5.0);
-  // why no /2: width is HALF-width (unified 2026-09-09). Floor matches src.
-  const lower = num(p.projection_lower ?? p.lower_bound ?? p.lower, Math.max(0, weekly - width));
-  const upper = num(p.projection_upper ?? p.upper_bound ?? p.upper, weekly + width);
+  const [fbLow, fbHigh] = intervalBounds(weekly, pos);
+  const lower = num(p.projection_lower ?? p.lower_bound ?? p.lower, fbLow);
+  const upper = num(p.projection_upper ?? p.upper_bound ?? p.upper, fbHigh);
+  const width = num(p.width ?? p.projection_width ?? comp.interval_width ?? comp.projection_width ?? comp.width, (upper - lower) / 2);
 
   const compPlayers = opts.compPlayers || (comp && comp.__compPlayers) || null;
   const vbdParams = opts.vbdParams || (comp && comp.__vbdParams) || (compPlayers ? computeVbdParams(compPlayers, opts.league) : null);
@@ -87,14 +88,6 @@ export function enrichPlayer(p, compRow, opts = {}) {
     weekly
   );
 
-  let rec = 'START';
-  const slotUp = String(slot).toUpperCase();
-  if (slotUp.startsWith('BN') || slotUp === 'BENCH' || slotUp === 'IR') {
-    rec = weekly >= 12.0 ? 'POTENTIAL START' : 'BENCH';
-  } else {
-    rec = width > 7.0 ? 'TOSS-UP' : weekly >= 10.0 ? 'CONFIDENT' : 'RISK';
-  }
-
   // why no ratio-guess fallback: a prior fallback estimated season yards
   // from weekly fantasy points times a made-up "yards per point" constant
   // (e.g. weekly * 16.5 * 17) — nonsense math that produced a 7043-yard QB
@@ -138,7 +131,6 @@ export function enrichPlayer(p, compRow, opts = {}) {
     edge,
     injury_status: status,
     slot,
-    recommendation: rec,
     wind_mph: windMph,
     season_pass_yd: passYd,
     season_rush_yd: rushYd,

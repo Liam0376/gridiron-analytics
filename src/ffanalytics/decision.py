@@ -13,20 +13,17 @@ unaffected; K/DEF still project points for start/sit but contribute zero to
 dollar_per_vor pool. No thresholds flip behavior.
 """
 
+import math
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from ffanalytics import config
+from ffanalytics.stat_projector import interval_bounds
 
 FLEX_ELIGIBLE = {"RB", "WR", "TE"}
 POS_REPL_COUNTS = config.POS_REPL_COUNTS
 POS_WEIGHT_FALLBACK = config.POS_WEIGHT_FALLBACK
 STARTER_BUDGET_POOL = config.STARTER_BUDGET_POOL
-
-# Interval factors mirror projection.py v2 (QB/K recalibration 2026-09-15).
-# Change together plus the parity test. Widths frozen.
-POS_WIDTH_FACTORS = {"QB": 1.55, "RB": 1.07, "WR": 1.12, "TE": 0.88, "K": 0.85, "DEF": 0.75}
-INTERVAL_FACTORS_VERSION = 2
 
 # Opponent-defense adjustment gate — default OFF (mirrors projection.py ENABLE_OPPONENT_RATING).
 # tested and REJECTED — evidence: stat_projector.py:22-24 opponent defense factors hurt
@@ -436,25 +433,48 @@ def calculate_roster_value(
 
 
 def _ensure_intervals(p: Dict) -> Dict:
+    # why `is not None`, not key presence: api.py passes the keys with None
+    # for players lacking bounds; a key check let them through unbounded.
+    if p.get("projection_lower") is not None and p.get("projection_upper") is not None:
+        return p
     pts = float(p.get("projected_points", 0) or 0)
     pos = (p.get("position") or p.get("position_group") or "UNK").upper()
-
-    if "projection_lower" in p and "projection_upper" in p and "width" in p:
-        return p
-
-    m = POS_WIDTH_FACTORS
-    pos_factor = m.get(pos, 1.0)
-    pt_factor = 1.0 if pts <= 12 else min(1.60, 1.0 + (pts - 12) * 0.022)
-    width = max(3.0, min(14.0, 5.0 * pos_factor * pt_factor))
-
+    low, high = interval_bounds(pts, pos)
     p_copy = dict(p)
-    # why max(0, ...) floor (data-viz sign-off): without it a 2-pt projection
-    # with width 5 renders [-3, 7] — negative points are impossible; src and
-    # hub both floor at 0.
-    p_copy["projection_lower"] = round(max(0.0, pts - width), 2)
-    p_copy["projection_upper"] = round(pts + width, 2)
-    p_copy["width"] = round(width, 2)
+    p_copy["projection_lower"] = round(low, 2)
+    p_copy["projection_upper"] = round(high, 2)
+    p_copy["width"] = round((high - low) / 2, 2)
     return p_copy
+
+
+# Floor/ceiling are P20/P80, so each player's spread is sigma = span / (2*z80).
+Z80 = 0.8416
+# Toss-up = bench player outscores the starter in >= 40% of weeks.
+TOSS_UP_PROB = 0.40
+
+
+def beat_prob(a: Dict, b: Dict) -> float:
+    """P(a outscores b): normal approx using BOTH players' ranges, so a
+    bench player's ceiling is weighed against the starter's ceiling too.
+    Calibration, 2025 same-week same-pos pairs (n=76,958, table fit on 2024):
+    predicted 0.257/0.326/0.375/0.425/0.475 -> actual 0.274/0.339/0.379/
+    0.432/0.476. Old rule (bench ceiling >= starter point) flagged 100% of
+    pairs within 8 pts; >= 0.40 flags 41% (bench wins 45.5% vs 32.5%)."""
+    def mu_sd(p):
+        lo, hi = float(p["projection_lower"]), float(p["projection_upper"])
+        return float(p.get("projected_points", 0) or 0), (hi - lo) / (2 * Z80)
+    ma, sa = mu_sd(a)
+    mb, sb = mu_sd(b)
+    s = math.hypot(sa, sb)
+    if s == 0:
+        return 0.5 if ma == mb else float(ma > mb)
+    return 0.5 * (1 + math.erf((ma - mb) / (s * math.sqrt(2))))
+
+
+def _can_replace(bench_p: Dict, starter: Dict) -> bool:
+    bp = (bench_p.get("position") or bench_p.get("position_group") or "UNK").upper()
+    sp = (starter.get("position") or starter.get("position_group") or "UNK").upper()
+    return bp == sp or (bp in FLEX_ELIGIBLE and "FLEX" in str(starter.get("slot", "")))
 
 
 def get_start_sit_recommendations(
@@ -466,82 +486,39 @@ def get_start_sit_recommendations(
     all_players = [_ensure_intervals(p) for p in (roster_players + bench_players)]
     starters, bench = _optimal_lineup(all_players, roster_positions)
 
-    worst_by_pos: Dict[str, Dict] = {}
-    for s in starters:
-        pos = s.get("slot", "UNK")
-        if pos == "FLEX":
-            pos = (s.get("position") or s.get("position_group") or "UNK").upper()
-        pts = float(s.get("projected_points", 0) or 0)
-        if pos not in worst_by_pos or pts < float(worst_by_pos[pos].get("projected_points", 0)):
-            worst_by_pos[pos] = s
+    def rec(p, slot, prob, toss, label, conf):
+        pts = float(p.get("projected_points", 0) or 0)
+        return {
+            "player_id": p.get("player_id"),
+            "player_name": p.get("player_name", f"Player {p.get('player_id')}"),
+            "position": (p.get("position") or p.get("position_group") or "UNK").upper(),
+            "slot": slot,
+            "projected_points": pts,
+            "projection_lower": float(p["projection_lower"]),
+            "projection_upper": float(p["projection_upper"]),
+            "width": float(p.get("width") if p.get("width") is not None
+                           else (float(p["projection_upper"]) - float(p["projection_lower"])) / 2),
+            # P(best bench alternative outscores this starter), or P(this
+            # bench player outscores the weakest starter he could replace).
+            "swap_prob": round(prob, 3),
+            "recommendation": "TOSS-UP" if toss else label,
+            "confidence": "LOW" if toss else conf,
+            "team": p.get("team", ""),
+            "opponent_team": p.get("opponent_team", ""),
+            "injury_status": p.get("injury_status"),
+        }
 
     recommendations = []
-
     for s in starters:
-        pos = (s.get("position") or s.get("position_group") or "UNK").upper()
-        starter_pts = float(s.get("projected_points", 0) or 0)
-
-        # Check if any bench player at same position overlaps starter point estimate
-        toss_up = False
-        for b in bench:
-            b_pos = (b.get("position") or b.get("position_group") or "UNK").upper()
-            if b_pos != pos:
-                continue
-            bench_upper = float(b.get("projection_upper", 0) or 0)
-            if bench_upper >= starter_pts:
-                toss_up = True
-                break
-
         pts = float(s.get("projected_points", 0) or 0)
-        recommendations.append({
-            "player_id": s.get("player_id"),
-            "player_name": s.get("player_name", f"Player {s.get('player_id')}"),
-            "position": pos,
-            "slot": s.get("slot", pos),
-            "projected_points": pts,
-            # why `or` not .get(key, default): .get's default only fires when
-            # the key is MISSING, not when present-but-None (a real player
-            # lacking conformal bounds has the key with value None) — that
-            # crashed float(None) and 500'd start_sit before shadow logging
-            # ever ran (user-caught live bug, 2026-09-10).
-            "projection_lower": float(s.get("projection_lower") if s.get("projection_lower") is not None else pts - 2.5),
-            "projection_upper": float(s.get("projection_upper") if s.get("projection_upper") is not None else pts + 2.5),
-            "width": float(s.get("width") if s.get("width") is not None else 5.0),
-            "recommendation": "TOSS-UP" if toss_up else "START",
-            "confidence": "LOW" if toss_up else ("HIGH" if pts > 12 else "MEDIUM"),
-            "team": s.get("team", ""),
-            "opponent_team": s.get("opponent_team", ""),
-            "injury_status": s.get("injury_status"),
-        })
+        prob = max((beat_prob(b, s) for b in bench if _can_replace(b, s)), default=0.0)
+        pos = (s.get("position") or s.get("position_group") or "UNK").upper()
+        recommendations.append(rec(s, s.get("slot", pos), prob, prob >= TOSS_UP_PROB,
+                                   "START", "HIGH" if pts > 12 else "MEDIUM"))
 
     for b in bench:
-        pos = (b.get("position") or b.get("position_group") or "UNK").upper()
-        pts = float(b.get("projected_points", 0) or 0)
-
-        # Check if bench player's upper overlaps any starter's point estimate at same pos
-        toss_up = False
-        bench_upper = float(b.get("projection_upper", 0) or 0)
-        worst = worst_by_pos.get(pos)
-        if worst:
-            worst_pts = float(worst.get("projected_points", 0) or 0)
-            if bench_upper >= worst_pts:
-                toss_up = True
-
-        recommendations.append({
-            "player_id": b.get("player_id"),
-            "player_name": b.get("player_name", f"Player {b.get('player_id')}"),
-            "position": pos,
-            "slot": "BN",
-            "projected_points": pts,
-            "projection_lower": float(b.get("projection_lower") if b.get("projection_lower") is not None else pts - 2.5),
-            "projection_upper": float(b.get("projection_upper") if b.get("projection_upper") is not None else pts + 2.5),
-            "width": float(b.get("width") if b.get("width") is not None else 5.0),
-            "recommendation": "TOSS-UP" if toss_up else "SIT",
-            "confidence": "LOW" if toss_up else "MEDIUM",
-            "team": b.get("team", ""),
-            "opponent_team": b.get("opponent_team", ""),
-            "injury_status": b.get("injury_status"),
-        })
+        prob = max((beat_prob(b, s) for s in starters if _can_replace(b, s)), default=0.0)
+        recommendations.append(rec(b, "BN", prob, prob >= TOSS_UP_PROB, "SIT", "MEDIUM"))
 
     return recommendations
 

@@ -202,22 +202,32 @@ def test_build_game_context_observed_weather_limitation():
     assert "forecast" in doc.lower()
 
 
-def test_conformal_bounds_width_is_half_width():
-    # Canonical width semantics (pinned 2026-09-09, unified across src/hub):
-    # width IS the half-width (qhat scale, same as projection.py) —
-    # lower = max(0, point - width), upper = point + width.
-    # Guards the 2026-09 regression where compute_conformal_bounds returned
-    # full-span (high - low) while projection.py returned half-width, and the
-    # hub halved one but not the other.
-    b = compute_conformal_bounds(14.2, "WR", residuals=[1.0, 2.0, 3.0, 4.0])
-    assert b["lower_bound"] == pytest.approx(max(0.0, 14.2 - b["width"]))
-    assert b["upper_bound"] == pytest.approx(14.2 + b["width"])
+def test_conformal_bounds_width_is_half_span():
+    # width = half the (asymmetric) span; consumers that need the range read
+    # lower/upper directly.
+    b = compute_conformal_bounds(14.2, "WR")
+    assert b["upper_bound"] - b["lower_bound"] == pytest.approx(2 * b["width"], abs=0.02)
     assert b["width"] == pytest.approx(b["projection_width"])
-    assert b["upper_bound"] - b["lower_bound"] == pytest.approx(2 * b["width"])
-    # Floor parity with projection.py: near-zero points clamp at 0, never negative.
-    tiny = compute_conformal_bounds(1.0, "K", residuals=[5.0, 6.0, 7.0, 8.0])
-    assert tiny["lower_bound"] == pytest.approx(0.0)
+    assert b["lower_bound"] < 14.2 < b["upper_bound"]
+    tiny = compute_conformal_bounds(1.0, "K")
+    assert tiny["lower_bound"] >= 0.0
     assert tiny["lower_bound"] <= 1.0 <= tiny["upper_bound"]
+
+
+def test_interval_scales_with_projection():
+    # Regression: flat POS_RESIDUALS gave every WR the same +/-10.2, so a
+    # 1.5-pt WR showed [0, 11.7]. Range must grow with the projection and
+    # stay tight at the bottom.
+    from ffanalytics.stat_projector import interval_bounds
+    lo1, hi1 = interval_bounds(1.5, "WR")
+    lo6, hi6 = interval_bounds(6.0, "WR")
+    lo15, hi15 = interval_bounds(15.0, "WR")
+    assert hi1 < 5.0
+    assert (hi1 - lo1) < (hi6 - lo6) < (hi15 - lo15)
+    assert hi6 - lo6 < 10.0
+    for pts in (0.0, 0.3, 50.0):
+        lo, hi = interval_bounds(pts, "QB")
+        assert 0.0 <= lo <= pts <= hi
 
 
 def test_same_season_week1_uses_no_future_history():

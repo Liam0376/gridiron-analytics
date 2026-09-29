@@ -1,3 +1,5 @@
+import pytest
+
 from ffanalytics.decision import (
     calculate_roster_value,
     get_start_sit_recommendations,
@@ -290,13 +292,71 @@ def test_holdout_decision_quality_vor_vs_points_report_only():
 
 
 def test_ensure_intervals_floors_negative_lower():
-    # why floor at 0 (data-viz sign-off): a 2-pt projection with width 5
-    # rendered [-3, 7] — negative points are impossible; src and hub floor.
+    # Negative points are impossible; a near-zero projection floors at 0.
     from ffanalytics.decision import _ensure_intervals
-    out = _ensure_intervals({"projected_points": 2.0, "position": "K"})
+    out = _ensure_intervals({"projected_points": 0.5, "position": "WR"})
     assert out["projection_lower"] == 0.0
-    assert out["projection_upper"] > 2.0
-    assert out["projection_lower"] <= 2.0 <= out["projection_upper"]
+    assert out["projection_lower"] <= 0.5 <= out["projection_upper"]
+
+
+def test_ensure_intervals_fills_none_bounds():
+    # Regression: api.py passes projection_lower/upper keys with None; a
+    # key-presence check let those through and start/sit fell to +/-2.5.
+    from ffanalytics.decision import _ensure_intervals
+    from ffanalytics.stat_projector import interval_bounds
+    out = _ensure_intervals({"projected_points": 10.0, "position": "RB",
+                             "projection_lower": None, "projection_upper": None, "width": None})
+    lo, hi = interval_bounds(10.0, "RB")
+    assert out["projection_lower"] == round(lo, 2)
+    assert out["projection_upper"] == round(hi, 2)
+
+
+def _ss(pid, pos, pts, lo, hi):
+    return {"player_id": pid, "player_name": pid, "position": pos,
+            "projected_points": pts, "projection_lower": lo, "projection_upper": hi}
+
+
+def test_start_sit_weighs_starter_ceiling_too():
+    # Regression: toss-up was bench ceiling >= starter POINT, ignoring the
+    # starter's own ceiling. Bench 11 (ceiling 18) vs starter 16 (ceiling
+    # 24) flagged TOSS-UP; the bench player wins ~27% of weeks.
+    from ffanalytics.decision import get_start_sit_recommendations
+    recs = get_start_sit_recommendations(
+        [_ss("s", "WR", 16.0, 8.0, 24.0)], [_ss("b", "WR", 11.0, 4.5, 18.0)], {}, ["WR"])
+    by = {r["player_id"]: r for r in recs}
+    assert by["s"]["recommendation"] == "START"
+    assert by["b"]["recommendation"] == "SIT"
+    assert 0.2 < by["b"]["swap_prob"] < 0.4
+    assert by["s"]["swap_prob"] == by["b"]["swap_prob"]
+
+
+def test_start_sit_close_call_is_toss_up():
+    from ffanalytics.decision import get_start_sit_recommendations
+    recs = get_start_sit_recommendations(
+        [_ss("s", "RB", 12.0, 6.0, 19.0)], [_ss("b", "RB", 11.5, 5.5, 18.5)], {}, ["RB"])
+    by = {r["player_id"]: r for r in recs}
+    assert by["s"]["recommendation"] == "TOSS-UP"
+    assert by["b"]["recommendation"] == "TOSS-UP"
+    assert by["b"]["swap_prob"] >= 0.40
+
+
+def test_start_sit_flex_eligible_bench_compares_to_flex_starter():
+    from ffanalytics.decision import get_start_sit_recommendations
+    recs = get_start_sit_recommendations(
+        [_ss("rb", "RB", 15.0, 8.0, 22.0), _ss("wr", "WR", 9.0, 3.0, 15.0)],
+        [_ss("te", "TE", 8.8, 3.5, 14.0)], {}, ["RB", "FLEX"])
+    by = {r["player_id"]: r for r in recs}
+    assert by["wr"]["slot"] == "FLEX"
+    assert by["te"]["recommendation"] == "TOSS-UP"
+
+
+def test_beat_prob_symmetry():
+    from ffanalytics.decision import beat_prob
+    a = _ss("a", "WR", 10.0, 3.4, 16.1)
+    b = _ss("b", "WR", 12.0, 5.0, 18.8)
+    assert beat_prob(a, b) + beat_prob(b, a) == pytest.approx(1.0)
+    assert beat_prob(a, a) == pytest.approx(0.5)
+    assert beat_prob(a, b) < 0.5
 
 
 # ---------------------------------------------------------------- slot uplift

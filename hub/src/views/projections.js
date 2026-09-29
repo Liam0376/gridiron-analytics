@@ -8,6 +8,7 @@ import { playerCard } from '../components/playerCard.js';
 import { getTeamColor, getTeamDisplayColor } from '../components/teamColors.js';
 import { openPlayerModal } from '../components/playerModal.js';
 import { escapeHtml } from '../lib/escape.js';
+import { intervalBounds } from '../lib/intervals.js';
 import { relevanceTier, backupDemote, buildAheadMap } from '../lib/relevance.js';
 
 let allPlayers = [];
@@ -22,15 +23,9 @@ let rosMode = false; // RoS toggle: weekly ↔ rest-of-season
 let selectedWeek = null; // null = current week (server default); weekly mode only
 const PAGE_SIZE = 50;
 
-// Interval fallback mirrors src/ffanalytics/projection.py v2
-// (QB/K recalibration 2026-09-15). Change together. Widths frozen.
-// Unknown players get the same scaled band as calibrated peers, never a
-// narrower fixed default that understates their uncertainty.
-const POS_W = { QB: 1.55, RB: 1.07, WR: 1.12, TE: 0.88, K: 0.85, DEF: 0.75 };
-function scaledFallbackWidth(pos, pts) {
-  const pf = POS_W[(pos || 'UNK').toUpperCase()] ?? 1.0;
-  const qf = pts > 12 ? Math.min(1.60, 1.0 + (pts - 12) * 0.022) : 1.0;
-  return Math.max(3.0, Math.min(14.0, 5.0 * pf * qf));
+function halfSpan(pos, pts) {
+  const [lo, hi] = intervalBounds(pts, pos);
+  return (hi - lo) / 2;
 }
 
 function edgeBadge(edge) {
@@ -113,7 +108,7 @@ export async function renderProjections(root) {
   allPlayers = rosMode
     ? (data.players || []).map(p => {
         const remaining = Math.max(1, Number(p.remaining_games) || 1);
-        const wkWidth = scaledFallbackWidth(p.position, Number(p.per_game_neutral) || 0);
+        const wkWidth = halfSpan(p.position, Number(p.per_game_neutral) || 0);
         const width = Number((wkWidth * Math.sqrt(remaining)).toFixed(2));
         return {
           ...p,
@@ -161,9 +156,9 @@ export async function renderProjections(root) {
         team: (c.team || '').toUpperCase(),
         projected_points: c.model_points ?? c.projected_points ?? 0,
         point_estimate: c.model_points ?? c.projected_points ?? 0,
-        projection_lower: c.projection_lower ?? ((c.model_points ?? 0) - scaledFallbackWidth(c.position, c.model_points ?? 0)),
-        projection_upper: c.projection_upper ?? ((c.model_points ?? 0) + scaledFallbackWidth(c.position, c.model_points ?? 0)),
-        width: c.width ?? scaledFallbackWidth(c.position, c.model_points ?? 0),
+        projection_lower: c.projection_lower ?? intervalBounds(c.model_points ?? 0, c.position)[0],
+        projection_upper: c.projection_upper ?? intervalBounds(c.model_points ?? 0, c.position)[1],
+        width: c.width ?? halfSpan(c.position, c.model_points ?? 0),
         injury_status: c.injury_status || null,
         market_points: c.market_points,
         delta_points: c.delta_points,
@@ -231,13 +226,12 @@ export async function renderProjections(root) {
       p.point_estimate = Number(weekly.toFixed(2));
       p.weekly = Number(weekly.toFixed(2));
 
-      const rawWidth = c?.interval_width ?? c?.width ?? p.width;
-      const width = Number(rawWidth ?? scaledFallbackWidth(p.position, weekly));
-      p.width = Number(width.toFixed(2));
-      // why no /2: width is HALF-width (unified 2026-09-09). Floor restores
-      // src's max(0,…) that the old symmetric rebuild discarded.
-      p.projection_lower = Number(Math.max(0, weekly - width).toFixed(2));
-      p.projection_upper = Number((weekly + width).toFixed(2));
+      // Same table the server uses, evaluated at the displayed number, so
+      // the range stays asymmetric and matches src when weekly == model.
+      const [lo, hi] = intervalBounds(weekly, p.position);
+      p.projection_lower = Number(lo.toFixed(2));
+      p.projection_upper = Number(hi.toFixed(2));
+      p.width = Number(((hi - lo) / 2).toFixed(2));
       p.lower = p.projection_lower;
       p.upper = p.projection_upper;
     } else {
@@ -281,7 +275,7 @@ export async function renderProjections(root) {
   root.innerHTML = `
     <div class="hero reveal in">
       <h1>Projections</h1>
-      <p>Weekly projections. Bars show the model range (floor–ceiling); overlap = toss-up (heuristic, not a statistical test).</p>
+      <p>Weekly projections. Bars show floor–ceiling: 1-in-5 bad week to 1-in-5 good week (P20–P80, fit on 2024-25 results).</p>
       <p class="micro faint" style="margin-top:4px">Each week's projections are calculated after the previous week's games complete, from season-to-date stats blended with last season — early weeks lean on last season, later weeks on current form. Data refreshes daily.</p>
     </div>
     ${!rosMode && meta.stale ? `<div class="alert alert-warn reveal in" role="status" style="margin-top:12px">${escapeHtml(meta.note || `No precomputed projections for week ${selectedWeek ?? meta.week} — showing nearest available data.`)}</div>` : ''}

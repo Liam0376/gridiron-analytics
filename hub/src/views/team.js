@@ -11,6 +11,7 @@ import { playerCard } from '../components/playerCard.js';
 import { computeVbdParams } from '../components/vbdAuction.js';
 import { assignStarterSlots } from '../lib/slots.js';
 import { enrichPlayer } from '../lib/enrichPlayer.js';
+import { beatProb, TOSS_UP_PROB } from '../lib/intervals.js';
 import { escapeHtml, escapeAttr, safeAvatarUrl } from '../lib/escape.js';
 
 export async function renderTeam(root) {
@@ -161,29 +162,21 @@ export async function renderTeam(root) {
     if (bye) byeMap[bye] = (byeMap[bye] || 0) + 1;
   });
 
-  // Start/Sit Toss-up Advisor Calculation
-  // Close decisions where a bench player's ceiling (upper) overlaps a starter's point (weekly).
-  // why ceiling over point (correctness batch 2026-09-12): mirrors backend
-  // decision.py get_start_sit_recommendations (bench_upper >= starter_pts).
-  // Ceiling over floor overflagged toss-ups vs the Start Sit API.
+  // Start/Sit Toss-up Advisor: flag a bench player only when he outscores
+  // the starter in >= 40% of weeks, weighing BOTH ranges (mirrors
+  // decision.py beat_prob). Bench ceiling vs starter point ignored the
+  // starter's own ceiling and flagged nearly every pair.
   const tossups = [];
   bench.forEach(b => {
-    if (b.weekly < 5.0) return; // ignore minor bench filler
     starters.forEach(s => {
       const isPosMatch = b.position === s.position || (['RB', 'WR', 'TE'].includes(b.position) && s.slot.startsWith('FLEX'));
-      if (isPosMatch && b.upper >= s.weekly) {
-        const overlap = Number((b.upper - s.weekly).toFixed(1));
-        tossups.push({
-          benchPlayer: b,
-          starterPlayer: s,
-          overlap,
-          advice: `Bench ${b.player_name} (${b.position}) ceiling (${b.upper.toFixed(1)} pts) overlaps Starter ${s.player_name} (${s.slot}) point (${s.weekly.toFixed(1)} pts).`,
-        });
-      }
+      if (!isPosMatch) return;
+      const prob = beatProb(b, s);
+      if (prob >= TOSS_UP_PROB) tossups.push({ benchPlayer: b, starterPlayer: s, prob });
     });
   });
 
-  tossups.sort((a, b) => b.overlap - a.overlap);
+  tossups.sort((a, b) => b.prob - a.prob);
 
   root.innerHTML = `
     <!-- Executive Command Center Header -->
@@ -275,7 +268,7 @@ export async function renderTeam(root) {
       <div class="card-header" style="border-bottom:1px solid ${tossups.length ? 'rgba(245,158,11,0.2)' : 'var(--border)'}">
         <div style="display:flex; align-items:center; gap:8px">
           <span class="badge ${tossups.length ? 'badge-amber' : 'badge-emerald'}" style="font-size:12px">Start/Sit Advisor</span>
-          <span class="micro faint">${tossups.length ? `${tossups.length} Ceiling-Over-Point Decision(s)` : 'Optimal Lineup Configured'}</span>
+          <span class="micro faint">${tossups.length ? `${tossups.length} Decision(s) to Check` : 'Optimal Lineup Configured'}</span>
         </div>
       </div>
       <div class="card-body" style="padding:12px">
@@ -288,7 +281,7 @@ export async function renderTeam(root) {
                     ${playerAvatar(t.benchPlayer, 32)}
                     <div>
                       <span class="mono" style="font-weight:700; color:var(--amber); font-size:12px">[BENCH] ${escapeHtml(t.benchPlayer.player_name)}</span>
-                      <div class="micro faint">${posBadge(t.benchPlayer.position)} · ${t.benchPlayer.weekly.toFixed(1)} pts (Ceiling: <strong style="color:var(--emerald)">${t.benchPlayer.upper.toFixed(1)}</strong>)</div>
+                      <div class="micro faint">${posBadge(t.benchPlayer.position)} · ${t.benchPlayer.weekly.toFixed(1)} pts (${t.benchPlayer.lower.toFixed(1)}–${t.benchPlayer.upper.toFixed(1)})</div>
                     </div>
                   </div>
                   <span class="mono text-bad" style="font-weight:700; font-size:13px">VS</span>
@@ -296,19 +289,19 @@ export async function renderTeam(root) {
                     ${playerAvatar(t.starterPlayer, 32)}
                     <div>
                       <span class="mono" style="font-weight:700; font-size:12px">[${escapeHtml(t.starterPlayer.slot)}] ${escapeHtml(t.starterPlayer.player_name)}</span>
-                      <div class="micro faint">${posBadge(t.starterPlayer.position)} · ${t.starterPlayer.weekly.toFixed(1)} pts (Point: <strong style="color:var(--crimson)">${t.starterPlayer.weekly.toFixed(1)}</strong>)</div>
+                      <div class="micro faint">${posBadge(t.starterPlayer.position)} · ${t.starterPlayer.weekly.toFixed(1)} pts (${t.starterPlayer.lower.toFixed(1)}–${t.starterPlayer.upper.toFixed(1)})</div>
                     </div>
                   </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px">
-                  <span class="badge badge-amber mono">Ceiling Overlap: +${t.overlap} pts</span>
+                  <span class="badge ${t.prob > 0.5 ? 'badge-crimson' : 'badge-amber'} mono">${t.prob > 0.5 ? 'Swap: ' : 'Close: '}bench wins ${Math.round(t.prob * 100)}% of weeks</span>
                 </div>
               </div>
             `).join('')}
           </div>
         ` : `
           <div style="display:flex; align-items:center; gap:10px; color:var(--emerald)" class="mono micro">
-            <span>✓ No bench player ceiling overlaps with a starter's point. Your starter configuration maximizes point expectation.</span>
+            <span>✓ No bench player outscores a starter in 40%+ of weeks. Lineup is set.</span>
           </div>
         `}
       </div>

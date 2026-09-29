@@ -189,6 +189,45 @@ def _calc_points_from_raw(p: dict, scoring: dict) -> float:
         return 0.0
     return pts
 
+# --- Vendored floor/ceiling (mirrors src/ffanalytics/stat_projector.py
+# INTERVAL_TABLE + interval_bounds; pinned by tests/test_interval_parity.py) ---
+INTERVAL_TABLE = {
+    "QB": [(4.2, 0.0, 14.0), (11.0, 3.2, 22.2), (14.7, 8.8, 24.7), (17.1, 10.1, 24.1), (19.5, 11.0, 28.9), (23.4, 14.2, 29.8)],
+    "RB": [(0.7, 0.0, 1.4), (1.9, 0.0, 4.2), (3.4, 0.4, 7.0), (5.1, 1.1, 9.4), (7.2, 2.3, 12.5), (10.1, 4.3, 15.9), (13.5, 7.4, 20.2), (18.8, 9.9, 25.0)],
+    "WR": [(0.6, 0.0, 2.0), (2.0, 0.0, 4.2), (3.5, 0.0, 7.4), (5.1, 1.0, 8.6), (7.0, 1.7, 10.8), (9.3, 3.1, 15.6), (12.1, 5.1, 18.9), (17.0, 7.8, 21.8)],
+    "TE": [(0.8, 0.0, 2.4), (2.0, 0.0, 4.1), (3.2, 0.0, 6.1), (4.5, 1.3, 7.1), (6.3, 2.4, 10.8), (8.6, 3.7, 14.4), (12.6, 4.8, 18.7)],
+    "K": [(5.8, 4.0, 12.0), (7.6, 4.0, 12.0), (8.7, 4.0, 12.0), (10.7, 4.0, 13.0)],
+}
+
+
+def interval_bounds(point, position):
+    pts = INTERVAL_TABLE.get((position or "").upper()) or INTERVAL_TABLE["WR"]
+    if point <= pts[0][0]:
+        c, lo, hi = pts[0]
+    elif point >= pts[-1][0]:
+        c, lo, hi = pts[-1]
+    else:
+        for (c0, lo0, hi0), (c1, lo1, hi1) in zip(pts, pts[1:]):
+            if point <= c1:
+                f = (point - c0) / (c1 - c0)
+                c, lo, hi = point, lo0 + f * (lo1 - lo0), hi0 + f * (hi1 - hi0)
+                break
+    return max(0.0, min(point, point - (c - lo))), max(point, point + (hi - c))
+
+
+Z80 = 0.8416
+TOSS_UP_PROB = 0.40
+
+
+def beat_prob(mu_a, lo_a, hi_a, mu_b, lo_b, hi_b):
+    """P(a outscores b) from both players' P20/P80 ranges (mirrors decision.beat_prob)."""
+    import math
+    s = math.hypot((hi_a - lo_a) / (2 * Z80), (hi_b - lo_b) / (2 * Z80))
+    if s == 0:
+        return 0.5 if mu_a == mu_b else float(mu_a > mu_b)
+    return 0.5 * (1 + math.erf((mu_a - mu_b) / (s * math.sqrt(2))))
+
+
 # --- Vendored conformal (minimal, mirrors src/ffanalytics/conformal.py) ---
 def qhat(residuals, alpha=0.2):
     import math
@@ -999,9 +1038,10 @@ def build_league_analytics(conn, league_id: str | None = None, week: int | None 
 
             if wk_row is not None:
                 pts = float(wk_row["projected_points"] or 0)
-                width = float(wk_row["width"]) if wk_row["width"] is not None else 5.0
-                proj_lower = round(float(wk_row["projection_lower"]), 2) if wk_row["projection_lower"] is not None else round(max(0.0, pts - width), 2)
-                proj_upper = round(float(wk_row["projection_upper"]), 2) if wk_row["projection_upper"] is not None else round(pts + width, 2)
+                _lo, _hi = interval_bounds(pts, pos)
+                proj_lower = round(float(wk_row["projection_lower"]), 2) if wk_row["projection_lower"] is not None else round(_lo, 2)
+                proj_upper = round(float(wk_row["projection_upper"]), 2) if wk_row["projection_upper"] is not None else round(_hi, 2)
+                width = float(wk_row["width"]) if wk_row["width"] is not None else round((proj_upper - proj_lower) / 2, 2)
                 wk_opponent = wk_row["opponent_team"] or ""
             else:
                 # Universal League-Wide Projection Engine for ALL 12 Teams:
@@ -1022,12 +1062,11 @@ def build_league_analytics(conn, league_id: str | None = None, week: int | None 
 
                 pts = gridiron_pts
 
-                # Conformal interval logic — width is HALF-width (unified 2026-09-09;
-                # src/comparison carry qhat scale, as does the 5.0 fallback which
-                # mirrors decision.py's 5.0-factor path). Floor matches src max(0,…).
-                width = float(comp.get("interval_width") or comp.get("width") or 5.0)
-                proj_lower = round(max(0.0, pts - width), 2)
-                proj_upper = round(pts + width, 2)
+                # Floor/ceiling from the same table as src, at this pts
+                # (asymmetric; width = half-span for spread-scale consumers).
+                _lo, _hi = interval_bounds(pts, pos)
+                proj_lower, proj_upper = round(_lo, 2), round(_hi, 2)
+                width = round((_hi - _lo) / 2, 2)
                 wk_opponent = None
 
             # Full season projected stats
@@ -1185,7 +1224,12 @@ def build_league_analytics(conn, league_id: str | None = None, week: int | None 
                 is_eligible = (b_pos == s_pos) or (b_pos in FLEX_ELIGIBLE and "FLEX" in s_slot)
                 if is_eligible:
                     s_lower = s_p.get("projection_lower", 0)
-                    if b_upper > s_lower:
+                    # Both ranges count: bench ceiling vs starter floor
+                    # flagged nearly every pair with ~10-pt-wide bands.
+                    prob = beat_prob(
+                        float(b_p.get("projected_points") or 0), float(b_p.get("projection_lower") or 0), float(b_upper or 0),
+                        float(s_p.get("projected_points") or 0), float(s_lower or 0), float(s_p.get("projection_upper") or 0))
+                    if prob >= TOSS_UP_PROB:
                         tossups.append({
                             "bench_player": b_p["player_name"],
                             "bench_player_id": b_p["player_id"],
@@ -1199,6 +1243,7 @@ def build_league_analytics(conn, league_id: str | None = None, week: int | None 
                             "starter_projection": s_p["projected_points"],
                             "starter_lower": s_lower,
                             "diff": round(b_upper - s_lower, 2),
+                            "swap_prob": round(prob, 3),
                         })
 
         team_analytics = {
@@ -1667,9 +1712,10 @@ class Handler(BaseHTTPRequestHandler):
         for r in rows:
             pid = str(r["player_id"])
             pts = float(r["projected_points"] or 0)
-            width = float(r["width"]) if r["width"] is not None else 5.0
-            low = float(r["projection_lower"]) if r["projection_lower"] is not None else max(0.0, pts - width)
-            high = float(r["projection_upper"]) if r["projection_upper"] is not None else pts + width
+            _lo, _hi = interval_bounds(pts, r["position"])
+            low = float(r["projection_lower"]) if r["projection_lower"] is not None else _lo
+            high = float(r["projection_upper"]) if r["projection_upper"] is not None else _hi
+            width = float(r["width"]) if r["width"] is not None else round((high - low) / 2, 2)
             sleeper_id = gsis_to_sleeper.get(pid) or (pid if pid.isdigit() else None)
             players.append({
                 "player_id": pid,
@@ -1834,16 +1880,6 @@ class Handler(BaseHTTPRequestHandler):
             elif p.get("recent_team"):
                 agg[pid]["team"] = p["recent_team"]
 
-        # Interval factors mirror src/ffanalytics/projection.py v2
-        # (QB/K recalibration 2026-09-15). Change together plus
-        # the parity test. Widths frozen.
-        def _pos_factor(pos):
-            m = {"QB": 1.55, "RB": 1.07, "WR": 1.12, "TE": 0.88, "K": 0.85, "DEF": 0.75}
-            return m.get(pos, 1.0)
-
-        def _point_factor(pts):
-            return min(1.60, 1.0 + max(0, pts - 12) * 0.022) if pts > 12 else 1.0
-
         comp_row = try_fetch_one(conn, "SELECT data FROM market_consensus ORDER BY fetched_at DESC LIMIT 1")
         comp_list = load_json_blob(comp_row, key="data") or []
         comp_by_id = {}
@@ -1953,11 +1989,8 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 pts = 0.0
 
-            width = float(comp.get("interval_width") or comp.get("width") or (5.0 * _pos_factor(pos) * _point_factor(pts)))
-            width = max(3.0, min(14.0, width))
-            # why no /2: width is HALF-width (unified 2026-09-09). Floor matches src.
-            low = max(0.0, pts - width)
-            high = pts + width
+            low, high = interval_bounds(pts, pos)
+            width = round((high - low) / 2, 2)
             # Try GSIS map first, then name+team+pos lookup against Sleeper cache
             # why _norm_n: matches the normalized build side (suffix-proof).
             sleeper_id = gsis_to_sleeper.get(pid)

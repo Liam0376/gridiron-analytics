@@ -209,36 +209,49 @@ COLD_PENALTY_PER_DEGREE = 0.003  # 0.3% per degree below freezing
 # averaging nothing gets nothing invented for them.
 XFP_PULL_CAP = 0.50
 
-# Empirical backtested residual distributions by position (2024-2025 out-of-sample)
-# Used for split-conformal prediction intervals when custom player residuals are omitted.
-POS_RESIDUALS = {
-    "QB": [1.2, 2.5, 3.8, 5.1, 6.4, 7.8, 9.2, 10.5, 12.1],
-    "RB": [0.8, 1.9, 3.2, 4.3, 5.5, 6.9, 8.4, 9.8, 11.2],
-    "WR": [0.7, 1.8, 3.0, 4.4, 5.8, 7.2, 8.8, 10.2, 11.9],
-    "TE": [0.5, 1.2, 2.2, 3.4, 4.8, 6.1, 7.5, 8.9, 10.4],
-    "K": [0.5, 1.1, 2.1, 3.2, 4.2, 5.5, 6.8, 8.0, 9.5],
+# Floor/ceiling = empirical P20/P80 of actual points, conditional on the
+# projection, per position: (bin mean projection, P20, P80). Fit by
+# scripts/fit_intervals.py on production walk-forward 2024-2025 wk 4-18.
+# Replaced a flat per-position +/-~10 band (hand-typed POS_RESIDUALS) that
+# gave a 1.5-pt WR [0, 11.7] and every WR the same span regardless of role.
+# Holdout (fit 2024, eval 2025, target 0.60 in-range / 0.20 below floor):
+# QB 0.563/0.248, RB 0.645/0.144, WR 0.656/0.159, TE 0.689/0.138,
+# K 0.631/0.164. Mean span WR 16.2 -> 8.6, RB 15.7 -> 8.3, QB 19.9 -> 14.9.
+INTERVAL_TABLE = {
+    "QB": [(4.2, 0.0, 14.0), (11.0, 3.2, 22.2), (14.7, 8.8, 24.7), (17.1, 10.1, 24.1), (19.5, 11.0, 28.9), (23.4, 14.2, 29.8)],
+    "RB": [(0.7, 0.0, 1.4), (1.9, 0.0, 4.2), (3.4, 0.4, 7.0), (5.1, 1.1, 9.4), (7.2, 2.3, 12.5), (10.1, 4.3, 15.9), (13.5, 7.4, 20.2), (18.8, 9.9, 25.0)],
+    "WR": [(0.6, 0.0, 2.0), (2.0, 0.0, 4.2), (3.5, 0.0, 7.4), (5.1, 1.0, 8.6), (7.0, 1.7, 10.8), (9.3, 3.1, 15.6), (12.1, 5.1, 18.9), (17.0, 7.8, 21.8)],
+    "TE": [(0.8, 0.0, 2.4), (2.0, 0.0, 4.1), (3.2, 0.0, 6.1), (4.5, 1.3, 7.1), (6.3, 2.4, 10.8), (8.6, 3.7, 14.4), (12.6, 4.8, 18.7)],
+    "K": [(5.8, 4.0, 12.0), (7.6, 4.0, 12.0), (8.7, 4.0, 12.0), (10.7, 4.0, 13.0)],
 }
 
 
-def compute_conformal_bounds(
-    point_estimate: float,
-    position: str,
-    residuals: Optional[List[float]] = None,
-    alpha: float = 0.2,
-) -> Dict[str, float]:
-    """Compute split-conformal prediction interval for a projected score.
+def interval_bounds(point: float, position: str, table: Optional[Dict] = None) -> tuple:
+    """(floor, ceiling) for a projection: linear interp between bin centers,
+    constant offset from the projection past either end."""
+    t = (table or INTERVAL_TABLE)
+    pts = t.get((position or "").upper()) or t["WR"]
+    if point <= pts[0][0]:
+        c, lo, hi = pts[0]
+    elif point >= pts[-1][0]:
+        c, lo, hi = pts[-1]
+    else:
+        for (c0, lo0, hi0), (c1, lo1, hi1) in zip(pts, pts[1:]):
+            if point <= c1:
+                f = (point - c0) / (c1 - c0)
+                c, lo, hi = point, lo0 + f * (lo1 - lo0), hi0 + f * (hi1 - hi0)
+                break
+    low = max(0.0, min(point, point - (c - lo)))
+    high = max(point, point + (hi - c))
+    return low, high
 
-    Returns dict with keys: point_estimate, lower_bound, upper_bound, width, confidence.
-    width is the HALF-width (qhat scale): lower = max(0, point - width),
-    upper = point + width — same definition as projection.py (pinned Task 1,
-    2026-09-09 props plan). Do not halve again downstream.
-    """
-    from ffanalytics import conformal
 
-    res = residuals or POS_RESIDUALS.get(position.upper(), POS_RESIDUALS["WR"])
-    width = conformal.qhat(res, alpha=alpha)
-    low = max(0.0, point_estimate - width)
-    high = point_estimate + width
+def compute_conformal_bounds(point_estimate: float, position: str) -> Dict[str, float]:
+    """Floor/ceiling for a projected score (see INTERVAL_TABLE). Asymmetric:
+    width is HALF the span, (upper - lower) / 2, kept for consumers that
+    treat it as a spread scale. Use lower/upper for the actual range."""
+    low, high = interval_bounds(point_estimate, position)
+    width = (high - low) / 2
 
     conf = "HIGH" if width < 4.0 else ("MED" if width < 7.0 else "WIDE")
 
