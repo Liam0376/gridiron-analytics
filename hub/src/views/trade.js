@@ -430,10 +430,25 @@ export async function renderTrade(root) {
       const fill = names && names.length ? ` — adds ${names.map((n) => escapeHtml(String(n))).join(', ')}` : '';
       return `<div class="micro" style="margin-top:4px">+${gained} bench spot${gained > 1 ? 's' : ''} for ${escapeHtml(side)}${fill} <span class="faint">(+${Number(cval).toFixed(0)} ROS)</span></div>`;
     };
+    // Plain-English per-side breakdown from the engine's analysis block.
+    // Columns read independently: each answers "what do I win".
+    const analysisCol = (name, lines) => `
+      <div>
+        <div class="kicker" style="margin-bottom:4px">What ${escapeHtml(name)} wins</div>
+        <ul style="font-size:12.5px; line-height:1.5; padding-left:16px; margin:0">
+          ${(lines || []).map((x) => `<li style="margin-bottom:3px">${escapeHtml(x)}</li>`).join('')}
+        </ul>
+      </div>`;
+    const analysis = data.analysis && ((data.analysis.a || []).length || (data.analysis.b || []).length)
+      ? `<div class="signal-cols" style="margin-bottom:10px">
+          ${analysisCol(nameA, data.analysis.a)}${analysisCol(nameB, data.analysis.b)}
+        </div>`
+      : '';
     return `<div class="card"><div class="card-body">
       <div class="kicker">Trade verdict</div>
       <h2 class="verdict-headline">${escapeHtml(headline)}</h2>
       <div class="micro faint" style="margin-bottom:8px">${escapeHtml(nameA)} gives ${givesWk}/wk · gets ${getsWk}/wk${ma && mb ? ` · market ${ma} vs ${mb}` : ''}</div>
+      ${analysis}
       ${disagree ? `<div class="alert alert-warn" style="font-size:12px; margin-bottom:8px">Model and market disagree here — the model likes the ${modelD > 0 ? 'incoming' : 'outgoing'} side, real leagues pay more for the other. Trust the market on stars, the model on depth.</div>` : ''}
       <div class="signal-cols">
         <div><div class="kicker" style="margin-bottom:4px">${escapeHtml(nameA)} gives</div>${rowsA.map(pkgRow).join('') || '<div class="empty">—</div>'}</div>
