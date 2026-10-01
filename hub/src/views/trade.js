@@ -87,10 +87,13 @@ export async function renderTrade(root) {
   // Expanded player rows (gauges/detail) survive roster re-renders.
   // Keyed `side:pid`; renderRosterList re-applies open state from this set.
   const expandedPids = new Set();
-  // Verdict auto-grades (debounced) on every pick change — one server
-  // eval covers packages, market and slot credit, so the old $ banner
-  // and the Evaluate button are gone.
-  let verdictTimer = null;
+  // Verdict is explicit: tick players, confirm the Send/Receive picks in
+  // the banner, click Analyze. Any pick or team change invalidates it —
+  // stale analysis never stays on screen.
+  let lastVerdict = null; // {data, nameA, nameB, listA, listB}
+  let grading = false;
+  let gradeError = false;
+  let changedNote = false;
 
   // -- Trade stat helpers (client-side only, no new endpoints) --
   // Two roster shapes: parent hub items carry full-SEASON stat totals
@@ -192,7 +195,11 @@ export async function renderTrade(root) {
 
     renderRosterList(targetEl, fullRoster(data), side, targetSet);
     updateSubcounts();
-    queueVerdict();
+    // Team (re)load = fresh slate: no verdict, no stale-change note.
+    lastVerdict = null;
+    gradeError = false;
+    changedNote = false;
+    renderVerdictState();
     renderDepth();
   }
 
@@ -259,7 +266,10 @@ export async function renderTrade(root) {
         if (e.target.checked) targetSet.add(pid);
         else targetSet.delete(pid);
         updateSubcounts();
-        queueVerdict();
+        if (lastVerdict) changedNote = true;
+        lastVerdict = null;
+        gradeError = false;
+        renderVerdictState();
         renderDepth();
       });
     });
@@ -356,36 +366,79 @@ export async function renderTrade(root) {
       + `</div></div></div>`;
   }
 
-  // Single auto-grading verdict (debounced). One server eval covers
-  // packages, market and slot credit — the old $ banner, stat soup and
-  // Evaluate button are gone.
-  function queueVerdict() {
-    clearTimeout(verdictTimer);
-    verdictTimer = setTimeout(loadVerdict, 400);
+  // Explicit confirm-then-grade. Banner walks: hint → confirm (Send/
+  // Receive names + Analyze button) → grading → verdict. One server eval
+  // covers packages, market and slot credit.
+  function selectedPlayers(side) {
+    const data = side === 'A' ? rosterDataA : rosterDataB;
+    const ids = side === 'A' ? selectedPidsA : selectedPidsB;
+    return fullRoster(data).filter((p) => ids.has(String(p.player_id || p.id)));
   }
-  async function loadVerdict() {
-    const nameA = rosterDataA?.teamMeta?.team_name || 'Team A';
-    const nameB = rosterDataB?.teamMeta?.team_name || 'Team B';
-    if (!selectedPidsA.size && !selectedPidsB.size) {
+
+  function nameList(list) {
+    return list.map((p) => escapeHtml(p.player_name || p.full_name || '?')).join(', ');
+  }
+
+  function renderVerdictState() {
+    if (grading) {
+      summaryBanner.innerHTML = `<div class="card"><div class="card-body"><div class="empty" style="padding:8px">Grading trade…</div></div></div>`;
+      return;
+    }
+    if (lastVerdict) {
+      const v = lastVerdict;
+      summaryBanner.innerHTML = verdictHtml(v.data, v.nameA, v.nameB, v.listA, v.listB);
+      return;
+    }
+    const listA = selectedPlayers('A');
+    const listB = selectedPlayers('B');
+    if (!listA.length && !listB.length) {
       summaryBanner.innerHTML = `<div class="alert alert-info" style="font-size:13px">`
         + `Tick players on both sides to grade the trade.</div>`;
       return;
     }
-    summaryBanner.innerHTML = `<div class="card"><div class="card-body"><div class="empty" style="padding:8px">Grading trade…</div></div></div>`;
+    summaryBanner.innerHTML = `
+      ${gradeError ? `<div class="alert alert-warn" style="font-size:13px">Couldn\u2019t grade this trade right now.</div>` : ''}
+      <div class="alert alert-info" style="font-size:13px">
+        <div><strong>Send:</strong> ${nameList(listA) || '\u2014'} · <strong>Receive:</strong> ${nameList(listB) || '\u2014'}</div>
+        ${changedNote ? `<div class="faint" style="margin-top:4px">Selection changed — review the picks, then analyze again.</div>` : ''}
+        <div style="margin-top:8px"><button class="btn btn-primary" id="tradeAnalyzeBtn">Analyze trade</button></div>
+      </div>`;
+  }
+
+  async function gradeTrade() {
+    if (grading) return;
+    const nameA = rosterDataA?.teamMeta?.team_name || 'Team A';
+    const nameB = rosterDataB?.teamMeta?.team_name || 'Team B';
+    const snap = [selA.value, selB.value, [...selectedPidsA].join(','), [...selectedPidsB].join(',')].join('\u0000');
+    const listA = selectedPlayers('A');
+    const listB = selectedPlayers('B');
+    grading = true;
+    gradeError = false;
+    changedNote = false;
+    renderVerdictState();
     let data = null;
     try {
       data = await fetchTrade(selA.value, selB.value, {
         tradedA: [...selectedPidsA], tradedB: [...selectedPidsB],
       });
     } catch (_) { /* fall through to honest-empty */ }
+    grading = false;
+    // Superseded mid-flight (pick toggled or team swapped): drop, don't
+    // render a verdict for a selection the user no longer has.
+    const now = [selA.value, selB.value, [...selectedPidsA].join(','), [...selectedPidsB].join(',')].join('\u0000');
+    if (now !== snap) { renderVerdictState(); return; }
     if (!data || data.cold) {
-      summaryBanner.innerHTML = `<div class="alert alert-warn" style="font-size:13px">Couldn\u2019t grade this trade right now.</div>`;
+      gradeError = true;
+      renderVerdictState();
       return;
     }
-    summaryBanner.innerHTML = verdictHtml(data, nameA, nameB,
-      fullRoster(rosterDataA).filter(p => selectedPidsA.has(String(p.player_id || p.id))),
-      fullRoster(rosterDataB).filter(p => selectedPidsB.has(String(p.player_id || p.id))));
+    lastVerdict = { data, nameA, nameB, listA, listB };
+    renderVerdictState();
   }
+
+  summaryBanner.addEventListener('click', (e) => {
+    if (e.target.closest('#tradeAnalyzeBtn')) gradeTrade();
+  });
   // Plain-language verdict: who wins, the weekly exchange, market check,
   // slot credit. No $ VOR, no stat tables. Package rows come from the
   // server when it evaluated picks, else from the local roster objects
