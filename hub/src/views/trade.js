@@ -5,6 +5,7 @@ import { teamLogo } from '../components/teamLogo.js';
 import { getTeamColor } from '../components/teamColors.js';
 import { statGaugesRow } from '../components/statGauges.js';
 import { escapeHtml } from '../lib/escape.js';
+import { impactSvg, groupBars, sharedMax } from '../lib/tradeViz.js';
 
 export async function renderTrade(root) {
   const params = new URLSearchParams(location.hash.split('?')[1] || '');
@@ -412,15 +413,15 @@ export async function renderTrade(root) {
       ? Math.abs(marketD) / (Number(data.market_a) + Number(data.market_b)) : 0;
     const disagree = marketD != null && Math.abs(modelD) >= 20 && marketRel >= 0.10
       && ((modelD > 0) !== (marketD > 0));
-    const pkgRow = (pl) => `
-      <div class="mini-row">
-        ${playerAvatar(pl, 28)}
-        <div style="flex:1; min-width:0">
-          <div class="mini-name">${escapeHtml(pl.player_name || '')}</div>
+    const pCard = (pl) => `
+      <div class="pcard">
+        ${playerAvatar(pl, 36)}
+        <div class="pcard-main">
+          <div class="pcard-name">${escapeHtml(pl.player_name || '')}</div>
           <div class="micro faint">${posBadge(pl.position)} ${teamLogo(pl.team, 12)}</div>
         </div>
         <div style="text-align:right">
-          <div class="mono" style="font-weight:700; font-size:13px">${Number(pl.weekly ?? 0).toFixed(1)}<span class="micro faint">/wk</span></div>
+          <div class="pcard-pts">${Number(pl.weekly ?? 0).toFixed(1)}<span class="micro faint">/wk</span></div>
           ${pl.market != null ? `<div class="micro faint">mkt ${Number(pl.market).toLocaleString('en-US')}</div>` : ''}
         </div>
       </div>`;
@@ -430,29 +431,33 @@ export async function renderTrade(root) {
       const fill = names && names.length ? ` — adds ${names.map((n) => escapeHtml(String(n))).join(', ')}` : '';
       return `<div class="micro" style="margin-top:4px">+${gained} bench spot${gained > 1 ? 's' : ''} for ${escapeHtml(side)}${fill} <span class="faint">(+${Number(cval).toFixed(0)} ROS)</span></div>`;
     };
-    // Plain-English per-side breakdown from the engine's analysis block.
-    // Columns read independently: each answers "what do I win".
-    const analysisCol = (name, lines) => `
+    // One y-scale across both panels so the two charts compare honestly.
+    const ta = data.team_a || null;
+    const tb = data.team_b || null;
+    const cal = data.calendar || {};
+    const weeks = Array.isArray(cal.weeks_left) ? cal.weeks_left : [];
+    const yMax = sharedMax(
+      ta ? (ta.lineup_before || []).concat(ta.lineup_after || []) : [],
+      tb ? (tb.lineup_before || []).concat(tb.lineup_after || []) : []);
+    // Per-team panel: cards → weekly impact chart → group deltas →
+    // plain-English wins. Reads as "what do I win", column by column.
+    const panel = (name, rows, blk, lines) => `
       <div>
-        <div class="kicker" style="margin-bottom:4px">What ${escapeHtml(name)} wins</div>
-        <ul style="font-size:12.5px; line-height:1.5; padding-left:16px; margin:0">
-          ${(lines || []).map((x) => `<li style="margin-bottom:3px">${escapeHtml(x)}</li>`).join('')}
-        </ul>
+        <div class="kicker" style="margin-bottom:6px">${escapeHtml(name)} gives</div>
+        <div class="pcards">${rows.map(pCard).join('') || '<div class="empty">—</div>'}</div>
+        ${blk ? impactSection(blk, yMax, weeks, cal) : ''}
+        ${(lines || []).length ? `
+          <div class="kicker" style="margin:10px 0 4px">What ${escapeHtml(name)} wins</div>
+          <ul class="win-list">${lines.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>` : ''}
       </div>`;
-    const analysis = data.analysis && ((data.analysis.a || []).length || (data.analysis.b || []).length)
-      ? `<div class="signal-cols" style="margin-bottom:10px">
-          ${analysisCol(nameA, data.analysis.a)}${analysisCol(nameB, data.analysis.b)}
-        </div>`
-      : '';
     return `<div class="card"><div class="card-body">
       <div class="kicker">Trade verdict</div>
       <h2 class="verdict-headline">${escapeHtml(headline)}</h2>
       <div class="micro faint" style="margin-bottom:8px">${escapeHtml(nameA)} gives ${givesWk}/wk · gets ${getsWk}/wk${ma && mb ? ` · market ${ma} vs ${mb}` : ''}</div>
-      ${analysis}
       ${disagree ? `<div class="alert alert-warn" style="font-size:12px; margin-bottom:8px">Model and market disagree here — the model likes the ${modelD > 0 ? 'incoming' : 'outgoing'} side, real leagues pay more for the other. Trust the market on stars, the model on depth.</div>` : ''}
-      <div class="signal-cols">
-        <div><div class="kicker" style="margin-bottom:4px">${escapeHtml(nameA)} gives</div>${rowsA.map(pkgRow).join('') || '<div class="empty">—</div>'}</div>
-        <div><div class="kicker" style="margin-bottom:4px">${escapeHtml(nameB)} gives</div>${rowsB.map(pkgRow).join('') || '<div class="empty">—</div>'}</div>
+      <div class="signal-cols" style="margin-top:10px">
+        ${panel(nameA, rowsA, ta, data.analysis?.a)}
+        ${panel(nameB, rowsB, tb, data.analysis?.b)}
       </div>
       ${s ? credit(nameA, s.gained_a, s.credit_a_ros, s.fill_a) + credit(nameB, s.gained_b, s.credit_b_ros, s.fill_b) : ''}
     </div></div>`;
@@ -469,6 +474,30 @@ export async function renderTrade(root) {
 
   // Initial load
   await Promise.all([loadRoster('A'), loadRoster('B')]);
+}
+
+// Weekly impact block for one team's panel: before/after chart, delta
+// badge from raw (unweighted) points, diverging position bars.
+function impactSection(blk, yMax, weeks, cal) {
+  const svg = impactSvg(blk.lineup_before || [], blk.lineup_after || [],
+                        yMax, weeks, cal.playoff_week_start);
+  if (!svg) return '';
+  const g = blk.gains || {};
+  const rw = Number(g.raw_per_week ?? g.gain_per_week ?? 0) || 0;
+  const cls = rw > 0.05 ? 'pos' : rw < -0.05 ? 'neg' : '';
+  const poIdx = weeks.findIndex((w) => Number(w) >= Number(cal.playoff_week_start || 15));
+  const range = weeks.length ? `weeks ${weeks[0]}–${weeks[weeks.length - 1]}` : '';
+  return `
+    <div class="row align-between" style="margin:10px 0 4px">
+      <div class="kicker">Weekly impact</div>
+      <span class="delta-badge ${cls}">${rw > 0 ? '+' : ''}${rw.toFixed(1)}/wk</span>
+    </div>
+    <div class="impact">${svg}</div>
+    <div class="impact-legend micro faint">
+      <span><i class="lg lg-before"></i>before&nbsp;<i class="lg lg-after"></i>after</span>
+      <span>${range}${poIdx > 0 ? ' · shaded = playoffs' : ''}</span>
+    </div>
+    ${groupBars(blk.group_delta)}`;
 }
 
 function fullRoster(data) {

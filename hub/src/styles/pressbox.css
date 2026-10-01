@@ -377,6 +377,60 @@ body .cut-line span {
 body .signal-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 body .kicker.good { color: var(--emerald); }
 body .kicker.bad { color: var(--crimson); }
+
+/* Trade verdict panels: player cards, weekly impact chart, delta bars */
+body .pcards { display: flex; flex-direction: column; gap: 6px; }
+body .pcard {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--surface-raised);
+}
+body .pcard-main { flex: 1; min-width: 0; }
+body .pcard-name {
+  font-weight: 650; font-size: 13.5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+body .pcard-pts { font-weight: 700; font-size: 15px; text-align: right; }
+body .delta-badge {
+  font-size: 11px; font-weight: 700; padding: 2px 7px;
+  border-radius: 999px; border: 1px solid var(--border);
+}
+body .delta-badge.pos { color: var(--emerald); border-color: var(--emerald); }
+body .delta-badge.neg { color: var(--crimson); border-color: var(--crimson); }
+body .impact { position: relative; height: 76px; }
+body .impact svg { display: block; width: 100%; height: 100%; }
+body .impact .po-shade { fill: color-mix(in srgb, var(--color-accent) 9%, transparent); }
+body .impact .ln-before { fill: none; stroke: var(--faint); stroke-width: 1.5; stroke-dasharray: 5 4; }
+body .impact .ln-after { fill: none; stroke: var(--color-accent); stroke-width: 2; }
+body .impact-legend { display: flex; justify-content: space-between; gap: 8px; margin-top: 3px; }
+body .lg {
+  display: inline-block; width: 14px; height: 0;
+  vertical-align: middle; margin: 0 4px 0 8px;
+}
+body .lg-before { border-top: 2px dashed var(--faint); }
+body .lg-after { border-top: 2px solid var(--color-accent); margin-left: 6px; }
+body .gd-block { margin-top: 8px; }
+body .gd-row {
+  display: grid; grid-template-columns: 34px 1fr 52px;
+  align-items: center; gap: 8px; font-size: 11.5px; margin-bottom: 5px;
+}
+body .gd-lab { color: var(--faint); font-weight: 700; letter-spacing: 0.05em; }
+body .gd-track {
+  position: relative; height: 10px; background: var(--surface-raised);
+  border: 1px solid var(--border); border-radius: 999px;
+}
+body .gd-track::after {
+  content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px;
+  width: 1px; background: var(--border);
+}
+body .gd-fill { position: absolute; top: 0; bottom: 0; border-radius: 999px; }
+body .gd-fill.pos { left: 50%; background: var(--emerald); }
+body .gd-fill.neg { right: 50%; background: var(--crimson); }
+body .gd-val { text-align: right; font-weight: 700; }
+body .gd-val.pos { color: var(--emerald); }
+body .gd-val.neg { color: var(--crimson); }
+body .win-list { font-size: 12.5px; line-height: 1.5; padding-left: 16px; margin: 0; }
+body .win-list li { margin-bottom: 3px; }
 @media (max-width: 1000px) {
   body .dash-span-4, body .dash-span-5, body .dash-span-7 { grid-column: span 6; }
 }
