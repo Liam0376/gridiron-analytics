@@ -1,177 +1,171 @@
-# DESIGN.md — FantasyHub — Sidebar + Top Search
+# DESIGN.md — Press Box v2
 
-> System fonts: Helvetica / Apple SF · Sidebar navigation · L2 fluid · Data-dense but airy
+> Rebrand + retheme spec. Hybrid of Sleeper / FantasyPros / Yahoo Fantasy analysis
+> (`~/fantasy-design-specs/*/design.md`). Replaces the Helvetica/mono "Press Box v1"
+> look. Kills the AI-generic card-grid feel.
 
----
-
-## 1. Visual Theme & Atmosphere
-
-**Theme: Apple / Helvetica Light — Airy Sidebar Dashboard**
-Native-macOS-feeling console: dark sidebar for wayfinding, white search bar at top, airy canvas. Helvetica on Retina, SF Mono for numbers. Sidebar is #192741 with subtle inner shadow. Content: 24px gutters, 16px card radius. Aims for Linear + Apple App Store, not Bootstrap admin.
-
-**Atmosphere keywords:** airy, precise, calm. No neon, no glassmorphism, no hero.
-
-**One-line pitch:** *A Helvetica-native sidebar console where search is command and every table feels like Finder.*
-
-**Interaction Level: L2 — Fluid.** `fadeInUp 220ms` reveal. Sticky topbar compress on scroll. `transform` hover lifts. `8px` interval bar growth. Sidebar `120ms` indicator slide. Search dropdown `140ms` scale.
+**Name:** Press Box
+**One-line pitch:** A purple-accented sports editorial console: cool-gray canvas,
+white hairline cards, condensed display type over clean geometric body text,
+density borrowed from Sleeper score rows.
 
 ---
 
-## 2. Color Palette & Roles
+## 1. Brand
+
+| Item | Value |
+| ---- | ----- |
+| Name | Press Box |
+| Wordmark | `PRESS BOX` — Oswald 600, uppercase, letter-spacing 0.02em, white on sidebar |
+| Badge (logo) | Rounded square, `--accent: #7D2EFF`, white `PB` in Oswald 600, radius 10px, 28×28px in sidebar / 16px in favicon |
+| Page `<title>` | `Press Box — Fantasy Football Analytics` |
+| Manifest short_name | `Press Box` |
+| Favicon | `public/favicon.svg` — purple rounded square, white condensed `PB` |
+| Voice | Sports desk, not SaaS. Labels read like a stats feed: short, uppercase sparingly, numbers lead. |
+
+Replace every user-facing `FantasyHub` string with `Press Box` (sidebar header,
+title, manifest, setup modal header, README, `AGENTS.md` mentions).
+`package.json` name and internal route/API keys stay unchanged — branding only.
+
+Sidebar header block, top to bottom:
+
+```
+[P]  PRESS BOX            ← badge + wordmark, one row
+     12-TEAM · 2 FLEX     ← league line, Poppins 500, muted, uppercase, 0.06em
+```
+
+---
+
+## 2. Typography
+
+Fonts via Google Fonts `<link>` in `index.html` (only new network cost; both free):
+
+- **Oswald** (600) — display only: page headlines (`DASHBOARD`, team name), badge,
+  big numerals (`W4`, scores when shown large). Condensed = sports broadcast feel.
+- **Poppins** (400/500/600) — everything else: nav, body, card headers, buttons,
+  labels. Replaces current mono-uppercase label habit (Sleeper/FP both use
+  geometric sans for labels, not mono).
+- **Mono** (`ui-monospace, SFMono-Regular, Menlo`) — tabular data ONLY: projections,
+  dollar values, percentages, timestamps. Never labels, never nav.
+
+```css
+--font-display: "Oswald", "Arial Narrow", sans-serif;
+--font-sans: "Poppins", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+--font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+```
+
+Scale (grounded in Yahoo + FP specs):
+
+| Role | Font | Size | Weight | Line height | Tracking |
+| ---- | ---- | ---- | ------ | ----------- | -------- |
+| Display | Oswald | 40px | 600 | 1.05 | 0.01em |
+| H2 / card title | Poppins | 14px | 600 | 1.3 | 0.06em, uppercase |
+| Body | Poppins | 14px | 400 | 1.5 | 0 |
+| Small | Poppins | 12px | 500 | 1.4 | 0.02em |
+| Data | mono | 13px | 400–500 | 1.4 | 0 |
+
+Rules: page headlines always Oswald uppercase. No mono labels anywhere. Uppercase
+reserved for card titles and eyebrows (3–6 words max).
+
+---
+
+## 3. Color
+
+Purple is the single accent. Green/red stay semantic-only (status, ±, buy/sell).
 
 ```css
 :root {
-  --bg: #F3F4F6;
-  --bg-rgb: 243, 244, 246;
-  --surface: #FFFFFF;
+  /* canvas + surfaces — Yahoo grounded */
+  --bg: #EEF2FB;            /* cool-gray page canvas */
+  --surface: #FFFFFF;       /* cards */
   --surface-raised: #F8FAFC;
-  --surface-hover: #EFF6FF;
-  --border: #E2E8F0;
-  --border-strong: #CBD5E1;
-  --border-active: #1E40AF;
+  --surface-hover: #F5F3FF; /* purple 4% tint, from purple-rgb */
 
+  /* borders — flat, hairline, no ambient shadow (FP + Yahoo both flat) */
+  --border: #DEE4F3;
+  --border-strong: #CBD5E1;
+
+  /* text */
   --text: #0F172A;
   --text-muted: #475569;
-  --text-faint: #64748B;
+  --text-faint: #94A3B8;
   --text-inverse: #FFFFFF;
 
-  /* Sidebar — deep navy, distinct from topbar */
-  --sidebar-bg: #192741;
-  --sidebar-bg-hover: rgba(255,255,255,0.08);
-  --sidebar-bg-active: #FFFFFF;
-  --sidebar-text: rgba(255,255,255,0.72);
-  --sidebar-text-active: #192741;
-  --sidebar-icon: #93C5FD;
-  --sidebar-border: rgba(255,255,255,0.08);
+  /* accent */
+  --accent: #7D2EFF;            /* Yahoo brand purple — CTAs, active nav, links */
+  --accent-hover: #6A20E6;
+  --accent-dim: rgba(125, 46, 255, 0.08);
+  --accent-rgb: 125, 46, 255;
 
-  /* Topbar — white, separates search */
-  --topbar-bg: #FFFFFF;
-  --topbar-border: #E2E8F0;
-  --topbar-height: 56px;
-  --sidebar-width: 240px;
-  --sidebar-collapsed: 72px;
+  /* semantic — keep existing values */
+  --green: /* current success green */;
+  --red:   /* current danger red */;
 
-  --primary: #1E40AF;
-  --primary-hover: #1E3A8A;
-  --primary-dim: rgba(30,64,175,0.08);
-  --amber: #D97706;
-  --amber-dim: rgba(217,119,6,0.10);
-  --emerald: #059669;
-  --emerald-dim: rgba(5,150,105,0.08);
-  --crimson: #DC2626;
-  --crimson-dim: rgba(220,38,38,0.08);
-  --sky: #0284C7;
-  --sky-dim: rgba(2,132,199,0.08);
-  --violet: #7C3AED;
-  --violet-dim: rgba(124,58,237,0.08);
-
-  --pos-qb: #0369A1; --pos-rb: #059669; --pos-wr: #D97706; --pos-te: #7C3AED; --pos-k: #DB2777; --pos-def: #64748B;
-
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
-  --shadow-lg: 0 10px 24px rgba(0,0,0,0.12);
+  /* sidebar — keep near-black, it works */
+  --sidebar-bg: #0B0B0F;
 }
 ```
 
----
+Rules:
+- Purple fires on: primary buttons, active nav item, links, focus rings, badge,
+  progress fills. Never on body copy, never as page background.
+- Green/red: status dots, OUT/IN, ±proj, buy/sell only.
+- Orange v1: removed entirely (badge, accents, headlines).
+- Shadows: none at rest. Cards separate via 1px `--border`. Modal/dropdown only:
+  `0 16px 48px rgba(15, 23, 42, 0.16)` (Yahoo elevation).
 
-## 3. Typography Rules
-
-```css
-/* System only — deliberate brand Helvetica / Apple SF, zero webfonts, no Google Fonts */
---font-sans: "Helvetica Neue", Helvetica, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
---font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-```
-
-| Role | Family | Weight | Size | Tracking | Use |
-|------|--------|--------|------|----------|-----|
-| Display | Helvetica | 700 | 26px | -0.03em | Page `h1` |
-| Section | Helvetica | 700 | 12px | 0.05em uppercase | Card headers, `th` |
-| Body | Helvetica | 500 | 13px | 0 | Descriptions |
-| Mono Data | SF Mono | 600/700 | 12px | 0 | Points, `$`, intervals |
-| Label | Helvetica | 600 | 11px | 0.06em | Kicker, badges |
+Fill `--green`/`--red` from existing `tokens.css` values during implementation —
+they already pass contrast.
 
 ---
 
-## 4. Component Stylings
+## 4. Layout & density
 
-**Sidebar Nav (new):**
-```css
-.sidebar { width: var(--sidebar-width); background: var(--sidebar-bg); border-right: 1px solid var(--sidebar-border); display:flex; flex-direction:column; }
-.sidebar-brand { padding:20px 18px; border-bottom:1px solid var(--sidebar-border); }
-.sidebar-tab { display:flex; align-items:center; gap:12px; padding:10px 14px; border-radius:10px; margin:4px 10px; font:600 13px Helvetica; color:var(--sidebar-text); border:1px solid transparent; cursor:pointer; transition: all 120ms ease; }
-.sidebar-tab:hover { background: var(--sidebar-bg-hover); color:#fff; }
-.sidebar-tab.active { background: var(--sidebar-bg-active); color:var(--sidebar-text-active); font-weight:700; box-shadow:0 1px 6px rgba(0,0,0,0.12); }
-.sidebar-tab svg { width:18px; height:18px; flex-shrink:0; }
-```
+Sleeper's 4px grid, Yahoo's flat cards, tighter than v1:
 
-**Topbar Search (new):**
-```css
-.topbar { height:var(--topbar-height); background:var(--topbar-bg); border-bottom:1px solid var(--topbar-border); display:flex; align-items:center; gap:16px; padding:0 24px; position:sticky; top:0; z-index:40; }
-.search-top { flex:1; max-width:640px; display:flex; align-items:center; gap:10px; background:var(--surface-raised); border:1px solid var(--border); border-radius:12px; padding:8px 14px; }
-.search-top:focus-within { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-dim); }
-.search-top input { flex:1; border:0; outline:0; background:transparent; font:400 14px Helvetica; color:var(--text); }
-```
-
-**Cards/Tables:** `radius 12px`, `padding 14px` (code wins — single source `tokens.css`: `--grid-gap:10px` / `--card-padding:14px`), `shadow-sm` default, `border-strong` on hover, `row height 40px`. Radius rule: `16 modal` / `12 card` / `999 pill-only`.
+- Spacing ramp: `4, 8, 12, 16, 24, 32, 48, 64` px. Card padding `16px` (v1 was 20–24).
+- Radius: cards `12px`, inputs/buttons pill `9999px` (Yahoo split), badges `6px`.
+- Max content width stays. Sidebar stays fixed dark.
+- Dashboard: break the uniform 3-card grid. Yahoo-style hierarchy:
+  1. **Hero strip** — Playoff Race gets full-width or double-width slot, top.
+  2. **Two compact lists** — Status Report + Waiver Targets side by side, tighter rows.
+  3. **Full-width strips** — Trade Signals + Sync below, one row each.
+- Score/player rows: Sleeper pattern — name left, number right-aligned mono,
+  status dot far right, 36px row height, hairline divider, no card-in-card.
+- Buttons: pill, `--accent` primary / white with border secondary / ghost link.
 
 ---
 
-## 5. Layout Principles
+## 5. Motion
 
-* **Shell:** `display:flex` — `sidebar 240px` fixed left, `main flex:1` column (`topbar 56px` sticky + `page` scroll). `page { max-width:1280px; padding:24px; gap:10px }`.
-* **Grid:** `12-col` `gap 10px` (`--grid-gap:10px`), `kpi-card span 3` (12→6→12 responsive).
-* **Whitespace:** Section `gap 10px`, card `padding 14px` (`--card-padding:14px`), hero `padding 8 0 12`. Radius rule: `16 modal` / `12 card` / `999 pill-only`.
-* **Container:** Sidebar collapses to `72px` icon-only at `1100px` hover-expand, to bottom sheet nav at `640px` (existing `.mobile-nav` reused, topbar stays).
+Minimal, sports-app snappy. Keep existing durations where already tuned; drop any
+bounce/glow. Focus ring: `2px solid var(--accent)` + `2px offset` everywhere.
 
 ---
 
-## 6. Depth & Elevation
+## 6. Out of scope (v2)
 
-* Sidebar: `inset 1px 0 0 rgba(255,255,255,0.06)`, `shadow-lg` on active tab.
-* Topbar: `shadow-sm` (`0 1px 3px rgba(0,0,0,0.06)`).
-* Cards: `shadow-sm` resting, `shadow-md` + `border-strong` on hover.
-* Search dropdown: `shadow-lg` + `1px border-strong`.
-
----
-
-## 7. Animation & Interaction — L2
-
-* **Reveal:** `.reveal { opacity:0; translateY(6px); transition: opacity 220ms, translate 220ms }` staggered `40ms`.
-* **Topbar compress:** `scrollY >12` → `height 48px` + `shadow-sm`.
-* **Sidebar indicator:** active tab `::before` `4px` rail with `120ms` slide.
-* **Hover:** `card translateY(-1px)`, `tr td` `radial-gradient` spotlight (existing `--mx/--my`).
-* **Search:** dropdown `scale 0.98→1` `140ms`.
-* **Reduced motion:** all `transition:none`.
+- Dark mode restyle — existing toggle keeps working with current dark tokens;
+  re-deriving dark palette from purple lands in v2.1.
+- Data/logic changes of any kind — CSS + `index.html` + string swaps only.
+- Landing/marketing pages.
 
 ---
 
-## 8. Do's and Don'ts
+## 7. Implementation map
 
-Do:
-1. Use `Helvetica / -apple-system` everywhere — zero `Fira/JetBrains` imports.
-2. Sidebar `240px` + topbar `56px` only — no second horizontal nav.
-3. Search is sole topbar control; tabs live only in sidebar.
-4. All colors via `var(--*)`, no hex.
-5. Mono only for numbers (`pts`, `$`, intervals).
-6. Active sidebar item is white pill, not underline.
-7. Keep `page` max `1280` centered in `main`.
-8. Maintain `44px` touch target on mobile.
+| File | Change |
+| ---- | ------ |
+| `src/styles/tokens.css` | rewrite per §3, add font vars per §2 |
+| `src/styles/pressbox.css` | rewrite per §2–4 (display type, density, hero grid) |
+| `src/styles/app.css` | targeted: label font swaps, card padding/radius, remove shadows |
+| `index.html` | Google Fonts link, title, favicon link |
+| `public/favicon.svg` | new (purple PB square) |
+| `public/manifest.json` | name/short_name → Press Box |
+| views/components | dashboard grid per §4; `FantasyHub` → `Press Box` strings |
+| `src/styles/pressbox.css` badge | `.badge PB` styles |
 
-Don't:
-1. Don't reintroduce top tabs — breaks airy hierarchy.
-2. Don't add glass `backdrop-filter:blur` >14px or full-page.
-3. Don't use `filter:blur` on moving elements.
-4. Don't add Google Fonts or custom `@font-face`.
-5. Don't change sidebar bg from `#192741` without updating `--sidebar-*` tokens.
-6. Don't put badges or stats in sidebar — nav only.
-7. Don't exceed `16px` card radius.
-8. Don't animate `height` — use `transform`.
-
----
-
-## 9. Responsive Behavior
-
-* `>1100px` : sidebar `240px` fixed, topbar `56px`.
-* `900-1100px` : sidebar `72px` icon-only, hover expands to `240px` overlay.
-* `≤640px` : sidebar `display:none`, `.mobile-nav` bottom bar `64px` (existing), topbar search `max-width:100%`, `page` `padding 12px`, `kpi-card span 6→12`, touch `44px`.
+Verification (one check): `npm run build` passes, then headless screenshot
+dashboard + matchups + trade at 1440×900 — compare against
+`~/fantasy-design-specs/current-ui.png`. No mono labels, no orange, purple fires
+on active nav.
