@@ -1,6 +1,6 @@
 {
-  "name": "FantasyHub",
-  "short_name": "FantasyHub",
+  "name": "Press Box",
+  "short_name": "Press Box",
   "description": "Fantasy football analytics — projections, matchups, auction draft",
   "start_url": "/",
   "display": "standalone",

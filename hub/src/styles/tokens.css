@@ -1,56 +1,62 @@
 /* ═══════════════════════════════════════════════════════
-   FantasyHub — Design Tokens v4 ("Gallery")
-   Neutral canvas · single blaze accent · hairlines, no boxes
-   All v2 variable names preserved for compatibility.
+   Press Box — Design Tokens v2 (Press Box rebrand)
+   Cool canvas · single purple accent · flat hairlines
+   All v4/v2 variable names preserved for compatibility.
    ═══════════════════════════════════════════════════════ */
 :root {
-  /* Base — quiet gallery gray, not cream paper */
-  --bg: #F3F3F1;
-  --bg-rgb: 243, 243, 241;
+  /* Base — cool-gray page canvas (Yahoo grounded) */
+  --bg: #EEF2FB;
+  --bg-rgb: 238, 242, 251;
   --surface: #FFFFFF;
   --surface-rgb: 255, 255, 255;
-  --surface-raised: #F6F6F4;
-  --surface-hover: #EDEDE9;
+  --surface-raised: #F8FAFC;
+  --surface-hover: #F5F3FF; /* purple 4% tint */
   --surface-glass: rgba(255, 255, 255, 0.85);
-  --border: #E5E5E0;
-  --border-strong: #D4D4CD;
-  --border-active: #E4572E;
+  --border: #DEE4F3;
+  --border-strong: #CBD5E1;
+  --border-active: #7D2EFF;
 
-  /* Text — neutral ink */
-  --text: #161614;
-  --text-rgb: 22, 22, 20;
-  --text-muted: #5C5C56;
-  --text-faint: #9B9B93;
+  /* Text */
+  --text: #0F172A;
+  --text-rgb: 15, 23, 42;
+  --text-muted: #475569;
+  --text-faint: #94A3B8;
   --text-inverse: #FFFFFF;
 
-  /* Typography — Barlow Condensed display + Barlow body */
-  --font-sans: "Barlow", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, "Segoe UI", Arial, sans-serif;
+  /* Typography — Oswald display + Poppins body (Press Box §2) */
+  --font-sans: "Poppins", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, "Segoe UI", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
-  --font-display: "Barlow Condensed", "Arial Narrow", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, sans-serif;
+  --font-display: "Oswald", "Arial Narrow", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, sans-serif;
 
-  /* Gallery identity — one hot accent, deep pine primary */
-  --flag: #E4572E;
-  --flag-rgb: 228, 87, 46;
+  /* Press Box identity — single purple accent */
+  --flag: #7D2EFF;
+  --flag-rgb: 125, 46, 255;
   --flag-ink: #FFFFFF;
-  --field: #0E3B2C;
-  --field-rgb: 14, 59, 44;
-  --paper: #F3F3F1;
-  --ink: #161614;
-  --rule: #E5E5E0;
+  --field: #7D2EFF;
+  --field-rgb: 125, 46, 255;
+  --paper: #EEF2FB;
+  --ink: #0F172A;
+  --rule: #DEE4F3;
 
-  /* Primary — deep pine */
-  --primary: #0E3B2C;
-  --primary-rgb: 14, 59, 44;
-  --primary-light: #1A5C45;
-  --primary-dim: rgba(14, 59, 44, 0.07);
-  --primary-hover: #0A2C21;
+  /* Accent — purple (spec names + legacy aliases) */
+  --accent: #7D2EFF;
+  --accent-hover: #6A20E6;
+  --accent-dim: rgba(125, 46, 255, 0.08);
+  --accent-rgb: 125, 46, 255;
 
-  /* Accent — blaze */
-  --amber: #C2541F;
-  --amber-rgb: 194, 84, 31;
-  --amber-dim: rgba(228, 87, 46, 0.10);
-  --amber-glow: rgba(228, 87, 46, 0.25);
-  --amber-strong: #A03F14;
+  /* Primary — purple (single accent; green lives in --emerald) */
+  --primary: #7D2EFF;
+  --primary-rgb: 125, 46, 255;
+  --primary-light: #907CFF;
+  --primary-dim: rgba(125, 46, 255, 0.08);
+  --primary-hover: #6A20E6;
+
+  /* Warning tier — golden yellow (orange removed with v1) */
+  --amber: #CA8A04;
+  --amber-rgb: 202, 138, 4;
+  --amber-dim: rgba(202, 138, 4, 0.10);
+  --amber-glow: rgba(202, 138, 4, 0.25);
+  --amber-strong: #A16207;
 
   /* Semantic */
   --emerald: #0E7A4F;
@@ -76,22 +82,22 @@
 
   /* Confidence & Weather */
   --conf-high: #0E7A4F;
-  --conf-medium: #C2541F;
+  --conf-medium: #CA8A04;
   --conf-low: #9B9B93;
   --weather-ok: #0E7A4F;
-  --weather-warn: #C2541F;
+  --weather-warn: #CA8A04;
   --weather-bad: #C93A2E;
 
-  /* Elevation — soft, single-layer, neutral */
-  --shadow-sm: 0 1px 2px rgba(22,22,20,0.05);
-  --shadow-md: 0 4px 16px rgba(22,22,20,0.07);
-  --shadow-lg: 0 12px 32px rgba(22,22,20,0.10);
-  --shadow-xl: 0 24px 64px rgba(22,22,20,0.16);
-  --shadow-glow: 0 0 0 3px rgba(228,87,46,0.18);
-  --shadow-glow-amber: 0 0 0 3px rgba(228,87,46,0.18);
+  /* Elevation — none at rest; modal/dropdown only (Yahoo) */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 16px rgba(15, 23, 42, 0.07);
+  --shadow-lg: 0 16px 48px rgba(15, 23, 42, 0.16);
+  --shadow-xl: 0 16px 48px rgba(15, 23, 42, 0.16);
+  --shadow-glow: 0 0 0 2px rgba(125, 46, 255, 0.35);
+  --shadow-glow-amber: 0 0 0 2px rgba(125, 46, 255, 0.35);
 
-  /* Sidebar — flat near-black green */
-  --sidebar-bg: #101312;
+  /* Sidebar — near-black, it works (spec §3) */
+  --sidebar-bg: #0B0B0F;
   --sidebar-border: rgba(255,255,255,0.07);
   --sidebar-text: rgba(255,255,255,0.55);
   --sidebar-bg-hover: rgba(255,255,255,0.06);
@@ -104,18 +110,18 @@
   --topbar-height: 58px;
 
   /* Layout */
-  --color-primary: #0E3B2C;
+  --color-primary: #7D2EFF;
   --color-on-primary: #FFFFFF;
   --color-secondary: #2270A8;
-  --color-accent: #E4572E;
+  --color-accent: #7D2EFF;
   --grid-gap: 12px;
-  --card-padding: 14px;
+  --card-padding: 16px;
   --font-size-small: 12px;
   --table-row-height: 40px;
   --sidebar-width: 232px;
   --header-height: 52px;
   --kpi-good: #0E7A4F;
-  --kpi-ok: #C2541F;
+  --kpi-ok: #CA8A04;
   --kpi-bad: #C93A2E;
 
   --mobile-nav-height: 64px;
@@ -123,17 +129,17 @@
 
   --team-accent: var(--primary);
 
-  /* Card treatment — soft radius, hairline */
+  /* Card treatment — 12px cards, hairline, 6px badges */
   --card-radius: 12px;
   --card-border: 1px solid var(--border);
   --card-bg: var(--surface);
-  --badge-radius: 999px;
+  --badge-radius: 6px;
 
   /* Visual richness */
-  --sidebar-gradient: linear-gradient(180deg, #101312 0%, #151917 100%);
+  --sidebar-gradient: linear-gradient(180deg, #0B0B0F 0%, #14141A 100%);
   --card-accent-width: 3px;
-  --glow-primary: 0 0 0 3px rgba(14,59,44,0.12);
-  --glow-amber: 0 0 0 3px rgba(228,87,46,0.20);
+  --glow-primary: 0 0 0 3px rgba(125,46,255,0.14);
+  --glow-amber: 0 0 0 3px rgba(202,138,4,0.20);
   --glow-emerald: 0 0 0 3px rgba(14,122,79,0.12);
   --glow-sky: 0 0 0 3px rgba(34,112,168,0.12);
   --hero-gradient: none;
