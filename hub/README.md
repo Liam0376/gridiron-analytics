@@ -1,4 +1,4 @@
-# FantasyHub — Local Command Center
+# Press Box — Local Command Center
 
 **Zero tokens. $0. Read-only.**
 

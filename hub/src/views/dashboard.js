@@ -98,7 +98,7 @@ export async function renderDashboard(root) {
     ${isDemoData(meta) ? `<div class="alert alert-warn reveal in" role="status">Demo data — run refresh to load live Sleeper data.</div>` : ''}
 
     <div class="dash-grid reveal in reveal-delay-1">
-      <div class="card dash-span-4">
+      <div class="card dash-span-12">
         <div class="card-header"><h3>Playoff Race</h3><span class="kicker">sim odds · ${remaining} left</span></div>
         <div class="card-body" style="padding:6px 12px">
           ${leagueTeams.length ? leagueTeams.map((t, i) => {
@@ -122,7 +122,7 @@ export async function renderDashboard(root) {
         </div>
       </div>
 
-      <div class="card dash-span-4">
+      <div class="card dash-span-6">
         <div class="card-header"><h3>Status Report</h3><span class="kicker">rostered · ${hurt.length}</span></div>
         <div class="card-body" style="padding:6px 12px">
           ${hurt.length ? hurt.slice(0, 6).map(p => `
@@ -147,7 +147,7 @@ export async function renderDashboard(root) {
         </div>
       </div>
 
-      <div class="card dash-span-4">
+      <div class="card dash-span-6">
         <div class="card-header"><h3>Waiver Targets</h3><a href="#waiver" class="kicker" style="color:var(--flag)">all →</a></div>
         <div class="card-body" style="padding:6px 12px">
           ${targets.length ? targets.map(r => `
@@ -166,7 +166,7 @@ export async function renderDashboard(root) {
         </div>
       </div>
 
-      <div class="card dash-span-7">
+      <div class="card dash-span-12">
         <div class="card-header"><h3>Trade Signals</h3><a href="#auction" class="kicker" style="color:var(--flag)">values →</a></div>
         <div class="card-body">
           <div class="signal-cols">
@@ -182,7 +182,7 @@ export async function renderDashboard(root) {
         </div>
       </div>
 
-      <div class="card dash-span-5">
+      <div class="card dash-span-12">
         <div class="card-header"><h3>Sync</h3><span class="row" style="gap:5px"><span class="dot ${stale.level === 'fresh' ? 'fresh' : stale.level === 'stale' ? 'stale' : 'cold'}"></span><span class="kicker">${escapeHtml(stale.label)}</span></span></div>
         <div class="card-body" style="padding:10px 12px">
           <div class="micro faint">${meta.lastUpdated ? `Updated ${new Date(meta.lastUpdated).toLocaleString()}` : 'Local DB Active'}</div>
