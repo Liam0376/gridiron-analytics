@@ -1,6 +1,6 @@
 # Runbook
 
-Local-first operations for Gridiron Analytics. All services bind `127.0.0.1`
+Local-first operations for Draftly. All services bind `127.0.0.1`
 only — never `--host 0.0.0.0`, no tunnels, no port-forwards. `$0 forever`:
 no paid services in any step below.
 
@@ -184,7 +184,7 @@ hardening PRs:
 - **`x-request-id` propagation:** API responses should echo a request ID for
   log correlation across model → proxy → hub. Hub owner to forward the header,
   backend owner to emit it. Until then, correlate via timestamps in
-  `logs/refresh.*.log` and `/tmp/fantasy-hub-*.log`.
+  `logs/refresh.*.log` and `/tmp/draftly-*.log`.
 - **`DB_PATH` allowlist:** shipped — `FFANALYTICS_DB_PATH` is restricted to
   the repo `data/` dir in `src/ffanalytics/config.py:50-55` (model) and
   `hub/server.py:209-247` (proxy, rejects `..` / absolute escapes).

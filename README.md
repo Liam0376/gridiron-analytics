@@ -1,10 +1,10 @@
-# Gridiron Analytics
+# Draftly
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Fantasy football analytics engine + local command center.
 
-Gridiron Analytics combines statistical projection models, conformal uncertainty intervals, league-calibrated auction pricing, and a fast local UI for draft and in-season management.
+Draftly combines statistical projection models, conformal uncertainty intervals, league-calibrated auction pricing, and a fast local UI for draft and in-season management.
 
 ## Features
 
@@ -89,7 +89,7 @@ no tunnels, no paid services, no betting logic.
 
 ## Platform note
 
-`FantasyHub.app/` is a macOS-only binary wrapper (double-click launcher).
+`Draftly.app/` is a macOS-only binary wrapper (double-click launcher).
 On other platforms use `bash hub/start.sh` directly.
 
 ## Testing & Verification

@@ -33,7 +33,7 @@ on failure:
    `pyproject.toml`.
 
 To honour (1) without losing cold-boot DB warm, `scripts/db_warm.py` was
-created. `hub/start.sh` and `hub/FantasyHub.command`
+created. `hub/start.sh` and `hub/Draftly.command`
 shell out to `.venv/bin/python scripts/db_warm.py` instead of inlining a
 `python -c "from ffanalytics import db …"` heredoc (which the isolation
 grep would also flag, since `.command` files are treated as code by some

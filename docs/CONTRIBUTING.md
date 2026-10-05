@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to Gridiron Analytics. OSS v1 stays small on purpose.
+Thanks for contributing to Draftly. OSS v1 stays small on purpose.
 
 ## Constraints (non-negotiable)
 
@@ -23,7 +23,7 @@ Thanks for contributing to Gridiron Analytics. OSS v1 stays small on purpose.
   `docs/RUNBOOK.md`, do not patch.
 - `hub/server.py` — hub owner. OSS PRs: document proxy concerns in
   `docs/RUNBOOK.md`, do not patch.
-- `FantasyHub.app/*` — macOS-only binary wrapper, left as-is.
+- `Draftly.app/*` — macOS-only binary wrapper, left as-is.
 - `hub/src/*`, `data/*`, `tests/*` — out of scope for OSS-hardening PRs.
 - `pyproject.toml` — ML deps (`xgboost`, `scikit-learn`, `numpy`) stay in
   `[project.optional-dependencies] ml`; core stays

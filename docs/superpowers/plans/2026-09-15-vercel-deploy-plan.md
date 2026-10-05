@@ -1,18 +1,18 @@
-# Plan: Vercel Deployment — Gridiron Public
+# Plan: Vercel Deployment — Draftly
 
 Date: 2026-09-15
 Spec: `docs/superpowers/specs/2026-09-15-vercel-deploy-spec.md`
 
 ## Task 1: Scaffold new repo
 
-- [ ] Create `gridiron-public/` directory
+- [ ] Create `draftly-public/` directory
 - [ ] Add `vercel.json` with build + route config
 - [ ] Add `requirements.txt` (requests only)
 - [ ] Add `package.json` (empty, for Vercel static build)
 - [ ] Add `README.md` with setup + deploy instructions
 - [ ] Add `.gitignore` (node_modules, .vercel, __pycache__)
 
-**Verify**: `ls gridiron-public/` shows all files
+**Verify**: `ls draftly-public/` shows all files
 
 ## Task 2: API layer (Python serverless)
 
@@ -21,7 +21,7 @@ Spec: `docs/superpowers/specs/2026-09-15-vercel-deploy-spec.md`
 - [ ] `api/projections.py` — read precomputed JSON from `data/projections/`
 - [ ] `api/analytics.py` — compute VBD + auction values per-league
 
-**Verify**: `cd gridiron-public && python -c "from api.index import app"` imports clean
+**Verify**: `cd draftly-public && python -c "from api.index import app"` imports clean
 
 ## Task 3: Frontend (static)
 

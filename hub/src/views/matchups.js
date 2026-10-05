@@ -260,8 +260,8 @@ function renderMatchupCard(teamA, teamB, matchupId, rawRosters, slateByTeam, sho
     <div class="card reveal in matchup-card" data-matchup-id="${matchupId}" tabindex="0" role="button" aria-label="Open breakdown for matchup ${matchupId}" style="cursor:pointer">
       <div class="card-header">
         <div style="display:flex; align-items:center; gap:8px">
-          <span class="badge badge-faint mono">Match ${matchupId}</span>
-          <span class="micro faint">Click for breakdown</span>
+          <span class="badge badge-faint">Match ${matchupId}</span>
+          <span class="faint" style="font-size:12px">Click for breakdown</span>
         </div>
         ${winProbA !== winProbB ? `<span class="badge ${winProbA > winProbB ? 'badge-emerald' : 'badge-sky'}" style="font-size:11px">${winProbA > winProbB ? escapeHtml(teamA.team_name) : escapeHtml(teamB?.team_name || '—')} favored</span>` : ''}
       </div>
