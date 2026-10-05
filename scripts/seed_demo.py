@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Seed demo 2024 week 10 projections into fantasy.db so hub shows 300+ players even in preseason week 0. Run automatically by hub/start.sh when player_stats is empty."""
+"""Seed demo projections into fantasy.db at week 0 so hub shows 300+ players even in preseason week 0. Run automatically by hub/start.sh when player_stats is empty.
+
+Week 0 matters: hub queries prefer the highest week <= current, so a demo
+row at week 1 outranks live week-0 data until week 1 games pass."""
 import json, pathlib, sys
 # cwd-independent: resolve repo root via __file__
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -85,9 +88,10 @@ try:
             conn.execute("DELETE FROM player_stats WHERE rowid=?", (r["rowid"],))
 except Exception: pass
 try:
-    conn.execute("DELETE FROM player_stats WHERE season=2026 AND week=1")
+    # week=1 clears legacy demo rows from earlier runs; week=0 clears our own rerun
+    conn.execute("DELETE FROM player_stats WHERE season=2026 AND week IN (0, 1)")
 except Exception: pass
-conn.execute("INSERT INTO player_stats (season, week, data) VALUES (?, ?, ?)", (2026, 1, json.dumps(projs, allow_nan=False)))
+conn.execute("INSERT INTO player_stats (season, week, data) VALUES (?, ?, ?)", (2026, 0, json.dumps(projs, allow_nan=False)))
 # why insert-only-if-missing: league_settings holds live Sleeper truth (users,
 # reserve_slots, budget); a stripped demo row must never clobber it.
 exists = conn.execute("SELECT 1 FROM league_settings WHERE season=2026 LIMIT 1").fetchone()
@@ -97,4 +101,4 @@ import datetime
 conn.execute("INSERT INTO refresh_log (source, ran_at, success, error_message) VALUES (?, ?, ?, ?)", ("demo-seed-auto", datetime.datetime.now().isoformat(), 1, None))
 conn.commit()
 conn.close()
-print(f"seeded {len(projs)} demo projections for 2026 week 1")
+print(f"seeded {len(projs)} demo projections for 2026 week 0")
