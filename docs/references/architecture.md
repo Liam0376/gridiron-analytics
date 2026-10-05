@@ -1,4 +1,4 @@
-# Architecture — Gridiron Analytics
+# Architecture — Draftly
 
 Moves engineering discipline + architecture from CLAUDE.md/AGENTS.md. Read before touching model/hub.
 

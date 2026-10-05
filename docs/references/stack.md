@@ -14,7 +14,7 @@ Read before running tests or dev servers. Backpressure: run checks, fix self —
 - Integration: `RUN_INTEGRATION=1 .venv/bin/pytest tests/test_integration.py -v`
 - Dev: `.venv/bin/uvicorn ffanalytics.api:app --reload` — `503` until `POST /refresh`
 - Isolation: `bash hub/verify-isolation.sh` (fail if hub imports `ffanalytics`/writes/`0.0.0.0`)
-- Launch: `bash hub/start.sh [--auto] [--no-refresh] [--force] [--no-browser]` or `StartFantasyHub.command`; `--auto` skips refresh if <60m, seeds via `scripts/seed_demo.py` when empty. Cache: `data/nfl_cache/` persistent only — regenerate there if missing.
+- Launch: `bash hub/start.sh [--auto] [--no-refresh] [--force] [--no-browser]` or `StartDraftly.command`; `--auto` skips refresh if <60m, seeds via `scripts/seed_demo.py` when empty. Cache: `data/nfl_cache/` persistent only — regenerate there if missing.
 
 ## Gotchas
 

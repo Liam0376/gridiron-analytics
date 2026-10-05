@@ -1,4 +1,4 @@
-# Fantasy Football Analytics — Gridiron
+# Fantasy Football Analytics — Draftly
 
 Personal Sleeper tool for one league ("Fantasy Bahamas", 12-team PPR auction). Not a product.
 

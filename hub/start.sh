@@ -49,7 +49,7 @@ if [ "$LAN" = "1" ]; then
   echo "  Explicit opt-in acknowledged; continuing local-only."
 fi
 
-echo "→ FantasyHub — warm-boot start (Ctrl+C to stop, 0 resources after)"
+echo "→ Draftly — warm-boot start (Ctrl+C to stop, 0 resources after)"
 echo "  Model: http://127.0.0.1:8000   Hub: http://127.0.0.1:8001   Proxy: http://127.0.0.1:8002"
 echo "  Flags: auto=$AUTO no-refresh=$NO_REFRESH force=$FORCE no-browser=$NO_BROWSER lan=$LAN league=$SLEEPER_LEAGUE_ID"
 echo ""
@@ -109,15 +109,15 @@ else
   # process, wiping the in-memory refresh cache. /games/predictions (and
   # everything else) 503'd until someone noticed and re-ran /refresh.
   # Scoping the watch to the model's own source stops that.
-  .venv/bin/uvicorn ffanalytics.api:app --host 127.0.0.1 --port 8000 --reload --reload-dir src/ffanalytics > /tmp/fantasy-hub-api.log 2>&1 &
+  .venv/bin/uvicorn ffanalytics.api:app --host 127.0.0.1 --port 8000 --reload --reload-dir src/ffanalytics > /tmp/draftly-api.log 2>&1 &
   API_PID=$!
   for i in {1..30}; do
     if curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; then break; fi
     sleep 0.5
   done
   if ! curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; then
-    echo "✗ model failed to start — see /tmp/fantasy-hub-api.log"
-    cat /tmp/fantasy-hub-api.log | tail -20
+    echo "✗ model failed to start — see /tmp/draftly-api.log"
+    cat /tmp/draftly-api.log | tail -20
     exit 1
   fi
   echo "  ✓ model up (pid $API_PID)"
@@ -134,14 +134,14 @@ if curl -sf http://127.0.0.1:8002/health >/dev/null 2>&1; then
   echo "  ✓ proxy already running on :8002 — reusing"
   PROXY_PID=""
 else
-  .venv/bin/python hub/server.py > /tmp/fantasy-hub-proxy.log 2>&1 &
+  .venv/bin/python hub/server.py > /tmp/draftly-proxy.log 2>&1 &
   PROXY_PID=$!
   for i in {1..20}; do
     if curl -sf http://127.0.0.1:8002/health >/dev/null 2>&1; then break; fi
     sleep 0.3
   done
   if ! curl -sf http://127.0.0.1:8002/health >/dev/null 2>&1; then
-    echo "⚠ proxy not responding — hub will work API-only (see /tmp/fantasy-hub-proxy.log)"
+    echo "⚠ proxy not responding — hub will work API-only (see /tmp/draftly-proxy.log)"
   else
     # verify all 9 hub API endpoints respond
     ALL_OK=1
@@ -154,7 +154,7 @@ else
     if [ "$ALL_OK" = "1" ]; then
       echo "  ✓ proxy up & all 9 endpoints healthy (pid $PROXY_PID)"
     else
-      echo "  ⚠ proxy up but some endpoints failed — see /tmp/fantasy-hub-proxy.log"
+      echo "  ⚠ proxy up but some endpoints failed — see /tmp/draftly-proxy.log"
     fi
   fi
 fi
@@ -241,8 +241,8 @@ PY
     SHOULD_REFRESH=0
   else
     START_TS=$(date +%s)
-    if curl -sf -X POST http://127.0.0.1:8000/refresh -H "Content-Type: application/json" 2>/dev/null | head -20 > /tmp/fantasy-hub-refresh.json; then
-      cat /tmp/fantasy-hub-refresh.json | head -20
+    if curl -sf -X POST http://127.0.0.1:8000/refresh -H "Content-Type: application/json" 2>/dev/null | head -20 > /tmp/draftly-refresh.json; then
+      cat /tmp/draftly-refresh.json | head -20
       ELAPSED=$(( $(date +%s) - START_TS ))
       echo "  ✓ refresh done in ${ELAPSED}s (per-source isolation — one failure doesn't abort others)"
       # verify warm: cache or DB has player_stats
@@ -252,7 +252,7 @@ PY
         sleep 0.5
       done
     else
-      echo "  ⚠ POST /refresh failed — hub will open with stale cache (see /tmp/fantasy-hub-api.log, trap won't abort)"
+      echo "  ⚠ POST /refresh failed — hub will open with stale cache (see /tmp/draftly-api.log, trap won't abort)"
     fi
   fi
 fi
@@ -274,7 +274,7 @@ if curl -sf http://127.0.0.1:8001/ >/dev/null 2>&1; then
   fi
   echo ""
   echo "  ┌─────────────────────────────────────────────────────┐"
-  echo "  │  FantasyHub ready (local-only)                     │"
+  echo "  │  Draftly ready (local-only)                         │"
   echo "  │  Mac:    http://127.0.0.1:8001                      │"
   echo "  └─────────────────────────────────────────────────────┘"
   if [ "$LAN" = "1" ]; then
@@ -293,7 +293,7 @@ else
   fi
   echo ""
   echo "  ┌─────────────────────────────────────────────────────┐"
-  echo "  │  FantasyHub ready (local-only)                     │"
+  echo "  │  Draftly ready (local-only)                         │"
   echo "  │  Mac:    http://127.0.0.1:8001                      │"
   echo "  └─────────────────────────────────────────────────────┘"
   if [ "$LAN" = "1" ]; then

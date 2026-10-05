@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════
-   Press Box — Design Tokens v2 (Press Box rebrand)
+   Draftly — Design Tokens v2 (Draftly rebrand)
    Cool canvas · single purple accent · flat hairlines
    All v4/v2 variable names preserved for compatibility.
    ═══════════════════════════════════════════════════════ */
@@ -23,12 +23,12 @@
   --text-faint: #94A3B8;
   --text-inverse: #FFFFFF;
 
-  /* Typography — Oswald display + Poppins body (Press Box §2) */
+  /* Typography — Oswald display + Poppins body (Draftly §2) */
   --font-sans: "Poppins", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, "Segoe UI", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
   --font-display: "Oswald", "Arial Narrow", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, sans-serif;
 
-  /* Press Box identity — single purple accent */
+  /* Draftly identity — single purple accent */
   --flag: #7D2EFF;
   --flag-rgb: 125, 46, 255;
   --flag-ink: #FFFFFF;

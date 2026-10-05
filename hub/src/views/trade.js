@@ -97,7 +97,7 @@ export async function renderTrade(root) {
 
   // -- Trade stat helpers (client-side only, no new endpoints) --
   // Two roster shapes: parent hub items carry full-SEASON stat totals
-  // (pass_yds, rush_yds, ...) while FantasyHub items carry native WEEKLY
+  // (pass_yds, rush_yds, ...) while Draftly items carry native WEEKLY
   // proj_* fields. Prefer native weeklies when present; otherwise divide
   // season totals by 17 for an honest per-game average labeled "avg" —
   // never presented as model weeklies (no weekly stat source exists on
@@ -305,7 +305,7 @@ export async function renderTrade(root) {
     // why finite-choke here too: NaN weekly poisons sort order and renders
     // as "NaN" via toFixed. Same _num discipline as the banner helpers.
     const pw = (p) => {
-      // why p.weekly last: FantasyHub roster items carry weekly/ros instead
+      // why p.weekly last: Draftly roster items carry weekly/ros instead
       // of model_points/model_season_points. Same chain everywhere.
       const n = Number(p.model_points ?? p.projected_points ?? p.weekly ?? 0);
       return Number.isFinite(n) ? n : 0;

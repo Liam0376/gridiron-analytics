@@ -2,7 +2,7 @@
 """scripts/db_warm.py — warm-boot DB helper.
 
 Ensures `data/fantasy.db` exists with the schema applied. Used by
-`hub/start.sh` and `hub/FantasyHub.command` to satisfy hub isolation:
+`hub/start.sh` and `hub/Draftly.command` to satisfy hub isolation:
 hub scripts cannot `import ffanalytics`, so this lives under `scripts/`
 which is not subject to the isolation gate (only `hub/` is).
 

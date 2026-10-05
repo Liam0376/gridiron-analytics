@@ -1,5 +1,5 @@
 #!/bin/bash
-# FantasyHub.app — single-click whole project (model warm + hub)
+# Draftly.app — single-click whole project (model warm + hub)
 # No terminal needed: double-click this app in Finder
 REPO="/Users/liam/projects/football-sports-analytics"
 cd "$REPO"

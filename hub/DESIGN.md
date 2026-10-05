@@ -1,10 +1,10 @@
-# DESIGN.md — Press Box v2
+# DESIGN.md — Draftly v2
 
 > Rebrand + retheme spec. Hybrid of Sleeper / FantasyPros / Yahoo Fantasy analysis
-> (`~/fantasy-design-specs/*/design.md`). Replaces the Helvetica/mono "Press Box v1"
+> (`~/fantasy-design-specs/*/design.md`). Replaces the Helvetica/mono "Draftly v1"
 > look. Kills the AI-generic card-grid feel.
 
-**Name:** Press Box
+**Name:** Draftly
 **One-line pitch:** A purple-accented sports editorial console: cool-gray canvas,
 white hairline cards, condensed display type over clean geometric body text,
 density borrowed from Sleeper score rows.
@@ -15,22 +15,22 @@ density borrowed from Sleeper score rows.
 
 | Item | Value |
 | ---- | ----- |
-| Name | Press Box |
-| Wordmark | `PRESS BOX` — Oswald 600, uppercase, letter-spacing 0.02em, white on sidebar |
-| Badge (logo) | Rounded square, `--accent: #7D2EFF`, white `PB` in Oswald 600, radius 10px, 28×28px in sidebar / 16px in favicon |
-| Page `<title>` | `Press Box — Fantasy Football Analytics` |
-| Manifest short_name | `Press Box` |
-| Favicon | `public/favicon.svg` — purple rounded square, white condensed `PB` |
+| Name | Draftly |
+| Wordmark | `DRAFTLY` — Oswald 600, uppercase, letter-spacing 0.02em, white on sidebar |
+| Badge (logo) | Rounded square, `--accent: #7D2EFF`, white `DL` in Oswald 600, radius 10px, 28×28px in sidebar / 16px in favicon |
+| Page `<title>` | `Draftly — Fantasy Football Analytics` |
+| Manifest short_name | `Draftly` |
+| Favicon | `public/favicon.svg` — purple rounded square, white condensed `DL` |
 | Voice | Sports desk, not SaaS. Labels read like a stats feed: short, uppercase sparingly, numbers lead. |
 
-Replace every user-facing `FantasyHub` string with `Press Box` (sidebar header,
+Replace every user-facing legacy brand string with `Draftly` (sidebar header,
 title, manifest, setup modal header, README, `AGENTS.md` mentions).
-`package.json` name and internal route/API keys stay unchanged — branding only.
+Internal route and API keys stay unchanged — branding only.
 
 Sidebar header block, top to bottom:
 
 ```
-[P]  PRESS BOX            ← badge + wordmark, one row
+[DL]  DRAFTLY            ← badge + wordmark, one row
      12-TEAM · 2 FLEX     ← league line, Poppins 500, muted, uppercase, 0.06em
 ```
 
@@ -157,13 +157,13 @@ bounce/glow. Focus ring: `2px solid var(--accent)` + `2px offset` everywhere.
 | File | Change |
 | ---- | ------ |
 | `src/styles/tokens.css` | rewrite per §3, add font vars per §2 |
-| `src/styles/pressbox.css` | rewrite per §2–4 (display type, density, hero grid) |
+| `src/styles/draftly.css` | rewrite per §2–4 (display type, density, hero grid) |
 | `src/styles/app.css` | targeted: label font swaps, card padding/radius, remove shadows |
 | `index.html` | Google Fonts link, title, favicon link |
-| `public/favicon.svg` | new (purple PB square) |
-| `public/manifest.json` | name/short_name → Press Box |
-| views/components | dashboard grid per §4; `FantasyHub` → `Press Box` strings |
-| `src/styles/pressbox.css` badge | `.badge PB` styles |
+| `public/favicon.svg` | new (purple DL square) |
+| `public/manifest.json` | name/short_name → Draftly |
+| views/components | dashboard grid per §4; `Draftly` → `Draftly` strings |
+| `src/styles/draftly.css` badge | `.badge DL` styles |
 
 Verification (one check): `npm run build` passes, then headless screenshot
 dashboard + matchups + trade at 1440×900 — compare against

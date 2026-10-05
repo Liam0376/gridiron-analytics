@@ -1,6 +1,6 @@
 # OSS Audit Spec — 2026-09-15
 
-Goal: audit, test, debug, verify Gridiron so it is ready to deploy as an open source fantasy football hub. Stay `$0 forever`, local-only `127.0.0.1` unless Liam approves a destination.
+Goal: audit, test, debug, verify Draftly so it is ready to deploy as an open source fantasy football hub. Stay `$0 forever`, local-only `127.0.0.1` unless Liam approves a destination.
 
 ## Baseline evidence (verified 2026-09-15)
 
@@ -25,7 +25,7 @@ Goal: audit, test, debug, verify Gridiron so it is ready to deploy as an open so
 2. Correct stack.md branch + league.md budget after live Sleeper re-verify. Verify, do not reason.
 3. OSS deploy story: repo is local-only by design (`RUNBOOK.md`, `CONTRIBUTING.md`). No Dockerfile, no tunnel docs. Decide: OSS v1 stays local-only with `<10min` warm board activation, or add explicit deploy target after Liam confirms destination.
 4. Hardcoded league ID uses are safe (tests, docs, `scoring.py:4` comment fallback, `hub/src/views/setup.js:63` placeholder). No code default leaks private league. Confirm no other PII in `hub/dist/` (built file contains ID string, rebuild after cleanup if needed).
-5. `FantasyHub.app/` macOS wrapper stays as-is per `CONTRIBUTING.md`. `hub/dist/` is build output, check if it should stay gitignored for OSS.
+5. `Draftly.app/` macOS wrapper stays as-is per `CONTRIBUTING.md`. `hub/dist/` is build output, check if it should stay gitignored for OSS.
 
 ## Non-goals
 

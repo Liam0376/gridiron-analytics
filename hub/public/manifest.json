@@ -1,6 +1,6 @@
 {
-  "name": "Press Box",
-  "short_name": "Press Box",
+  "name": "Draftly",
+  "short_name": "Draftly",
   "description": "Fantasy football analytics — projections, matchups, auction draft",
   "start_url": "/",
   "display": "standalone",

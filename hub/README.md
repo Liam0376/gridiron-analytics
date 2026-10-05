@@ -1,4 +1,4 @@
-# Press Box — Local Command Center
+# Draftly — Local Command Center
 
 **Zero tokens. $0. Read-only.**
 
@@ -26,7 +26,7 @@ bash hub/start.sh
 # → press Ctrl+C to stop everything — 0 processes after
 ```
 
-Or double-click **`hub/FantasyHub.command`** in Finder (same script, macOS will ask to allow once).
+Or double-click **`hub/Draftly.command`** in Finder (same script, macOS will ask to allow once).
 
 Only command needed. Installs `hub/node_modules` once if missing, waits for health checks, opens the browser. Idles ~0% CPU when closed. After `Ctrl+C`, `lsof -i :8000 -i :8001 -i :8002` is empty.
 

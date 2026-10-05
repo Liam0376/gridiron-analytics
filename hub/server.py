@@ -1050,7 +1050,7 @@ def build_league_analytics(conn, league_id: str | None = None, week: int | None 
                 mk_s = comp.get("market_season_points")
                 mk_per_game = round(float(mk_s) / 17.0, 2) if (mk_s is not None and float(mk_s) > 0) else None
 
-                # Always prefer Gridiron model projection first:
+                # Always prefer Draftly model projection first:
                 if m_pts is not None and float(m_pts) > 0:
                     gridiron_pts = float(m_pts)
                 elif raw_pts > 0:

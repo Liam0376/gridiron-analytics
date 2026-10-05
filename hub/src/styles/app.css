@@ -1,9 +1,9 @@
 /* ═══════════════════════════════════════════════════════
-   Press Box — app shell (Press Box v2 retheme, hub/DESIGN.md)
+   Draftly — app shell (Draftly v2 retheme, hub/DESIGN.md)
    Poppins body · flat hairlines · 4px grid
    ═══════════════════════════════════════════════════════ */
 @import './tokens.css';
-@import './pressbox.css';
+@import './draftly.css';
 
 * { box-sizing: border-box; }
 html { scrollbar-gutter: stable; scroll-padding-top: var(--header-height); color-scheme: light dark; }

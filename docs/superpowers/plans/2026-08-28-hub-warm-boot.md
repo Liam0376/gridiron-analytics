@@ -4,7 +4,7 @@
 
 ## Goal
 
-When the user runs `bash hub/start.sh` (or double-clicks `hub/FantasyHub.command`), the whole system (not just the HTTP listeners) is **verified warm** before the browser opens. Warm = SQLite WAL has this week's data, `_CACHE` is populated, staleness badge shows fresh.
+When the user runs `bash hub/start.sh` (or double-clicks `hub/Draftly.command`), the whole system (not just the HTTP listeners) is **verified warm** before the browser opens. Warm = SQLite WAL has this week's data, `_CACHE` is populated, staleness badge shows fresh.
 
 Today `hub/start.sh` only waits for `GET /health = 200`. That proves the processes are alive, not that the *data* is usable. In preseason/sleep-wake, the user otherwise sees empty tables until they remember `curl -X POST /refresh`.
 
@@ -46,7 +46,7 @@ Failure never blocks the hub: if `POST /refresh` returns `{"sleeper": true, "nfl
 
 - Terminal progress (the only visible orchestrator):
   ```
-  → Gridiron Hub — one-click start (Ctrl+C to stop)
+  → Draftly — one-click start (Ctrl+C to stop)
     Model: http://127.0.0.1:8000  Hub: http://127.0.0.1:8001
   → checking data freshness… last 2026-08-27 07:00 (stale, week 0→1)
   → refresh now? [Y/n] Y
@@ -65,7 +65,7 @@ Browser open is **gated** on step 5 — never open a cold hub that flashes empty
 - `bash hub/start.sh --no-refresh` — never POST, open even if cold (offline)
 - `bash hub/start.sh --force` — refresh even if fresh (for testing)
 
-All flags leave `hub/FantasyHub.command` as prompt-mode (safe default for double-click).
+All flags leave `hub/Draftly.command` as prompt-mode (safe default for double-click).
 
 ## Files Touched (when built)
 

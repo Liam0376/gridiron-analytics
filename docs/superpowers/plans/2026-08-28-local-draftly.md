@@ -10,7 +10,7 @@
 >
 > Location: **top-level `hub/` directory** with its own `package.json` / `pyproject.toml` (if Python) and isolated `README.md`. Root repo's `AGENTS.md` and `CLAUDE.md` constraints (`$0`, `127.0.0.1` only) apply equally to the hub.
 
-**Goal:** A token-free, $0, fully-local fantasy hub — no LLM calls — that surfaces everything the model already knows: weekly projections (with calibrated intervals), matchups, weather, tierlists, roster start/sit with confidence, waiver priorities, trade evaluations, and fast search. Freshness comes from the existing daily `launchd` → `refresh_job.sh` → SQLite WAL pipeline, not from the hub.
+**Goal:** A token-free, $0, fully-local Draftly — no LLM calls — that surfaces everything the model already knows: weekly projections (with calibrated intervals), matchups, weather, tierlists, roster start/sit with confidence, waiver priorities, trade evaluations, and fast search. Freshness comes from the existing daily `launchd` → `refresh_job.sh` → SQLite WAL pipeline, not from the hub.
 
 **Non-goals (v1):** No model retraining, new projection features, schema migrations, auth/multi-user, public hosting, phone tunnel, or LLM narrative (that remains an *optional* out-of-band `muse -p`, not part of the hub).
 

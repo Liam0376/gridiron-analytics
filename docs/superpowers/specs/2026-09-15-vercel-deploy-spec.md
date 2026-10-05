@@ -1,11 +1,11 @@
-# Spec: Vercel Deployment — Gridiron Public
+# Spec: Vercel Deployment — Draftly
 
 Date: 2026-09-15
 Status: PROPOSED
 
 ## What
 
-Deploy a clean, public-facing version of Gridiron Analytics to Vercel.
+Deploy a clean, public-facing version of Draftly to Vercel.
 User pastes a Sleeper league link → sees projections + auction values.
 No sign-up, no config, no maintenance.
 
@@ -89,7 +89,7 @@ GitHub Action (weekly cron):
 ## New repo structure
 
 ```
-gridiron-public/
+draftly-public/
 ├── public/
 │   ├── index.html          # SPA entry
 │   ├── app.js              # Main app logic
@@ -212,7 +212,7 @@ parsed with stdlib.
 ## Frontend UX
 
 ### Landing page
-- Hero: "Gridiron — Fantasy Football Analytics"
+- Hero: "Draftly — Fantasy Football Analytics"
 - Subtitle: "Paste your Sleeper league link for instant projections"
 - Input: league URL or ID
 - Button: "Analyze League"
