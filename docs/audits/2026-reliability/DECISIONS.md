@@ -31,6 +31,12 @@ Additive migration only.
 **Why:** Must check robots.txt and ToS first. nflverse covers target_share, snap_share,
 carries already. Only features nflverse LACKS would justify scraping.
 
+**D3b (resolved 2026-10-05):** `hashtagfootball.com/robots.txt` returns 404 (no
+crawler restrictions declared) — but ToS still unreviewed and nflverse covers
+every feature the model uses (target_share, snap_share, carries, air_yards).
+**Picked:** (c) Skip entirely. Reopen only if a specific feature gap appears
+that nflverse cannot fill.
+
 ## D4: Scorecard baseline choice
 
 **Question:** What baseline should the accuracy scorecard compare against?
